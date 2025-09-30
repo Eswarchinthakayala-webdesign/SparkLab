@@ -377,7 +377,7 @@ export default function OhmsLawAdvanced() {
                         <CircuitBoard className="w-5 h-5" />
                       </div>
                       <div>
-                        <div className="text-lg font-semibold">Ohm’s Law</div>
+                        <div className="text-lg text-orange-499 font-semibold">Ohm’s Law</div>
                         <div className="text-xs text-zinc-400">Compute V = I × R (live, interactive)</div>
                       </div>
                     </div>
