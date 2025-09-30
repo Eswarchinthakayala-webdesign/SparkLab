@@ -147,7 +147,8 @@ export default function Navbar() {
                   <LogIn className="w-4 h-4 mr-1" />
                   Sign In
                 </Button>
-                <Button className="cursor-pointer bg-gradient-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600 text-black font-semibold rounded-xl shadow-lg shadow-orange-500/30 transition-all">
+                <Button className="cursor-pointer bg-gradient-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600 text-black font-semibold rounded-xl shadow-lg shadow-orange-500/30 transition-all"
+                onClick={()=>navigate("/tools")}>
                   <Rocket className="w-4 h-4 mr-1" />
                   Get Started
                 </Button>
