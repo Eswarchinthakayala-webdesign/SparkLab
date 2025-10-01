@@ -8,6 +8,7 @@ import FeaturePage from "./pages/FeaturePage";
 import AboutPage from "./pages/AboutPage";
 import ElectricToolsPage from "./pages/ElectricToolsPage";
 import OhmsLawPage from "./pages/tools/OhmsLawPage";
+import PowerCalculator from "./pages/tools/PowerCalculator";
 
 // TODO: You can add these later
 // import LoginPage from "./pages/LoginPage";
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="/about" element={<AboutPage/>} />
         <Route path="/tools" element={<ElectricToolsPage/>} />
         <Route path="/tools/ohms-law" element={<OhmsLawPage/>}/>
+        <Route path="/tools/power" element={<PowerCalculator/>}/>
       </Routes>
     </Router>
   );
