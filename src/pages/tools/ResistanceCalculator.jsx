@@ -277,15 +277,15 @@ function VisualizerSVG({
 
               {/* readouts on the right */}
               <g transform={`translate(${vbW - readoutWidth - 20},24)`}>
-                <rect x="-110" y="-20" width="220" height="60" rx="8" fill="#060606" stroke="#222" />
-                <text x="-100" y="-4" fill="#ffb57a" fontSize="12">Total R</text>
-                <text x="-100" y="18" fill="#ff9a4a" fontSize="18" fontWeight="700">{Number.isFinite(Req) && Req !== Infinity ? `${round(Req, 6)} Ω` : "-- Ω"}</text>
+                <rect x="-10" y="-20" width="220" height="60" rx="8" fill="#060606" stroke="#222" />
+                <text x="-1" y="-4" fill="#ffb57a" fontSize="12">Total R</text>
+                <text x="-1" y="18" fill="#ff9a4a" fontSize="18" fontWeight="700">{Number.isFinite(Req) && Req !== Infinity ? `${round(Req, 6)} Ω` : "-- Ω"}</text>
               </g>
 
               <g transform={`translate(${vbW - readoutWidth - 20},100)`}>
-                <rect x="-110" y="-20" width="220" height="60" rx="8" fill="#060606" stroke="#222" />
-                <text x="-100" y="-4" fill="#ffb57a" fontSize="12">Total Power</text>
-                <text x="-100" y="18" fill="#ff9a4a" fontSize="18" fontWeight="700">{Number.isFinite(totalPower) ? `${round(totalPower, 6)} W` : "-- W"}</text>
+                <rect x="-10" y="-20" width="220" height="60" rx="8" fill="#060606" stroke="#222" />
+                <text x="-1" y="-4" fill="#ffb57a" fontSize="12">Total Power</text>
+                <text x="-1" y="18" fill="#ff9a4a" fontSize="18" fontWeight="700">{Number.isFinite(totalPower) ? `${round(totalPower, 6)} W` : "-- W"}</text>
               </g>
             </>
           )}
@@ -344,15 +344,15 @@ function VisualizerSVG({
 
               {/* right readouts */}
               <g transform={`translate(${vbW - readoutWidth - 20},40)`}>
-                <rect x="-110" y="-20" width="220" height="60" rx="8" fill="#060606" stroke="#222" />
-                <text x="-100" y="-4" fill="#ffb57a" fontSize="12">Req</text>
-                <text x="-100" y="18" fill="#ff9a4a" fontSize="18" fontWeight="700">{Number.isFinite(Req) && Req !== Infinity ? `${round(Req,6)} Ω` : "-- Ω"}</text>
+                <rect x="-10" y="-20" width="220" height="60" rx="8" fill="#060606" stroke="#222" />
+                <text x="-1" y="-4" fill="#ffb57a" fontSize="12">Req</text>
+                <text x="-1" y="18" fill="#ff9a4a" fontSize="18" fontWeight="700">{Number.isFinite(Req) && Req !== Infinity ? `${round(Req,6)} Ω` : "-- Ω"}</text>
               </g>
 
               <g transform={`translate(${vbW - readoutWidth - 20},120)`}>
-                <rect x="-110" y="-20" width="220" height="60" rx="8" fill="#060606" stroke="#222" />
-                <text x="-100" y="-4" fill="#ffb57a" fontSize="12">Total Power</text>
-                <text x="-100" y="18" fill="#ff9a4a" fontSize="18" fontWeight="700">{Number.isFinite(totalPower) ? `${round(totalPower,6)} W` : "-- W"}</text>
+                <rect x="-10" y="-20" width="220" height="60" rx="8" fill="#060606" stroke="#222" />
+                <text x="-1" y="-4" fill="#ffb57a" fontSize="12">Total Power</text>
+                <text x="-1" y="18" fill="#ff9a4a" fontSize="18" fontWeight="700">{Number.isFinite(totalPower) ? `${round(totalPower,6)} W` : "-- W"}</text>
               </g>
             </>
           )}
