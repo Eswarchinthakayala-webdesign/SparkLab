@@ -544,7 +544,7 @@ function PowerOscilloscope({ history, running }) {
             <CartesianGrid stroke="#111" strokeDasharray="3 3" />
             <XAxis dataKey="t" hide />
             <YAxis tick={{ fill: "#888" }} />
-            <ReTooltip contentStyle={{ background: "#0b0b0b", border: "1px solid #222" }} />
+            <ReTooltip contentStyle={{ background: "#0b0b0b", border: "1px solid #222",color:"#fff",borderRadius:"10px" }} />
             <Line type="monotone" dataKey="P" stroke="#ff7a2d" strokeWidth={2} dot={false} isAnimationActive={false} />
           </LineChart>
         </ResponsiveContainer>
