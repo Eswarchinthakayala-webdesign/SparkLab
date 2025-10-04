@@ -13,6 +13,10 @@ import ResistanceCalculatorPage from "./pages/tools/ResistanceCalculator";
 import CapacitanceInductanceCalculatorPage from "./pages/tools/CapacitanceInductanceCalculator";
 import ImpedanceCalculatorPage from "./pages/tools/ImpedanceCalculatorPage";
 import TransformerCalculatorPage from "./pages/tools/TransformerCalculatorPage";
+import ThreePhaseCalculatorPage from "./pages/tools/ThreePhaseCalculatorPage";
+import ResonanceCalculatorPage from "./pages/tools/ResonanceCalculatorPage";
+import PowerFactorCalculator from "./pages/tools/PowerFactorCalculator";
+import TheveninNortonCalculator from "./pages/tools/TheveninNortonCalculator";
 
 // TODO: You can add these later
 // import LoginPage from "./pages/LoginPage";
@@ -33,6 +37,10 @@ export default function App() {
         <Route path="/tools/capacitance-inductance" element={<CapacitanceInductanceCalculatorPage/>}/>
         <Route path="/tools/impedance" element={<ImpedanceCalculatorPage/>} />
         <Route path="/tools/transformer" element={<TransformerCalculatorPage/>} />
+        <Route path="/tools/three-phase" element={<ThreePhaseCalculatorPage/>} />
+        <Route path="/tools/resonance" element={<ResonanceCalculatorPage/>} />
+        <Route path="/tools/power-factor" element={<PowerFactorCalculator/>} />
+        <Route path="/tools/thevenin-norton" element={<TheveninNortonCalculator/>} />
       </Routes>
     </Router>
   );

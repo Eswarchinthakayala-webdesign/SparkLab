@@ -554,7 +554,7 @@ function Header({ Vm, setVm, freq, setFreq, running, toggleRun, resetDefaults })
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-50 backdrop-blur-md bg-black/70 border-b border-zinc-800">
+    <header className="sticky top-0 z-50 backdrop-blur-md bg-black/70 border-b border-zinc-800 py-2">
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         {/* Top row */}
         <div className="flex items-center justify-between h-12 sm:h-14 md:h-16">
@@ -617,7 +617,7 @@ function Header({ Vm, setVm, freq, setFreq, running, toggleRun, resetDefaults })
           <div className="md:hidden">
             <Button
               variant="ghost"
-              className="border border-zinc-800 p-2"
+              className="border cursor-pointer border-zinc-800 p-2"
               onClick={() => setMobileOpen(!mobileOpen)}
             >
               {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -648,21 +648,21 @@ function Header({ Vm, setVm, freq, setFreq, running, toggleRun, resetDefaults })
 
           <div className="flex gap-2">
             <Button
-              className="flex-1 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2"
+              className="flex-1 cursor-pointer bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2"
               onClick={() => toast.success("Snapshot saved")}
             >
               Snapshot
             </Button>
             <Button
               variant="ghost"
-              className="flex-1 border border-zinc-800 text-xs py-2"
+              className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2"
               onClick={toggleRun}
             >
               {running ? "Pause" : "Play"}
             </Button>
             <Button
               variant="ghost"
-              className="flex-1 border border-zinc-800 text-xs py-2"
+              className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2"
               onClick={resetDefaults}
             >
               Reset
@@ -771,7 +771,9 @@ export default function ImpedanceCalculatorPage() {
   };
 
   return (
-    <div className="min-h-screen bg-black pb-20 sm:pb-2 text-white">
+    <div className="min-h-screen  bg-[#05060a]
+                 bg-[radial-gradient(circle,_rgba(255,122,28,0.25)_1px,transparent_1px)]
+                 bg-[length:20px_20px] pb-20 sm:pb-2 text-white">
       <Toaster position="top-right" richColors />
       {/* header */}
        <Header

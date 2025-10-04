@@ -528,7 +528,9 @@ export default function TransformerCalculatorPage() {
   };
 
   return (
-    <div className="min-h-screen bg-black pb-20 sm:pb-2  text-white">
+    <div className="min-h-screen  bg-[#05060a]
+                 bg-[radial-gradient(circle,_rgba(255,122,28,0.25)_1px,transparent_1px)]
+                 bg-[length:20px_20px] pb-20 sm:pb-2  text-white">
       <Toaster position="top-right" richColors />
 
       {/* Header (responsive with mobile slide-down) */}
@@ -814,7 +816,7 @@ export default function TransformerCalculatorPage() {
             Ratio: <span className="text-[#ffd24a] ml-1">{round(ratioComputed, 4)}</span>
           </Badge>
           <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm">
-            Load: <span className="text-[#ffd24a] ml-1">{round(loadVA || 0, 2)} VA</span>
+            Load: <span className="text-[#ffd24a] ml-1">{loadVA } VA</span>
           </Badge>
         </div>
       </CardTitle>
