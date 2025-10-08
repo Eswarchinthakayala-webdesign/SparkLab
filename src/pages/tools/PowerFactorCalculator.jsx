@@ -22,7 +22,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-
+import { toPng } from "html-to-image"; 
 import { motion, useMotionValue, useSpring } from "framer-motion";
 import { Toaster, toast } from "sonner";
 import {
@@ -35,6 +35,7 @@ import {
   RefreshCw,
   Circle,
   Activity,
+  Camera,
 } from "lucide-react";
 
 // shadcn-ui imports - adjust paths if different in your project
@@ -289,7 +290,7 @@ function CircuitFlow({ V = 230, I = 5, PF = 0.9, running = true }) {
   const dots = clamp(Math.round(6 + I / 1.2), 6, 28);
 
   return (
-    <div className="w-full rounded-xl p-3 bg-gradient-to-b from-black/60 to-zinc-900/20 border border-zinc-800 overflow-hidden">
+    <div className="w-full rounded-xl p-3 bg-gradient-to-b from-black/60 to-zinc-900/20 border border-zinc-800 overflow-hidden ">
       <svg viewBox="0 0 820 260" className="w-full h-72" preserveAspectRatio="xMidYMid meet">
         <defs>
           <path id="pfWire" d={wirePath} fill="none" />
@@ -479,7 +480,32 @@ export default function PowerFactorCalculator() {
     URL.revokeObjectURL(url);
     toast.success("Exported CSV");
   }, [stats]);
+  
+const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
 
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
   return (
     <div className="min-h-screen bg-[#05060a]
                  bg-[radial-gradient(circle,_rgba(255,122,28,0.25)_1px,transparent_1px)]
@@ -491,7 +517,7 @@ export default function PowerFactorCalculator() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center text-black">
-              <Hexagon className="w-5 h-5" />
+              <Zap className="w-5 h-5" />
             </div>
             <div>
               <div className="text-sm sm:text-base md:text-lg font-semibold text-zinc-200">
@@ -503,17 +529,18 @@ export default function PowerFactorCalculator() {
             </div>
           </div>
 
-          <div className="sm:flex gap-2 hidden items-center">
-            <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full text-xs">
+          <div className="flex gap-2 items-center">
+            <Badge className="hidden sm:block bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full text-xs">
               PF:{" "}
               <span className="text-[#ffd24a] ml-1">
                 <AnimatedNumber value={stats.PF} precision={3} />
               </span>
             </Badge>
-            <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full text-xs">
+            <Badge className="hidden sm:block bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full text-xs">
               Load:{" "}
               <span className="text-[#ffd24a] ml-1">{loadType}</span>
             </Badge>
+             <Button className="cursor-pointer bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black" onClick={snapshotPNG}><Camera/> <span className="hidden sm:flex">Snapshot</span></Button>
           </div>
         </div>
       </header>
@@ -706,7 +733,7 @@ export default function PowerFactorCalculator() {
         </div>
 
         {/* Right column: Visualizers */}
-        <div className="lg:col-span-8 space-y-4">
+        <div className="lg:col-span-8 space-y-4 ">
           <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden">
             <CardHeader className="p-4">
               <div className="flex items-center justify-between w-full">
@@ -728,11 +755,11 @@ export default function PowerFactorCalculator() {
             </CardHeader>
 
             <CardContent className="p-3 space-y-4">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 snapshot">
                 <div>
                   <CircuitFlow V={stats.V} I={stats.I} PF={stats.PF} running={running} />
                 </div>
-                <div className="space-y-3">
+                <div className="space-y-3 ">
                   <div className="flex items-center justify-center">
                     <Phasor P={Math.abs(stats.P)} Q={Math.abs(stats.Q)} />
                   </div>

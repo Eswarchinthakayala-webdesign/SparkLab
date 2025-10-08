@@ -21,9 +21,10 @@ import {
   Menu,
   X,
   Lightbulb,
+  Camera,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
-
+import { toPng } from "html-to-image"; 
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -291,7 +292,7 @@ function TransformerVisualizer({ summary, turnsDescription, running, showPeak })
   const ameterAngle = clamp((Is_rms / Math.max(0.001, Is_rms || 0.001)) * 60, -60, 60);
 
   return (
-    <div className="w-full rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden">
+    <div className="w-full rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden snapshot">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
@@ -507,9 +508,7 @@ export default function TransformerCalculatorPage() {
     toast.success("Exported CSV");
   }, [history]);
 
-  const snapshot = () => {
-    toast.success("Snapshot saved (in-memory)");
-  };
+
 
   const reset = () => {
     setVm("230");
@@ -526,6 +525,32 @@ export default function TransformerCalculatorPage() {
     setShowPeak(false);
     toast("Reset to defaults");
   };
+
+  const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
+
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
 
   return (
     <div className="min-h-screen  bg-[#05060a]
@@ -559,7 +584,7 @@ export default function TransformerCalculatorPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <Button className="bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer" onClick={snapshot}>Snapshot</Button>
+                <Button className="bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer" onClick={snapshotPNG}><Camera/> <span className="hidden sm:flex">Snapshot</span></Button>
                 <Button variant="ghost" className="border border-zinc-800 cursor-pointer" onClick={() => setRunning((r) => { toast(!r ? "Simulation resumed" : "Simulation paused"); return !r; })}>
                   {running ? <Pause /> : <Play />}
                 </Button>
@@ -589,7 +614,7 @@ export default function TransformerCalculatorPage() {
             </div>
 
             <div className="flex gap-2">
-              <Button className="flex-1 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black text-xs py-2" onClick={snapshot}>Snapshot</Button>
+              <Button className="flex-1 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black text-xs py-2" onClick={snapshotPNG}><Camera/> <span className="hidden sm:flex">Snapshot</span></Button>
               <Button variant="ghost" className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2" onClick={() => setRunning((r) => !r)}>{running ? "Pause" : "Play"}</Button>
               <Button variant="ghost" className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2" onClick={reset}>Reset</Button>
             </div>
@@ -762,7 +787,7 @@ export default function TransformerCalculatorPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4">
         <div className="flex flex-wrap gap-2">
           <Button className=" cursor-pointer bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-sm flex items-center gap-1">
-            <Plus className="w-4 h-4" /> Snapshot
+            <Camera className="w-4 h-4" /> Snapshot
           </Button>
           <Button variant="outline" className="border cursor-pointer border-zinc-700" onClick={() => setRunning(true)}>
             <Play className="w-4 h-4" />

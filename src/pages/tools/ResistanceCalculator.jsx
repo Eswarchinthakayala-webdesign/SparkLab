@@ -19,9 +19,10 @@ import {
   Battery,
   Scissors,
   CopyPlus,
+  Camera,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
-
+import { toPng } from "html-to-image"; 
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -166,7 +167,7 @@ function VisualizerSVG({
   const uid = (prefix, idx) => `${prefix}-${idx}`;
 
   return (
-    <div className="w-full max-w-full rounded-xl p-3 bg-gradient-to-b from-black/30 to-zinc-900/20 border border-zinc-800 overflow-hidden">
+    <div className="w-full max-w-full rounded-xl p-3 bg-gradient-to-b from-black/30 to-zinc-900/20 border border-zinc-800 overflow-hidden snapshot">
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
@@ -719,6 +720,32 @@ export default function ResistanceCalculatorPage() {
     setResistors([10, 10, 10]);
     toast("Reset defaults");
   };
+  
+const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
+
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
 
   const exportCSV = () => {
     const rows = [["index", "R(Ω)", "V(V)", "I(A)", "P(W)"], ...resistors.map((r, i) => [i + 1, r, round(voltagesSafe[i], 6), round(currentsSafe[i], 9), round(powersSafe[i], 9)])];
@@ -758,7 +785,7 @@ export default function ResistanceCalculatorPage() {
                 </div>
                 <div className="truncate">
                   <div className="text-sm text-zinc-300 leading-none truncate">SparkLab</div>
-                  <div className="text-xs text-zinc-400 -mt-0.5 truncate">Resistance Lab — Realtime</div>
+                  <div className="text-xs text-zinc-400 mt-0.5 truncate">Resistance Calculator</div>
                 </div>
               </motion.div>
             </div>
@@ -796,7 +823,7 @@ export default function ResistanceCalculatorPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <Button className="hidden sm:inline-flex bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer" onClick={() => toast("Run analysis")}>Analyze</Button>
+                <Button className="inline-flex bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer" onClick={snapshotPNG}><Camera/> <span className="hidden sm:flex">  Snapshot </span></Button>
                 <Button variant="ghost" className="border border-zinc-800 cursor-pointer text-zinc-300 p-2" onClick={toggleRunning} aria-label="Start / Pause">
                   {running ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                 </Button>

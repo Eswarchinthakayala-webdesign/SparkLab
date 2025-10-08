@@ -16,6 +16,7 @@ import {
   Gauge,
   Thermometer,
   Wind,
+  Camera,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,8 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
+import { toPng } from "html-to-image";  
+
 
 /* ============================
    Utilities
@@ -389,6 +392,32 @@ export default function PowerCalculatorPage() {
     setFreq(50);
     toast("Reset to defaults");
   };
+  
+const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
+
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
 
   const exportCSV = () => {
     const rows = [["t", "V", "I", "P_vi", "P_ir", "P_vr", "P_display"], ...history.map((d) => [d.t, round(d.V, 6), round(d.I, 6), round(d.P_vi, 6), round(d.P_ir, 6), round(d.P_vr, 6), round(d.P_display, 6)])];
@@ -433,7 +462,7 @@ export default function PowerCalculatorPage() {
                 </div>
                 <div className="truncate">
                   <div className="text-sm text-zinc-300 leading-none truncate">SparkLab</div>
-                  <div className="text-xs text-zinc-400 -mt-0.5 truncate">Power Lab — Realtime</div>
+                  <div className="text-xs text-zinc-400 mt-0.5 truncate">Power Calculator</div>
                 </div>
               </motion.div>
             </div>
@@ -448,8 +477,8 @@ export default function PowerCalculatorPage() {
 
               <div className="flex items-center gap-2">
                 <Badge className="bg-gradient-to-tr from-[#ff7a2d]/8 to-[#ffd24a]/6 border border-[#ff7a2d]/12 text-[#ff9a4a] px-3 py-1 rounded-full">Live</Badge>
-                <Button className="hidden sm:inline-flex bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black" onClick={() => toast("Project started")}>Start Project</Button>
-                <Button variant="ghost" className="border border-zinc-800 text-zinc-300 p-2" onClick={toggleRunning} aria-label="Play / Pause">
+                <Button className="inline-flex bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black" onClick={snapshotPNG}><Camera/> <span className="hidden sm:flex">Snapshot</span></Button>
+                <Button variant="ghost" className="border border-zinc-800 cursor-pointer text-zinc-300 p-2" onClick={toggleRunning} aria-label="Play / Pause">
                   {running ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                 </Button>
               </div>
@@ -611,7 +640,7 @@ export default function PowerCalculatorPage() {
           {/* Visual area */}
           <div className="md:col-span-7 lg:col-span-8 space-y-4">
 <motion.div
-  className="w-full max-w-full"
+  className="w-full max-w-full  snapshot"
   initial={{ opacity: 0, y: 10 }}
   animate={{ opacity: 1, y: 0 }}
   transition={{ duration: 0.32 }}

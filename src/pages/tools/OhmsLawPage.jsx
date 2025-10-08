@@ -11,6 +11,7 @@ import {
   Pause,
   RefreshCw,
   Search,
+  Camera,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,8 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
+import { toPng } from "html-to-image";  
+
 
 /* ===========================
    Utilities
@@ -325,6 +328,33 @@ export default function OhmsLawAdvanced() {
     return () => window.removeEventListener("resize", handler);
   }, []);
 
+  
+const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
+
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
+
   /* ===========
      Render
      =========== */
@@ -355,7 +385,7 @@ export default function OhmsLawAdvanced() {
               </div>
 
               <div className="flex items-center gap-2">
-                <Button className="hidden sm:inline-flex bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black" onClick={() => window.location.href = "/signup"}>Get Started</Button>
+                <Button className="inline-flex bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black" onClick={snapshotPNG}><Camera/> <span className="hidden sm:flex">Snapshot</span> </Button>
               </div>
             </div>
           </div>
@@ -500,7 +530,7 @@ export default function OhmsLawAdvanced() {
           {/* Visualizer & dials column */}
           <div className="lg:col-span-7 space-y-4">
             <motion.div layout className="p-1 rounded-2xl bg-gradient-to-r from-[#ff7a2d]/8 to-[#ffd24a]/6">
-              <Card className="bg-black/70 backdrop-blur-md rounded-2xl border border-zinc-800 overflow-hidden">
+              <Card className="bg-black/70 backdrop-blur-md rounded-2xl border border-zinc-800 overflow-hidden snapshot">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
                     <div className="flex items-center gap-3">

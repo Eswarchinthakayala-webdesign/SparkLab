@@ -31,10 +31,11 @@ import {
   RefreshCw,
   Hexagon,
 SquarePower,
+Camera,
 } from "lucide-react";
 
 import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip as ReTooltip, Legend } from "recharts";
-
+import { toPng } from "html-to-image";
 // shadcn-like components - update paths if needed
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -388,7 +389,7 @@ function LCVisualizer({ L, C, R, mode, running, compact = false })  {
   const wirePathId = "wirePath";
 
   return (
-    <div className="w-full rounded-xl p-4 bg-gradient-to-b from-black/40 to-zinc-900/30 border border-zinc-800 overflow-hidden">
+    <div className="w-full rounded-xl p-4 bg-gradient-to-b from-black/40 to-zinc-900/30 border border-zinc-800 overflow-hidden snapshot">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 flex-wrap">
         <div className="flex items-center gap-3">
@@ -610,9 +611,32 @@ export default function ResonanceCalculatorPage() {
   const iSpring = useSpring(iNow, { stiffness: 200, damping: 28 });
 
   // snapshot
-  const snapshot = useCallback(() => {
-    toast.success("Snapshot (temporary) saved");
-  }, []);
+
+const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
+
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
 
   // export CSV (history)
   const exportCSV = useCallback(() => {
@@ -661,7 +685,7 @@ export default function ResonanceCalculatorPage() {
               <Input value={C} onChange={(e) => setC(e.target.value)} className="w-36 bg-zinc-900/60 border border-zinc-800 text-white text-sm" />
             </div>
 
-            <Button className="cursor-pointer bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black" onClick={snapshot}>Snapshot</Button>
+            <Button className="cursor-pointer bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black" onClick={snapshotPNG}>Snapshot</Button>
             <Button variant="ghost" className="border cursor-pointer border-zinc-800" onClick={() => setRunning((s) => !s)}>{running ? <Pause /> : <Play />}</Button>
             <Button variant="ghost" className="border cursor-pointer border-zinc-800" onClick={exportCSV}><Download /></Button>
           </div>
@@ -684,7 +708,7 @@ export default function ResonanceCalculatorPage() {
           </div>
 
           <div className="flex gap-2">
-            <Button className="cursor-pointer flex-1 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2" onClick={snapshot}>Snapshot</Button>
+            <Button className="cursor-pointer flex-1 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2" onClick={snapshotPNG}><Camera/> <span className="hidden sm:flex">Snapshot</span></Button>
             <Button variant="ghost" className="flex-1 cursor-pointer border border-zinc-800 text-xs py-2" onClick={() => setRunning((s) => !s)}>{running ? "Pause" : "Play"}</Button>
             <Button variant="ghost" className="flex-1 cursor-pointer border border-zinc-800 text-xs py-2" onClick={exportCSV}>Export</Button>
           </div>
@@ -773,7 +797,7 @@ export default function ResonanceCalculatorPage() {
                   </div>
 
                   <div className="flex gap-2 justify-end">
-                    <Button className=" cursor-pointer bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a]" onClick={snapshot}><SquarePower className="w-4 h-4 mr-1" /> Snapshot</Button>
+                    <Button className=" cursor-pointer bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a]" onClick={snapshotPNG}><Camera className="w-4 h-4 " /> Snapshot</Button>
                     <Button className="cursor-pointer" variant="outline" onClick={() => setRunning(true)}><Play /></Button>
                     <Button className="cursor-pointer" variant="outline" onClick={() => setRunning(false)}><Pause /></Button>
                   </div>
@@ -909,8 +933,8 @@ export default function ResonanceCalculatorPage() {
 
         {/* Action Buttons */}
         <div className="mt-3 flex flex-wrap gap-2 w-full">
-          <Button className=" cursor-pointer bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] flex-1 md:flex-none min-w-[120px]" onClick={snapshot}>
-            <RefreshCw className="w-4 h-4 mr-2" /> Snapshot
+          <Button className=" cursor-pointer bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] flex-1 md:flex-none min-w-[120px]" onClick={snapshotPNG}>
+            <Camera className="w-4 h-4" /> Snapshot
           </Button>
           <Button variant="ghost" className="border cursor-pointer border-zinc-800 flex-1 md:flex-none min-w-[80px] text-white" onClick={exportCSV}><Download /></Button>
           <Button variant="ghost" className="border cursor-pointer border-zinc-800 flex-1 md:flex-none min-w-[80px] text-white" onClick={handleReset}><Settings /></Button>

@@ -37,6 +37,7 @@ import {
   Repeat,
   Network,
   Lightbulb,
+  Camera,
 } from "lucide-react";
 
 // shadcn-like components (paths may differ in your repo)
@@ -53,7 +54,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-
+import { toPng } from "html-to-image";
 // Recharts for oscilloscope
 import {
   ResponsiveContainer,
@@ -373,7 +374,7 @@ function ThreePhaseVisualizer({ phaseParams, connection, running, compact = fals
   const colors = ["#ffd24a", "#9ee6ff", "#ff9a4a"];
 
   return (
-    <div className="w-full rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden">
+    <div className="w-full rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden snapshot">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
@@ -655,9 +656,31 @@ export default function ThreePhaseCalculatorPage() {
       return n;
     });
   }, []);
-  const snapshot = useCallback(() => {
-    toast.success("Snapshot saved (temporary)");
-  }, []);
+ const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
+
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
   const reset = useCallback(() => {
     setVline("400");
     setFreq("50");
@@ -725,7 +748,7 @@ export default function ThreePhaseCalculatorPage() {
               <Input value={freq} onChange={(e) => setFreq(e.target.value)} className="w-16 bg-zinc-900/60 border border-zinc-800 text-white text-sm" />
             </div>
             <div className="flex items-center gap-2">
-              <Button className="cursor-pointer bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black" onClick={snapshot}>Snapshot</Button>
+              <Button className="cursor-pointer bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black" onClick={snapshotPNG}><Camera/> <span className="hidden sm:flex">Snapshot</span></Button>
               <Button variant="ghost" className="border cursor-pointer border-zinc-800" onClick={toggleRun} aria-label="Play/Pause">{running ? <Pause /> : <Play />}</Button>
               <Button variant="ghost" className="border cursor-pointer border-zinc-800" onClick={reset} aria-label="Reset"><Settings /></Button>
             </div>
@@ -749,7 +772,7 @@ export default function ThreePhaseCalculatorPage() {
           </div>
 
           <div className="flex gap-2">
-            <Button className="cursor-pointer flex-1 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2" onClick={snapshot}>Snapshot</Button>
+            <Button className="cursor-pointer flex-1 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2" onClick={snapshotPNG}><Camera/> <span className="hidden sm:flex">Snapshot</span></Button>
             <Button variant="ghost" className="flex-1 cursor-pointer border border-zinc-800 text-xs py-2" onClick={toggleRun}>{running ? "Pause" : "Play"}</Button>
             <Button variant="ghost" className="flex-1 cursor-pointer border border-zinc-800 text-xs py-2" onClick={reset}>Reset</Button>
           </div>
@@ -960,8 +983,8 @@ export default function ThreePhaseCalculatorPage() {
       {/* Buttons (responsive wrap) */}
       <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
         <div className="flex gap-2 flex-wrap w-full sm:w-auto">
-          <Button className="flex-1 cursor-pointer sm:flex-none bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a]" onClick={snapshot}>
-            <ArrowRightCircle className="w-4 h-4 mr-1" /> Snapshot
+          <Button className="flex-1 cursor-pointer sm:flex-none bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a]" onClick={snapshotPNG}>
+            <Camera className="w-4 h-4 " /> Snapshot
           </Button>
           <Button variant="outline" onClick={() => setRunning(true)} className="flex-1 cursor-pointer sm:flex-none">
             <Play className="w-4 h-4" />

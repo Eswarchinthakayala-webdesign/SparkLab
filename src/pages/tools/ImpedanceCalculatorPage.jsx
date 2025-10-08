@@ -17,9 +17,10 @@ import {
   Settings,
   Menu,
   X,
+  Camera,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
-
+import { toPng } from "html-to-image";  
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -257,7 +258,7 @@ function VisualizerSVG({ groups, Vm, eq, running, manualI }) {
   const compLight = "#ffb86b";
 
   return (
-    <div className="w-full rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden">
+    <div className="w-full rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden snapshot">
       {/* Header */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
@@ -552,19 +553,43 @@ function Oscilloscope({ history = [], manualI, running }) {
 
 function Header({ Vm, setVm, freq, setFreq, running, toggleRun, resetDefaults }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
 
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
   return (
-    <header className="sticky top-0 z-50 backdrop-blur-md bg-black/70 border-b border-zinc-800 py-2">
+    <header className="sticky top-0 z-50 backdrop-blur-md bg-black/70 border-b border-zinc-800 py-2 sm:py-0">
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         {/* Top row */}
         <div className="flex items-center justify-between h-12 sm:h-14 md:h-16">
           {/* Logo + Title */}
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
-              <Zap className="w-4 h-4 sm:w-5 sm:h-5" />
+            <div className="w-8 h-8 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
+              <Zap className="w-4 h-4 " />
             </div>
             <div className="leading-tight">
-              <div className="text-[11px] sm:text-xs md:text-sm text-zinc-300">SparkLab</div>
+              <div className="text-sm text-zinc-300">SparkLab</div>
               <div className=" font-semibold text-xs text-zinc-400">
                 Impedance (RLC) Calculator
               </div>
@@ -592,9 +617,9 @@ function Header({ Vm, setVm, freq, setFreq, running, toggleRun, resetDefaults })
             <div className="flex items-center gap-2">
               <Button
                 className="cursor-pointer bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm px-3"
-                onClick={() => toast("Snapshot saved")}
+                onClick={snapshotPNG}
               >
-                Snapshot
+           <Camera/> <span className="hidden sm:flex">Snapshot</span>
               </Button>
               <Button
                 variant="ghost"
@@ -649,9 +674,9 @@ function Header({ Vm, setVm, freq, setFreq, running, toggleRun, resetDefaults })
           <div className="flex gap-2">
             <Button
               className="flex-1 cursor-pointer bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2"
-              onClick={() => toast.success("Snapshot saved")}
+              onClick={snapshotPNG}
             >
-              Snapshot
+              <Camera/> <span className="hidden sm:flex">Snapshot</span>
             </Button>
             <Button
               variant="ghost"
@@ -769,6 +794,7 @@ export default function ImpedanceCalculatorPage() {
     setManualCurrent("");
     toast("Reset to defaults");
   };
+  
 
   return (
     <div className="min-h-screen  bg-[#05060a]

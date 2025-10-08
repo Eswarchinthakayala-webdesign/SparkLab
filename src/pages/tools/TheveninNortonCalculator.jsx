@@ -30,7 +30,9 @@ import {
   Menu,
   FileText,
   X,
+  Camera,
 } from "lucide-react";
+import { toPng } from "html-to-image";  
 
 // shadcn-like UI components (adjust paths if necessary)
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
@@ -395,7 +397,7 @@ function CircuitVisualizer({ Vs, Rs, Rl, mode = "thevenin", running = true }) {
   }));
 
   return (
-    <div className="p-4 bg-gradient-to-b from-black/30 to-zinc-900/10 border border-zinc-800 rounded-xl relative overflow-hidden">
+    <div className="p-4 bg-gradient-to-b from-black/30 to-zinc-900/10 border border-zinc-800 rounded-xl relative overflow-hidden snapshot">
       <div className="flex items-center gap-3 mb-3">
         <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center text-black">
           <CircuitBoard className="w-5 h-5" />
@@ -687,9 +689,32 @@ export default function TheveninNortonCalculatorPage() {
     toast("Defaults restored");
   }, []);
 
-  const snapshot = useCallback(() => {
-    toast.success("Snapshot taken (temporary)");
-  }, []);
+ 
+const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
+
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
 
   const exportCSV = useCallback(() => {
     const header = ["t", "Va", "Ia"];
@@ -727,7 +752,7 @@ export default function TheveninNortonCalculatorPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              <Button className="cursor-pointer bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black" onClick={snapshot}>Snapshot</Button>
+              <Button className="cursor-pointer bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black" onClick={snapshotPNG}><Camera/> <span className="hidden sm:flex">Snapshot</span></Button>
               <Button variant="ghost" className="border cursor-pointer border-zinc-800" onClick={toggleRun}>{running ? <Pause /> : <Play />}</Button>
               <Button variant="ghost" className="border cursor-pointer border-zinc-800" onClick={exportCSV}><Download /></Button>
               <Button variant="ghost" className="border cursor-pointer border-zinc-800" onClick={reset}><Repeat /></Button>
@@ -748,7 +773,7 @@ export default function TheveninNortonCalculatorPage() {
               <Input value={freq} onChange={(e) => setFreq(e.target.value)} className="flex-1 bg-zinc-900/60 border border-zinc-800 text-white text-xs" />
             </div>
             <div className="flex items-center gap-1">
-              <Button className="px-3 py-2 cursor-pointer bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black" onClick={snapshot}>Snapshot</Button>
+              <Button className="px-3 py-2 cursor-pointer bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black" onClick={snapshotPNG}><Camera/> <span className="hidden sm:flex">Snapshot</span></Button>
             </div>
           </div>
           <div className="flex gap-2">
@@ -860,9 +885,9 @@ export default function TheveninNortonCalculatorPage() {
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 w-full sm:w-auto">
               <Button
                 className="cursor-pointer bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] hover:from-[#ff9933] hover:to-[#ffe066] text-black font-medium px-3 sm:px-4"
-                onClick={snapshot}
+                onClick={snapshotPNG}
               >
-                <FileText className="w-4 h-4 mr-1.5 sm:mr-2" /> Snapshot
+                <Camera className="w-4 h-4" /> Snapshot
               </Button>
 
               <Button
