@@ -769,10 +769,19 @@ export default function TopicsOverviewPage() {
           <div className="lg:col-span-5 w-full max-w-full overflow-hidden">
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="rounded-2xl overflow-hidden border border-[#ff8a3d]/20 bg-gradient-to-b from-zinc-900/60 to-black p-1 w-full max-w-full">
                 <div className="lg:col-span-6">
-        <div className="rounded-xl overflow-hidden bg-black/40 w-full max-w-full">
-          <BEEEHeroCanvas />
-         
-        </div>
+         <div className="rounded-xl overflow-hidden bg-black/40 w-full max-w-full">
+                        <BEEEHeroCanvas />
+                        <div className="p-4 flex items-center justify-between flex-wrap">
+                          <div className="min-w-0">
+
+                            <div className="text-xs text-zinc-400 truncate">Interactive visualization of SparkLab Topics</div>
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap mt-2 sm:mt-0">
+                            <Badge className="bg-[#ff7a2d]/12 border border-[#ff7a2d] text-[#ff9a4a] px-3 py-1 rounded">Live</Badge>
+                            <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded">WebGL</Badge>
+                          </div>
+                        </div>
+                      </div>
       </div>
             </motion.div>
           </div>

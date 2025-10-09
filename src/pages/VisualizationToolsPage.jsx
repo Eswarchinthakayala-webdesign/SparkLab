@@ -447,8 +447,8 @@ export default function VisualizationToolsPage() {
 
   const openTool = (id) => {
     // navigate to tool route (client router)
-    if (typeof navigate === "function") navigate(`/visualizations/${id}`);
-    else window.location.href = `/visualizations/${id}`;
+    if (typeof navigate === "function") navigate(`/topics/visualizations/${id}`);
+    else window.location.href = `/topics/visualizations/${id}`;
   };
 
   return (

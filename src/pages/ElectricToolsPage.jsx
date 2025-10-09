@@ -329,8 +329,8 @@ export default function ElectricToolsPage() {
   }, [search, activeCategory, selectValue]);
 
   const openTool = (id) => {
-    if (typeof navigate === "function") navigate(`/tools/${id}`);
-    else window.location.href = `/tools/${id}`;
+    if (typeof navigate === "function") navigate(`/topics/tools/${id}`);
+    else window.location.href = `/topics/tools/${id}`;
   };
 
   return (
