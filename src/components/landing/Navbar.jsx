@@ -92,7 +92,7 @@ export default function Navbar() {
             Sign In
           </Button>
           <Button className="bg-gradient-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600 text-black font-semibold rounded-xl shadow-lg shadow-orange-500/30 px-5 transition-all"
-          onClick={()=>navigate("/tools")}
+          onClick={()=>navigate("/topics")}
           >
             <Rocket className="w-4 h-4 mr-1" />
             Get Started
@@ -148,7 +148,7 @@ export default function Navbar() {
                   Sign In
                 </Button>
                 <Button className="cursor-pointer bg-gradient-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600 text-black font-semibold rounded-xl shadow-lg shadow-orange-500/30 transition-all"
-                onClick={()=>navigate("/tools")}>
+                onClick={()=>navigate("/topics")}>
                   <Rocket className="w-4 h-4 mr-1" />
                   Get Started
                 </Button>

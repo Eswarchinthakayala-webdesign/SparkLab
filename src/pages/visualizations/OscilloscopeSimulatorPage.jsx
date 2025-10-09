@@ -9,17 +9,14 @@ import {
   Pause,
   Settings,
   Download,
-
-  Waves as
-  
-  WaveSquare,
-
+  Waves as WaveSquare,
+  Waves,
   Monitor,
-
   Activity,
-
   Menu,
- 
+  Radio,
+  Wrench,
+  Ticket,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
@@ -56,42 +53,41 @@ const nowMs = () => performance.now();
    - Sampling rate in Hz (samples per second)
    ============================ */
 function useSignalGenerator({ channels, samplingHz, running, bufferSize = 4096 }) {
-  // channels: [{ id, enabled, type, amp, freq, phaseDeg, offset, noise }]
-  const bufferRef = useRef(new Float32Array(bufferSize)); // we'll use circular buffer for primary trace (channel 0)
-  const buffer2Ref = useRef(new Float32Array(bufferSize)); // channel 2 if needed
+  const bufferRef = useRef(new Float32Array(bufferSize));
+  const buffer2Ref = useRef(new Float32Array(bufferSize));
   const writeIdxRef = useRef(0);
   const t0Ref = useRef(performance.now());
   const lastTickRef = useRef(performance.now());
   const rafRef = useRef(null);
-  const [metaTick, setMetaTick] = useState(0); // lightweight trigger to inform UI about new data
+
+  // keep metaTick as state for UI and as a ref for stable reads
+  const [metaTick, setMetaTick] = useState(0);
+  const metaTickRef = useRef(metaTick);
 
   const samplePeriodMs = 1000 / samplingHz; // ms between samples
 
   // generate 1 sample for a channel
   const genSampleForChannel = useCallback((ch, tSeconds) => {
-    const { type, amp = 1, freq = 1, phaseDeg = 0, offset = 0, noise = 0 } = ch;
+    const { type, amp = 1, freq = 1, phaseDeg = 0, offset = 0, noise = 0 } = ch || {};
     const phaseRad = (phaseDeg * Math.PI) / 180;
     const omega = 2 * Math.PI * (freq || 0);
     let val = 0;
-    if (!ch.enabled) return 0;
+    if (!ch?.enabled) return 0;
     if (type === "sine") {
       val = amp * Math.sin(omega * tSeconds + phaseRad);
     } else if (type === "square") {
       val = amp * (Math.sign(Math.sin(omega * tSeconds + phaseRad)) || 1);
     } else if (type === "triangle") {
-      // triangle wave formula (normalized)
       const period = 1 / (freq || 1);
       const phaseShift = ((phaseDeg / 360) * period) || 0;
       const x = ((tSeconds + phaseShift) % period) / period;
-      val = amp * (4 * Math.abs(x - 0.5) - 1); // range [-1,1]
+      val = amp * (4 * Math.abs(x - 0.5) - 1);
     } else if (type === "saw") {
-      const period = 1 / (freq || 1);
       const x = ((tSeconds * freq) % 1 + 1) % 1;
       val = amp * (2 * x - 1);
     } else if (type === "noise") {
       val = amp * (Math.random() * 2 - 1);
     } else {
-      // default: sine
       val = amp * Math.sin(omega * tSeconds + phaseRad);
     }
     if (noise && noise > 0) {
@@ -114,14 +110,11 @@ function useSignalGenerator({ channels, samplingHz, running, bufferSize = 4096 }
         return;
       }
       const dt = ts - lastTickRef.current;
-      // produce as many samples as needed to catch up
-      if (dt < samplePeriodMs * 0.5) return; // throttle small dt
-      // number of samples to produce
+      if (dt < samplePeriodMs * 0.5) return;
       const toProduce = Math.max(1, Math.floor(dt / samplePeriodMs));
       for (let s = 0; s < toProduce; s++) {
         const elapsed = (ts - t0Ref.current) / 1000 - (toProduce - 1 - s) * (samplePeriodMs / 1000);
         const i = writeIdxRef.current % bufferRef.current.length;
-        // channel 0 and channel 1
         const ch0 = channels[0] || {};
         const ch1 = channels[1] || {};
         bufferRef.current[i] = genSampleForChannel(ch0, elapsed);
@@ -129,8 +122,11 @@ function useSignalGenerator({ channels, samplingHz, running, bufferSize = 4096 }
         writeIdxRef.current = (writeIdxRef.current + 1) % bufferRef.current.length;
       }
       lastTickRef.current = ts;
-      // nudge UI (cheap)
-      setMetaTick((t) => t + 1);
+
+      // update tick (both ref and state)
+      metaTickRef.current = metaTickRef.current + 1;
+      // batch update: set ref synchronously, then state (state triggers render but readBuffer remains stable)
+      setMetaTick(metaTickRef.current);
     };
 
     rafRef.current = requestAnimationFrame(step);
@@ -140,22 +136,21 @@ function useSignalGenerator({ channels, samplingHz, running, bufferSize = 4096 }
     };
   }, [channels, samplePeriodMs, running, genSampleForChannel]);
 
-  // API to read snapshot of last N samples (newest last)
+  // stable readBuffer that does NOT change identity on every animation tick
   const readBuffer = useCallback(
     (n = 1024) => {
       const len = bufferRef.current.length;
       const out = new Float32Array(n);
       const out2 = new Float32Array(n);
       const w = writeIdxRef.current;
-      // read last n samples
       for (let i = 0; i < n; i++) {
         const idx = (w - n + i + len) % len;
         out[i] = bufferRef.current[idx];
         out2[i] = buffer2Ref.current[idx];
       }
-      return { ch1: out, ch2: out2, metaTick };
+      return { ch1: out, ch2: out2, metaTick: metaTickRef.current };
     },
-    [metaTick]
+    [] // intentionally stable
   );
 
   return { readBuffer, metaTick };
@@ -163,15 +158,13 @@ function useSignalGenerator({ channels, samplingHz, running, bufferSize = 4096 }
 
 /* ============================
    Oscilloscope canvas
-   - draws grid, trace from buffer, trigger, cursors, labels
-   - interactive cursors: click+drag to set horizontal cursors (time) and vertical (voltage)
    ============================ */
 function OscilloscopeCanvas({
   width = 900,
   height = 360,
   getSamples,
-  timePerDiv = 0.001, // sec per division
-  voltsPerDiv = 1, // V per vertical division
+  timePerDiv = 0.001,
+  voltsPerDiv = 1,
   samplingHz = 44100,
   running,
   trigger,
@@ -180,244 +173,154 @@ function OscilloscopeCanvas({
 }) {
   const canvasRef = useRef(null);
   const offRef = useRef(null);
-  const mouseStateRef = useRef({ dragging: false, draggingCursor: null, lastX: 0, lastY: 0 });
-  const cursorRef = useRef({
-    // positions in canvas coords (px)
-    x1: width * 0.25,
-    x2: width * 0.75,
-    y1: height * 0.33,
-    y2: height * 0.66,
-    show: false,
-  });
+  const lastMeasureRef = useRef(0);
+  const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
 
   const drawFrame = useCallback(
     (ts) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
       const ctx = canvas.getContext("2d");
-      // double buffer to avoid flicker
+
       if (!offRef.current) offRef.current = document.createElement("canvas");
       const off = offRef.current;
-      off.width = canvas.width;
-      off.height = canvas.height;
+      off.width = width * dpr;
+      off.height = height * dpr;
       const octx = off.getContext("2d");
+      octx.scale(dpr, dpr);
 
-      // high-DPI handling
-      const dpr = window.devicePixelRatio || 1;
-      if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
-        canvas.width = width * dpr;
-        canvas.height = height * dpr;
-        canvas.style.width = `${width}px`;
-        canvas.style.height = `${height}px`;
-      }
-      if (off.width !== canvas.width || off.height !== canvas.height) {
-        off.width = canvas.width;
-        off.height = canvas.height;
-      }
-
-      // draw background
       octx.fillStyle = "#05060a";
-      octx.fillRect(0, 0, off.width, off.height);
+      octx.fillRect(0, 0, width, height);
 
-      // draw grid (10 divisions horizontally, 8 vertically)
-      const divsX = 10;
-      const divsY = 8;
-      const gx = off.width / divsX;
-      const gy = off.height / divsY;
-      // faint background cells
+      const divsX = 10, divsY = 8;
+      const gx = width / divsX, gy = height / divsY;
       for (let i = 0; i <= divsX; i++) {
         octx.beginPath();
-        octx.moveTo(Math.round(i * gx) + 0.5, 0);
-        octx.lineTo(Math.round(i * gx) + 0.5, off.height);
-        octx.strokeStyle = i % 5 === 0 ? "rgba(255,154,74,0.12)" : "rgba(255,154,74,0.06)";
-        octx.lineWidth = i % 5 === 0 ? 1.6 * dpr : 1 * dpr;
+        octx.moveTo(i * gx + 0.5, 0);
+        octx.lineTo(i * gx + 0.5, height);
+        octx.strokeStyle = i % 5 === 0 ? "rgba(255,154,74,0.15)" : "rgba(255,154,74,0.05)";
+        octx.lineWidth = i % 5 === 0 ? 1.5 : 1;
         octx.stroke();
       }
       for (let j = 0; j <= divsY; j++) {
         octx.beginPath();
-        octx.moveTo(0, Math.round(j * gy) + 0.5);
-        octx.lineTo(off.width, Math.round(j * gy) + 0.5);
+        octx.moveTo(0, j * gy + 0.5);
+        octx.lineTo(width, j * gy + 0.5);
         octx.strokeStyle = j % 4 === 0 ? "rgba(255,154,74,0.12)" : "rgba(255,154,74,0.04)";
-        octx.lineWidth = j % 4 === 0 ? 1.6 * dpr : 0.7 * dpr;
+        octx.lineWidth = j % 4 === 0 ? 1.4 : 0.8;
         octx.stroke();
       }
 
-      // get samples (n samples)
-      const shownSamples = Math.floor((timePerDiv * divsX) * samplingHz); // time span * sampling
-      const { ch1, ch2 } = getSamples(Math.max(256, Math.min(8192, shownSamples)));
+      const shownSamples = Math.floor(timePerDiv * divsX * samplingHz);
+      const { ch1 = [], ch2 = [] } = getSamples(Math.max(512, Math.min(8192, shownSamples)));
 
-      // map sample -> pixel
-      const len = ch1.length;
-      const pxPerSample = off.width / len;
+      if (!ch1 || ch1.length === 0) {
+        // commit background and exit
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(off, 0, 0, width * dpr, height * dpr, 0, 0, width, height);
+        return;
+      }
 
-      // vertical scale: voltsPerDiv -> pixels per volt
-      const vscale = (gy * (divsY / 8)) / (voltsPerDiv * divsY / divsY); // simplifies to px per volt relative to grid
-      // better: map voltsPerDiv to gy pixels: 1 division = gy px, voltsPerDiv covers 1 division
-      const pxPerVolt = gy / voltsPerDiv;
+      const pxPerSample = width / ch1.length;
+      const pxPerVolt = (gy / voltsPerDiv);
+      const midY = height / 2;
 
-      // center vertical midline
-      const midY = off.height / 2;
-
-      // draw channel traces
-      const drawTrace = (arr, color, widthPx = 2 * dpr) => {
+      const drawTrace = (arr, color, lw = 2) => {
         octx.beginPath();
-        for (let i = 0; i < len; i++) {
-          const s = arr[i] || 0;
-          const x = Math.round(i * pxPerSample) + 0.5;
-          const y = Math.round(midY - s * pxPerVolt) + 0.5;
-          if (i === 0) octx.moveTo(x, y);
-          else octx.lineTo(x, y);
+        for (let i = 0; i < arr.length; i++) {
+          const x = i * pxPerSample;
+          const y = midY - arr[i] * pxPerVolt;
+          i === 0 ? octx.moveTo(x, y) : octx.lineTo(x, y);
         }
         octx.strokeStyle = color;
-        octx.lineWidth = widthPx;
-        octx.lineJoin = "round";
+        octx.lineWidth = lw;
         octx.lineCap = "round";
         octx.stroke();
       };
 
       drawTrace(ch1, chColors[0]);
-      drawTrace(ch2, chColors[1], 1.2 * dpr);
+      drawTrace(ch2, chColors[1], 1.3);
 
-      // apply trigger marker
-      if (trigger && trigger.enabled) {
-        const trigX = off.width * 0.15; // draw a vertical indicator at left part
+      if (trigger?.enabled) {
+        const trigX = width * 0.15;
+        octx.setLineDash([6, 6]);
+        octx.strokeStyle = "rgba(255,255,255,0.08)";
         octx.beginPath();
-        octx.moveTo(trigX + 0.5, 0);
-        octx.lineTo(trigX + 0.5, off.height);
-        octx.setLineDash([4 * dpr, 6 * dpr]);
-        octx.strokeStyle = "rgba(255,255,255,0.06)";
-        octx.lineWidth = 1 * dpr;
+        octx.moveTo(trigX, 0);
+        octx.lineTo(trigX, height);
         octx.stroke();
         octx.setLineDash([]);
-        // trigger level line
         const vPx = midY - trigger.level * pxPerVolt;
+        octx.strokeStyle = "rgba(255,154,74,0.7)";
         octx.beginPath();
         octx.moveTo(0, vPx);
-        octx.lineTo(off.width, vPx);
-        octx.strokeStyle = "rgba(255,154,74,0.6)";
-        octx.lineWidth = 1 * dpr;
+        octx.lineTo(width, vPx);
         octx.stroke();
       }
 
-      // draw grid overlay labels
-      octx.font = `${12 * dpr}px Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto`;
-      octx.fillStyle = "rgba(255,255,255,0.07)";
-      octx.fillText(`${(timePerDiv * divsX * 1000).toFixed(1)} ms span`, 8 * dpr, 14 * dpr);
-      octx.fillText(`${voltsPerDiv} V/div`, off.width - 90 * dpr, 14 * dpr);
-
-      // arrows/legend
-      octx.fillStyle = chColors[0];
-      octx.fillRect(8 * dpr, off.height - 26 * dpr, 8 * dpr, 8 * dpr);
-      octx.fillStyle = "#fff";
-      octx.fillText("CH1", 22 * dpr, off.height - 18 * dpr);
-      octx.fillStyle = chColors[1];
-      octx.fillRect(70 * dpr, off.height - 26 * dpr, 8 * dpr, 8 * dpr);
-      octx.fillStyle = "#fff";
-      octx.fillText("CH2", 86 * dpr, off.height - 18 * dpr);
-
-      // draw off -> canvas
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(off, 0, 0);
-
-      // measurements: compute from ch1
-      if (onMeasurements) {
-        // compute Vpp, Vrms, Vavg, freq via zero crossings
-        let min = Number.POSITIVE_INFINITY;
-        let max = Number.NEGATIVE_INFINITY;
-        let sumSq = 0;
-        let sum = 0;
-        for (let i = 0; i < len; i++) {
-          const v = ch1[i] || 0;
+      // measurements (throttled)
+      if (onMeasurements && ts - lastMeasureRef.current > 200) {
+        lastMeasureRef.current = ts;
+        let min = Infinity, max = -Infinity, sum = 0, sumSq = 0, zc = 0;
+        for (let i = 0; i < ch1.length; i++) {
+          const v = ch1[i];
           if (v < min) min = v;
           if (v > max) max = v;
-          sumSq += v * v;
           sum += v;
+          sumSq += v * v;
+          if (i > 0 && ch1[i - 1] <= 0 && v > 0) zc++;
         }
         const vpp = max - min;
-        const vrms = Math.sqrt(sumSq / len);
-        const vavg = sum / len;
-        // estimate freq by detecting zero-crossings (simple)
-        let zc = 0;
-        for (let i = 1; i < len; i++) {
-          if (ch1[i - 1] <= 0 && ch1[i] > 0) zc++;
-        }
-        const freq = (zc / ((len / samplingHz) || 1)) || 0;
-
+        const vrms = Math.sqrt(sumSq / ch1.length);
+        const vavg = sum / ch1.length;
+        const freq = (zc / (ch1.length / samplingHz)) || 0;
         onMeasurements({ vpp, vrms, vavg, freq });
       }
 
-      // flush
-      return true;
+      octx.fillStyle = "rgba(255,255,255,0.07)";
+      octx.font = "12px Inter, sans-serif";
+      octx.fillText(`${(timePerDiv * divsX * 1000).toFixed(1)} ms span`, 8, 16);
+      octx.fillText(`${voltsPerDiv} V/div`, width - 90, 16);
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(off, 0, 0, width * dpr, height * dpr, 0, 0, width, height);
     },
-    [getSamples, height, width, timePerDiv, voltsPerDiv, samplingHz, onMeasurements, chColors, trigger]
+    [width, height, getSamples, timePerDiv, voltsPerDiv, samplingHz, trigger, chColors, onMeasurements, dpr]
   );
 
-  // animation loop
   useEffect(() => {
     let alive = true;
-    let raf = 0;
+    let raf;
     const loop = (ts) => {
       if (!alive) return;
       drawFrame(ts);
       raf = requestAnimationFrame(loop);
     };
     if (running) raf = requestAnimationFrame(loop);
-    else {
-      // still draw one frame to show paused state
-      drawFrame(nowMs());
-    }
+    else drawFrame(performance.now());
     return () => {
       alive = false;
       if (raf) cancelAnimationFrame(raf);
     };
   }, [drawFrame, running]);
 
-  // canvas refs to DOM
   return (
     <div className="w-full bg-gradient-to-b from-black/40 to-zinc-900/10 border border-zinc-800 rounded-xl p-2">
-      <canvas ref={canvasRef} style={{ width: `${width}px`, height: `${height}px`, display: "block", borderRadius: 10 }} />
+      <canvas ref={canvasRef} width={width * dpr} height={height * dpr}
+        style={{ width: `${width}px`, height: `${height}px`, borderRadius: "8px", display: "block" }} />
     </div>
   );
 }
 
 /* ============================
    Simple FFT (DFT) utility for small N (not optimized FFT)
-   - Used for a quick frequency spectrum preview
    ============================ */
-function computeSpectrum(arr, samplingHz) {
-  const N = arr.length;
-  const half = Math.floor(N / 2);
-  const re = new Float32Array(half);
-  const im = new Float32Array(half);
-  const mag = new Float32Array(half);
-  for (let k = 0; k < half; k++) {
-    let r = 0,
-      i = 0;
-    const twopi_k = (-2 * Math.PI * k) / N;
-    for (let n = 0; n < N; n++) {
-      const phi = twopi_k * n;
-      r += arr[n] * Math.cos(phi);
-      i += arr[n] * Math.sin(phi);
-    }
-    re[k] = r;
-    im[k] = i;
-    mag[k] = Math.sqrt(r * r + i * i);
-  }
-  // map to frequency bins
-  const result = [];
-  for (let k = 0; k < half; k++) {
-    result.push({ f: (k * samplingHz) / N, mag: mag[k] });
-  }
-  return result;
-}
+
 
 /* ============================
    Circuit visualizer SVG
-   - simple resistor load with animated dots based on instantaneous current
-   - calculates ammeter and voltmeter reading from instantaneous sample (I = V/R for resistive load)
    ============================ */
 function CircuitVisualizerSVG({ chSample = 0, Vsup = 1, R = 10, running = true }) {
-  // chSample: instantaneous voltage amplitude (V)
   const Iinstant = R > 1e-9 ? chSample / R : 0;
   const absI = Math.abs(Iinstant);
   const dotCount = clamp(Math.round(3 + absI * 15), 3, 28);
@@ -437,24 +340,21 @@ function CircuitVisualizerSVG({ chSample = 0, Vsup = 1, R = 10, running = true }
         </div>
 
         <div className="flex gap-2 items-center">
-          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">R: <span className="text-[#ffd24a] ml-1">{R} Ω</span></Badge>
-          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">V: <span className="text-[#ffd24a] ml-1">{round(chSample, 4)} V</span></Badge>
-          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">I: <span className="text-[#00ffbf] ml-1">{round(Iinstant, 6)} A</span></Badge>
+          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full w-20 truncate">R: <span className="text-[#ffd24a] ml-1 truncate">{R} Ω</span></Badge>
+          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full w-20 truncate">V: <span className="text-[#ffd24a] ml-1 truncate">{round(chSample, 4)} V</span></Badge>
+          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full w-20 truncate">I: <span className="text-[#00ffbf] ml-1 truncate">{round(Iinstant, 6)} A</span></Badge>
         </div>
       </div>
 
       <div className="mt-3 w-full overflow-hidden">
         <svg viewBox="0 0 900 160" preserveAspectRatio="xMidYMid meet" className="w-full h-36">
-          {/* battery */}
           <g transform="translate(60,80)">
             <rect x="-20" y="-28" width="40" height="56" rx="6" fill="#060606" stroke="#222" />
             <text x="-40" y="-40" fontSize="12" fill="#ffd24a">{round(Vsup,2)} V</text>
           </g>
 
-          {/* wire to resistor */}
           <path d="M 120 80 H 340" stroke="#111" strokeWidth="6" strokeLinecap="round" />
 
-          {/* resistor */}
           <g transform="translate(420,80)">
             <rect x="-36" y="-18" width="72" height="36" rx="6" fill="#0b0b0b" stroke="#222" />
             <text x="-30" y="-26" fontSize="12" fill="#ffb57a">R</text>
@@ -463,28 +363,23 @@ function CircuitVisualizerSVG({ chSample = 0, Vsup = 1, R = 10, running = true }
 
           <path d="M 480 80 H 700" stroke="#111" strokeWidth="6" strokeLinecap="round" />
 
-          {/* ground */}
           <g transform="translate(740,80)">
             <path d="M -12 20 H 12" stroke="#333" strokeWidth="4" />
             <path d="M -8 26 H 8" stroke="#222" strokeWidth="3" />
             <path d="M -4 32 H 4" stroke="#111" strokeWidth="2" />
           </g>
 
-          {/* animated dots along path from battery -> resistor -> ground */}
           {Array.from({ length: dotCount }).map((_, i) => {
-            // build a simple path across the coordinates
             const total = dotCount;
             const t = (i / total);
             const offset = (running ? (performance.now() / 1000) : 0) * (1 / speed);
             const pos = ((t + offset) % 1);
-            // parameterize path segments: [0..0.33]=wire1, [0.33..0.66]=resistor region (curvy), [0.66..1]=wire2
             let cx = 0, cy = 80;
             if (pos < 0.33) {
               const p = pos / 0.33;
               cx = 120 + (340 - 120) * p;
             } else if (pos < 0.66) {
               const p = (pos - 0.33) / 0.33;
-              // across resistor (curvy)
               cx = 340 + (480 - 340) * p;
               cy = 80 + Math.sin(p * Math.PI) * 6;
             } else {
@@ -495,7 +390,6 @@ function CircuitVisualizerSVG({ chSample = 0, Vsup = 1, R = 10, running = true }
             return <circle key={i} cx={cx} cy={cy} r={4} fill={color} opacity={0.9} />;
           })}
 
-          {/* meters */}
           <g transform="translate(200,18)">
             <rect x="-60" y="-14" width="120" height="28" rx="8" fill="#060606" stroke="#222" />
             <text x="-50" y="6" fontSize="11" fill="#9ee6ff">Voltmeter: <tspan fill="#ffd24a">{round(chSample,4)} V</tspan></text>
@@ -510,63 +404,137 @@ function CircuitVisualizerSVG({ chSample = 0, Vsup = 1, R = 10, running = true }
   );
 }
 
+function computeSpectrum(samples, sampleRate) {
+  const N = samples.length;
+  if (N === 0) return [];
+  const re = new Float64Array(N);
+  const im = new Float64Array(N);
+  for (let i = 0; i < N; i++) re[i] = samples[i];
+
+  // Naive DFT (replace with FFT library for speed if needed)
+  const result = [];
+  for (let k = 0; k < N / 2; k++) {
+    let sumRe = 0;
+    let sumIm = 0;
+    for (let n = 0; n < N; n++) {
+      const angle = (-2 * Math.PI * k * n) / N;
+      sumRe += re[n] * Math.cos(angle);
+      sumIm += re[n] * Math.sin(angle);
+    }
+    const mag = Math.sqrt(sumRe * sumRe + sumIm * sumIm) / N;
+    const f = (k * sampleRate) / N;
+    result.push({ f, mag });
+  }
+  return result;
+}
+
+/**
+ * Stable FFT Chart with controlled rendering
+ */
+ function StableFFTChart({ readBuffer, samplingHz }) {
+  const dataRef = useRef([]); // holds current spectrum data
+  const [chartData, setChartData] = useState([]); // state used for rendering
+  const lastUpdate = useRef(0);
+
+  // FFT computation loop
+  useEffect(() => {
+    let alive = true;
+
+    const loop = (t) => {
+      if (!alive) return;
+      requestAnimationFrame(loop);
+
+      // Throttle UI updates (every ~500ms)
+      if (t - lastUpdate.current < 500) return;
+      lastUpdate.current = t;
+
+      const { ch1 } = readBuffer(1024);
+      if (!ch1 || ch1.length === 0) return;
+
+      const spec = computeSpectrum(Array.from(ch1), samplingHz)
+        .slice(-500)
+        .map((s) => ({ f: Math.round(s.f), mag: s.mag }));
+
+      dataRef.current = spec;
+      setChartData(spec); // controlled React update
+    };
+
+    requestAnimationFrame(loop);
+    return () => {
+      alive = false;
+    };
+  }, [readBuffer, samplingHz]);
+
+  // Memoized chart render data (prevents unnecessary rerenders)
+  const memoData = useMemo(() => chartData.slice(-400), [chartData]);
+
+  return (
+    <div style={{ width: "100%", height: 140, overflow: "hidden" }}>
+      <BarChart
+        width={400}
+        height={140}
+        data={memoData}
+        margin={{ top: 0, right: 10, bottom: 0, left: 0 }}
+      >
+        <CartesianGrid stroke="#111" />
+        <XAxis dataKey="f" tick={{ fill: "#aaa", fontSize: 10 }} />
+        <YAxis hide />
+        <ReTooltip
+          contentStyle={{
+            background: "#0b0b0b",
+            border: "1px solid #222",
+            color: "#fff",
+            borderRadius: "8px",
+          }}
+        />
+        <Bar dataKey="mag" fill="#ff9a4a" radius={[2, 2, 0, 0]} />
+      </BarChart>
+    </div>
+  );
+}
+
+
+
 /* ============================
    Main Oscilloscope Page
    ============================ */
 export default function OscilloscopeSimulatorPage() {
-  /* ----- UI state ----- */
   const [running, setRunning] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // sampling and display
   const [samplingHz, setSamplingHz] = useState(22050);
-  const [timePerDiv, setTimePerDiv] = useState(0.002); // seconds per division
+  const [timePerDiv, setTimePerDiv] = useState(0.002);
   const [voltsPerDiv, setVoltsPerDiv] = useState(1);
 
-  // trigger
   const [trigger, setTrigger] = useState({ enabled: true, mode: "rising", level: 0.0, type: "auto" });
 
-  // channels config
   const [channels, setChannels] = useState([
     { id: "ch1", enabled: true, name: "CH1", type: "sine", amp: 2, freq: 1000, phaseDeg: 0, offset: 0, noise: 0 },
     { id: "ch2", enabled: true, name: "CH2", type: "square", amp: 1, freq: 500, phaseDeg: 0, offset: 0, noise: 0 },
   ]);
 
-  /* ----- signal generator hook ----- */
   const { readBuffer, metaTick } = useSignalGenerator({ channels, samplingHz, running, bufferSize: 16384 });
 
-  // function passed to canvas to get latest N samples
   const getSamples = useCallback(
     (n = 1024) => {
       const { ch1, ch2 } = readBuffer(n);
-      // return typed arrays; convert to normal arrays when necessary
       return { ch1: Array.from(ch1), ch2: Array.from(ch2) };
     },
-    [readBuffer, metaTick]
+    [readBuffer] // stable: readBuffer does not change identity each tick
   );
 
-  /* ----- scope measurements ----- */
   const [measurements, setMeasurements] = useState({ vpp: 0, vrms: 0, vavg: 0, freq: 0 });
 
   const handleMeasurements = useCallback((m) => {
     setMeasurements((s) => ({ ...s, ...m }));
   }, []);
 
-  /* ----- FFT data (computed from last chunk) ----- */
   const [spectrum, setSpectrum] = useState([]);
 
-  useEffect(() => {
-    // compute small FFT snapshot periodically
-    const id = setInterval(() => {
-      const { ch1 } = readBuffer(1024);
-      if (!ch1) return;
-      const spec = computeSpectrum(Array.from(ch1), samplingHz).slice(0, 128);
-      setSpectrum(spec.map((s) => ({ f: Math.round(s.f), mag: s.mag })));
-    }, 600);
-    return () => clearInterval(id);
-  }, [readBuffer, samplingHz, metaTick]);
 
-  /* ----- actions ----- */
+
+
+
   const toggleRunning = () => {
     setRunning((r) => {
       const nxt = !r;
@@ -576,7 +544,6 @@ export default function OscilloscopeSimulatorPage() {
   };
 
   const exportCSV = () => {
-    // export recent samples (CH1 and CH2)
     const { ch1, ch2 } = readBuffer(1024);
     const rows = [["idx", "ch1", "ch2"]];
     for (let i = 0; i < ch1.length; i++) rows.push([i, round(ch1[i], 9), round(ch2[i], 9)]);
@@ -592,7 +559,6 @@ export default function OscilloscopeSimulatorPage() {
   };
 
   const snapshotPNG = () => {
-    // capture canvas (assumes a canvas with selector)
     const canvas = document.querySelector("canvas");
     if (canvas) {
       const url = canvas.toDataURL("image/png");
@@ -604,15 +570,12 @@ export default function OscilloscopeSimulatorPage() {
     } else toast.error("Canvas not found");
   };
 
-  /* ----- channel mutators ----- */
   const updateChannel = (idx, patch) => setChannels((s) => s.map((c, i) => (i === idx ? { ...c, ...patch } : c)));
 
-  /* ----- UI layout ----- */
   return (
     <div className="min-h-screen bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.25)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
       <Toaster position="top-center" richColors />
 
-      {/* header */}
       <header className="fixed w-full top-0 z-50 backdrop-blur-lg bg-black/70 border-b border-zinc-800 shadow-lg py-2">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-14">
@@ -626,57 +589,76 @@ export default function OscilloscopeSimulatorPage() {
               </div>
             </motion.div>
 
-            {/* desktop controls */}
             <div className="hidden md:flex items-center gap-3">
               <div className="flex items-center gap-2">
                 <Select value={String(timePerDiv)} onValueChange={(v) => setTimePerDiv(Number(v))}>
-                  <SelectTrigger className="w-36 bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm">
+                  <SelectTrigger className="w-36 cursor-pointer hover:border-orange-500 bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm">
                     <SelectValue placeholder="Time/div" />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                    <SelectItem value={String(0.0005)}>0.5 ms/div</SelectItem>
-                    <SelectItem value={String(0.001)}>1 ms/div</SelectItem>
-                    <SelectItem value={String(0.002)}>2 ms/div</SelectItem>
-                    <SelectItem value={String(0.005)}>5 ms/div</SelectItem>
-                    <SelectItem value={String(0.01)}>10 ms/div</SelectItem>
-                    <SelectItem value={String(0.02)}>20 ms/div</SelectItem>
+                    <SelectItem  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value={String(0.0005)}>0.5 ms/div</SelectItem>
+                    <SelectItem  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value={String(0.001)}>1 ms/div</SelectItem>
+                    <SelectItem  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value={String(0.002)}>2 ms/div</SelectItem>
+                    <SelectItem  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value={String(0.005)}>5 ms/div</SelectItem>
+                    <SelectItem  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value={String(0.01)}>10 ms/div</SelectItem>
+                    <SelectItem  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value={String(0.02)}>20 ms/div</SelectItem>
                   </SelectContent>
                 </Select>
 
                 <Select value={String(voltsPerDiv)} onValueChange={(v) => setVoltsPerDiv(Number(v))}>
-                  <SelectTrigger className="w-28 bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm">
+                  <SelectTrigger className="w-28 cursor-pointer hover:border-orange-500 bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm">
                     <SelectValue placeholder="V/div" />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                    <SelectItem value={String(0.1)}>0.1 V/div</SelectItem>
-                    <SelectItem value={String(0.5)}>0.5 V/div</SelectItem>
-                    <SelectItem value={String(1)}>1 V/div</SelectItem>
-                    <SelectItem value={String(2)}>2 V/div</SelectItem>
-                    <SelectItem value={String(5)}>5 V/div</SelectItem>
+                    <SelectItem  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value={String(0.1)}>0.1 V/div</SelectItem>
+                    <SelectItem  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value={String(0.5)}>0.5 V/div</SelectItem>
+                    <SelectItem  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value={String(1)}>1 V/div</SelectItem>
+                    <SelectItem  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value={String(2)}>2 V/div</SelectItem>
+                    <SelectItem  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value={String(5)}>5 V/div</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="flex items-center gap-2">
-                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-1 rounded-md" onClick={snapshotPNG}><Monitor className="w-4 h-4 mr-2" /> Snapshot</Button>
-                <Button variant="ghost" className="border border-zinc-700 text-zinc-300 p-2 rounded-md" onClick={toggleRunning}>{running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}</Button>
-                <Button variant="ghost" className="border border-zinc-700 text-zinc-300 p-2 rounded-md" onClick={() => { setChannels([{ id: "ch1", enabled: true, name: "CH1", type: "sine", amp: 2, freq: 1000, phaseDeg: 0, offset: 0, noise: 0 }, { id: "ch2", enabled: true, name: "CH2", type: "square", amp: 1, freq: 500, phaseDeg: 0, offset: 0, noise: 0 }]); toast("Reset channels"); }}><Settings className="w-5 h-5" /></Button>
+                <Button className="cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-1 rounded-md" onClick={snapshotPNG}><Monitor className="w-4 h-4 mr-2" /> Snapshot</Button>
+                <Button variant="ghost" className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-md" onClick={toggleRunning}>{running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}</Button>
+                <Button variant="ghost" className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-md" onClick={() => { setChannels([{ id: "ch1", enabled: true, name: "CH1", type: "sine", amp: 2, freq: 1000, phaseDeg: 0, offset: 0, noise: 0 }, { id: "ch2", enabled: true, name: "CH2", type: "square", amp: 1, freq: 500, phaseDeg: 0, offset: 0, noise: 0 }]); toast("Reset channels"); }}><Settings className="w-5 h-5" /></Button>
               </div>
             </div>
 
-            {/* mobile toggle */}
             <div className="md:hidden">
-              <Button variant="ghost" className="border border-zinc-800 p-2 rounded-md" onClick={() => setMobileOpen((s) => !s)}>
+              <Button variant="ghost" className="border cursor-pointer border-zinc-800 p-2 rounded-md" onClick={() => setMobileOpen((s) => !s)}>
                 <Menu className="w-5 h-5" />
               </Button>
             </div>
           </div>
 
-          {/* mobile expand */}
           <div className={`md:hidden transition-all duration-300 overflow-hidden ${mobileOpen ? "max-h-60 py-3" : "max-h-0"}`}>
             <div className="flex gap-2">
-              <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black py-2" onClick={snapshotPNG}>Snapshot</Button>
-              <Button variant="ghost" className="border border-zinc-800 flex-1 py-2" onClick={toggleRunning}>{running ? "Pause" : "Run"}</Button>
+              <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black py-2" onClick={snapshotPNG}>Snapshot</Button>
+              <Button variant="ghost" className="border cursor-pointer border-zinc-800 flex-1 py-2" onClick={toggleRunning}>{running ? "Pause" : "Run"}</Button>
             </div>
           </div>
         </div>
@@ -684,169 +666,340 @@ export default function OscilloscopeSimulatorPage() {
 
       <div className="h-16 sm:h-16" />
 
-      {/* main */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* left controls */}
-          <div className="lg:col-span-4 space-y-4">
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden">
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
-                        <Activity className="w-5 h-5" />
+    <div className="lg:col-span-4 space-y-4">
+      {/* --- Scope Controls Card --- */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.28 }}
+      >
+        <Card className="bg-gradient-to-b from-black/80 to-zinc-950 border border-zinc-800 rounded-2xl shadow-xl overflow-hidden">
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center shadow-md">
+                  <Activity className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-lg font-semibold text-[#ffd24a]">
+                    Scope Controls
+                  </div>
+                  <div className="text-xs text-zinc-400">
+                    Timebase • Probe • Trigger • Channels
+                  </div>
+                </div>
+              </div>
+
+              <Badge className="bg-black/80 border border-orange-500 text-orange-300 px-3 py-1 rounded-full shadow-sm flex items-center gap-1">
+                <Settings className="w-3 h-3" /> Mode
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent className="space-y-4">
+            {/* Time/div */}
+            <div className="space-y-2">
+              <label className="text-xs text-zinc-400">Time/div</label>
+              <Slider
+                min={0.0001}
+                max={0.01}
+                step={0.0001}
+                value={[timePerDiv]}
+                onValueChange={(v) => setTimePerDiv(v[0])}
+                className="text-orange-400"
+              />
+              <div className="flex justify-between text-xs text-zinc-500">
+                <span>{timePerDiv.toFixed(4)} s/div</span>
+                <span>⏱</span>
+              </div>
+            </div>
+
+            {/* Volts/div */}
+            <div className="space-y-2">
+              <label className="text-xs text-zinc-400">Volts/div</label>
+              <Slider
+                min={0.1}
+                max={10}
+                step={0.1}
+                value={[voltsPerDiv]}
+                onValueChange={(v) => setVoltsPerDiv(v[0])}
+              />
+              <div className="flex justify-between text-xs text-zinc-500">
+                <span>{voltsPerDiv.toFixed(1)} V/div</span>
+                <Waves className="w-3 h-3 text-orange-400" />
+              </div>
+            </div>
+
+            {/* Sampling */}
+            <div className="space-y-2">
+              <label className="text-xs text-zinc-400">Sampling rate (Hz)</label>
+              <Slider
+                min={1000}
+                max={96000}
+                step={1000}
+                value={[samplingHz]}
+                onValueChange={(v) => setSamplingHz(v[0])}
+              />
+              <div className="flex justify-between text-xs text-zinc-500">
+                <span>{samplingHz.toFixed(0)} Hz</span>
+                <Radio className="w-3 h-3 text-orange-400" />
+              </div>
+            </div>
+
+            {/* Trigger Section */}
+            <div className="space-y-3 border-t border-zinc-800 pt-3">
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-zinc-400">Trigger</div>
+                <Badge className="bg-black/60 border border-orange-500 text-orange-300 px-3 py-1 rounded-full shadow-sm text-xs">
+                  {trigger.type.toUpperCase()}
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <Button
+                  variant={trigger.enabled ? "default" : "outline"}
+                  className={`col-span-1 cursor-pointer ${
+                    trigger.enabled
+                      ? "bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black"
+                      : "border-zinc-700 text-zinc-300"
+                  }`}
+                  onClick={() =>
+                    setTrigger((t) => ({ ...t, enabled: !t.enabled }))
+                  }
+                >
+                  {trigger.enabled ? "On" : "Off"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  className={`col-span-1 cursor-pointer ${
+                    trigger.mode === "rising"
+                      ? "border border-orange-500 text-orange-300"
+                      : "border border-zinc-800 text-zinc-400"
+                  }`}
+                  onClick={() => setTrigger((t) => ({ ...t, mode: "rising" }))}
+                >
+                  Rising
+                </Button>
+                <Button
+                  variant="ghost"
+                  className={`col-span-1 cursor-pointer ${
+                    trigger.mode === "falling"
+                      ? "border border-orange-500  text-orange-300"
+                      : "border border-zinc-800 text-zinc-400"
+                  }`}
+                  onClick={() => setTrigger((t) => ({ ...t, mode: "falling" }))}
+                >
+                  Falling
+                </Button>
+              </div>
+
+              <div className="space-y-2 mt-2">
+                <label className="text-xs text-zinc-400">Trigger Level (V)</label>
+                <Slider
+                  min={-10}
+                  max={10}
+                  step={0.1}
+                  value={[trigger.level]}
+                  onValueChange={(v) =>
+                    setTrigger((t) => ({ ...t, level: v[0] }))
+                  }
+                />
+                <div className="flex justify-between text-xs text-zinc-500">
+                  <span>{trigger.level.toFixed(2)} V</span>
+                  <span>⚡</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Select
+                  value={trigger.type}
+                  onValueChange={(v) =>
+                    setTrigger((t) => ({ ...t, type: v }))
+                  }
+                >
+                  <SelectTrigger className="w-32 cursor-pointer bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm hover:border-orange-400 focus:ring-2 focus:ring-orange-400">
+                    <SelectValue placeholder="Type" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
+                    <SelectItem  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="auto">Auto</SelectItem>
+                    <SelectItem  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="normal">Normal</SelectItem>
+                    <SelectItem  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="single">Single</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex gap-2 mt-2">
+              <Button
+                className="flex-1 cursor-pointer bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black"
+                onClick={exportCSV}
+              >
+                <Download className="w-4 h-4 mr-2" /> Export CSV
+              </Button>
+              <Button
+                variant="ghost"
+                className="border bg-white cursor-pointer border-zinc-800"
+                onClick={() => {
+                  setChannels([
+                    {
+                      id: "ch1",
+                      enabled: true,
+                      name: "CH1",
+                      type: "sine",
+                      amp: 2,
+                      freq: 1000,
+                      phaseDeg: 0,
+                      offset: 0,
+                      noise: 0,
+                    },
+                    {
+                      id: "ch2",
+                      enabled: true,
+                      name: "CH2",
+                      type: "square",
+                      amp: 1,
+                      freq: 500,
+                      phaseDeg: 0,
+                      offset: 0,
+                      noise: 0,
+                    },
+                  ]);
+                  toast("Reset channels");
+                }}
+              >
+                Reset
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* --- Channels Section --- */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.28 }}
+      >
+        <Card className="bg-gradient-to-b from-black/80 to-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden shadow-lg">
+          <CardHeader>
+            <CardTitle className="text-[#ffd24a] flex items-center gap-2">
+              <Waves className="w-5 h-5 text-orange-400" /> Channels
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent className="space-y-3">
+            {channels.map((ch, idx) => (
+              <div
+                key={ch.id}
+                className="border border-zinc-800 rounded-xl p-3 bg-black/40 backdrop-blur-sm hover:border-orange-500/40 transition-colors"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-8 h-8 rounded-md flex items-center justify-center shadow-sm ${
+                        idx === 0
+                          ? "bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black"
+                          : "bg-gradient-to-r from-[#00ffc6] to-[#00bfff] text-black"
+                      }`}
+                    >
+                      {idx + 1}
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold">{ch.name}</div>
+                      <div className="text-xs text-zinc-400">
+                        {ch.type} • {ch.freq} Hz
                       </div>
-                      <div>
-                        <div className="text-lg font-semibold text-[#ffd24a]">Scope Controls</div>
-                        <div className="text-xs text-zinc-400">Timebase • Probe • Trigger • Channels</div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-black/80 border border-orange-500 text-orange-300 px-3 py-1 rounded-full">Mode</Badge>
-                    </div>
-                  </CardTitle>
-                </CardHeader>
-
-                <CardContent className="space-y-4">
-                  {/* timebase & vertical scale */}
-                  <div className="space-y-2">
-                    <label className="text-xs text-zinc-400">Time/div</label>
-                    <div className="flex items-center gap-2">
-                      <Input type="number" value={timePerDiv} onChange={(e) => setTimePerDiv(Number(e.target.value || 0.001))} className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                      <div className="text-xs text-zinc-500">s/div</div>
                     </div>
                   </div>
+                  <Button
+                    variant={ch.enabled ? "default" : "outline"}
+                    className={`cursor-pointer ${
+                      ch.enabled
+                        ? "bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black"
+                        : "border border-zinc-700 text-zinc-300"
+                    }`}
+                    onClick={() =>
+                      updateChannel(idx, { enabled: !ch.enabled })
+                    }
+                  >
+                    {ch.enabled ? "On" : "Off"}
+                  </Button>
+                </div>
 
-                  <div className="space-y-2">
-                    <label className="text-xs text-zinc-400">Volts/div</label>
-                    <div className="flex items-center gap-2">
-                      <Input type="number" value={voltsPerDiv} onChange={(e) => setVoltsPerDiv(Number(e.target.value || 1))} className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                      <div className="text-xs text-zinc-500">V/div</div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-xs text-zinc-400">Sampling rate (Hz)</label>
-                    <Input type="number" value={samplingHz} onChange={(e) => setSamplingHz(Number(e.target.value || 22050))} className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                  </div>
-
-                  {/* trigger */}
-                  <div className="space-y-2 border-t border-zinc-800 pt-3">
-                    <div className="flex items-center justify-between">
-                      <div className="text-xs text-zinc-400">Trigger</div>
-                      <div className="text-xs text-zinc-300">{trigger.type.toUpperCase()}</div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2">
-                      <Button variant={trigger.enabled ? "default" : "outline"} className="col-span-1" onClick={() => setTrigger((t) => ({ ...t, enabled: !t.enabled }))}>
-                        {trigger.enabled ? "On" : "Off"}
-                      </Button>
-                      <Button variant={trigger.mode === "rising" ? "default" : "outline"} className="col-span-1" onClick={() => setTrigger((t) => ({ ...t, mode: "rising" }))}>
-                        Rising
-                      </Button>
-                      <Button variant={trigger.mode === "falling" ? "default" : "outline"} className="col-span-1" onClick={() => setTrigger((t) => ({ ...t, mode: "falling" }))}>
-                        Falling
-                      </Button>
-                    </div>
-
-                    <div className="flex items-center gap-2 mt-2">
-                      <Input type="number" value={trigger.level} onChange={(e) => setTrigger((t) => ({ ...t, level: Number(e.target.value || 0) }))} className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                      <Select value={trigger.type} onValueChange={(v) => setTrigger((t) => ({ ...t, type: v }))}>
-                        <SelectTrigger className="w-32 bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm">
-                          <SelectValue placeholder="Type" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                          <SelectItem value="auto">Auto</SelectItem>
-                          <SelectItem value="normal">Normal</SelectItem>
-                          <SelectItem value="single">Single</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  {/* export */}
-                  <div className="flex gap-2 mt-2">
-                    <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={exportCSV}><Download className="w-4 h-4 mr-2" /> Export CSV</Button>
-                    <Button variant="ghost" className="border border-zinc-800" onClick={() => { setChannels([{ id: "ch1", enabled: true, name: "CH1", type: "sine", amp: 2, freq: 1000, phaseDeg: 0, offset: 0, noise: 0 }, { id: "ch2", enabled: true, name: "CH2", type: "square", amp: 1, freq: 500, phaseDeg: 0, offset: 0, noise: 0 }]); toast("Reset channels"); }}>Reset</Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            {/* Channels card */}
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden">
-                <CardHeader>
-                  <CardTitle className="text-[#ffd24a]">Channels</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {channels.map((ch, idx) => (
-                    <div key={ch.id} className="border border-zinc-800 rounded-lg p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-md flex items-center justify-center ${idx === 0 ? "bg-[#ffd24a]" : "bg-[#00ffbf]"} text-black`}>{idx === 0 ? "1" : "2"}</div>
-                          <div>
-                            <div className="text-sm font-semibold">{ch.name}</div>
-                            <div className="text-xs text-zinc-400">{ch.type} • {ch.freq} Hz</div>
+                {/* Channel Parameters */}
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  {[
+                    ["Type", "type", "select"],
+                    ["Frequency (Hz)", "freq", "slider", 10, 5000, 10],
+                    ["Amplitude (Vpk)", "amp", "slider", 0.1, 10, 0.1],
+                    ["Phase (°)", "phaseDeg", "slider", 0, 360, 1],
+                    ["Offset (V)", "offset", "slider", -5, 5, 0.1],
+                    ["Noise (%)", "noise", "slider", 0, 50, 1],
+                  ].map(([label, key, type, min, max, step]) => (
+                    <div key={key}>
+                      <label className="text-xs text-zinc-400">{label}</label>
+                      {type === "select" ? (
+                        <Select
+                          value={ch[key]}
+                          onValueChange={(v) =>
+                            updateChannel(idx, { [key]: v })
+                          }
+                        >
+                          <SelectTrigger className="w-full cursor-pointer bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm hover:border-orange-400 focus:ring-2 focus:ring-orange-400">
+                            <SelectValue placeholder="Type" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
+                            <SelectItem  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="sine">Sine</SelectItem>
+                            <SelectItem  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="square">Square</SelectItem>
+                            <SelectItem  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="triangle">Triangle</SelectItem>
+                            <SelectItem  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="saw">Saw</SelectItem>
+                            <SelectItem  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="noise">Noise</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <>
+                          <Slider
+                            min={min}
+                            max={max}
+                            step={step}
+                            value={[ch[key]]}
+                            onValueChange={(v) =>
+                              updateChannel(idx, { [key]: v[0] })
+                            }
+                          />
+                          <div className="text-xs text-zinc-500 mt-1">
+                            {ch[key]}
                           </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button variant={ch.enabled ? "default" : "outline"} onClick={() => updateChannel(idx, { enabled: !ch.enabled })}>{ch.enabled ? "On" : "Off"}</Button>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 mt-3">
-                        <div>
-                          <label className="text-xs text-zinc-400">Type</label>
-                          <Select value={ch.type} onValueChange={(v) => updateChannel(idx, { type: v })}>
-                            <SelectTrigger className="w-full bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm">
-                              <SelectValue placeholder="Type" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                              <SelectItem value="sine">Sine</SelectItem>
-                              <SelectItem value="square">Square</SelectItem>
-                              <SelectItem value="triangle">Triangle</SelectItem>
-                              <SelectItem value="saw">Saw</SelectItem>
-                              <SelectItem value="noise">Noise</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div>
-                          <label className="text-xs text-zinc-400">Frequency (Hz)</label>
-                          <Input type="number" value={ch.freq} onChange={(e) => updateChannel(idx, { freq: Number(e.target.value || 0) })} className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                        </div>
-
-                        <div>
-                          <label className="text-xs text-zinc-400">Amplitude (Vpk)</label>
-                          <Input type="number" value={ch.amp} onChange={(e) => updateChannel(idx, { amp: Number(e.target.value || 0) })} className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                        </div>
-
-                        <div>
-                          <label className="text-xs text-zinc-400">Phase (°)</label>
-                          <Input type="number" value={ch.phaseDeg} onChange={(e) => updateChannel(idx, { phaseDeg: Number(e.target.value || 0) })} className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                        </div>
-
-                        <div>
-                          <label className="text-xs text-zinc-400">Offset (V)</label>
-                          <Input type="number" value={ch.offset} onChange={(e) => updateChannel(idx, { offset: Number(e.target.value || 0) })} className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                        </div>
-
-                        <div>
-                          <label className="text-xs text-zinc-400">Noise (%)</label>
-                          <Input type="number" value={ch.noise} onChange={(e) => updateChannel(idx, { noise: Number(e.target.value || 0) })} className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                        </div>
-                      </div>
+                        </>
+                      )}
                     </div>
                   ))}
-                </CardContent>
-              </Card>
-            </motion.div>
-          </div>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </motion.div>
+    </div>
 
-          {/* right: scope display + visualizer */}
           <div className="lg:col-span-8 space-y-4">
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32 }}>
               <Card className="bg-black/70 border border-zinc-800 rounded-2xl w-full overflow-hidden">
@@ -873,7 +1026,7 @@ export default function OscilloscopeSimulatorPage() {
                   <OscilloscopeCanvas
                     width={980}
                     height={360}
-                    getSamples={(n) => getSamples(n).ch1 ? getSamples(n) : { ch1: [], ch2: [] }}
+                    getSamples={getSamples} // pass stable function directly
                     timePerDiv={timePerDiv}
                     voltsPerDiv={voltsPerDiv}
                     samplingHz={samplingHz}
@@ -886,44 +1039,111 @@ export default function OscilloscopeSimulatorPage() {
               </Card>
             </motion.div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl p-3">
-                <div className="text-xs text-zinc-400">Measurements</div>
-                <div className="text-2xl font-semibold text-[#ff9a4a]">{round(measurements.vpp, 4)} Vpp</div>
-                <div className="text-sm text-zinc-300 mt-2">Vrms: <span className="text-[#00ffbf] font-semibold ml-2">{round(measurements.vrms, 4)} V</span></div>
-                <div className="text-sm text-zinc-300 mt-1">Freq: <span className="text-[#ffd24a] font-semibold ml-2">{round(measurements.freq, 3)} Hz</span></div>
-              </Card>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+             <Card className="bg-gradient-to-br from-zinc-950 via-black/80 to-zinc-900 border border-zinc-800 rounded-2xl p-4 shadow-md hover:shadow-[0_0_25px_rgba(255,154,74,0.15)] transition-all duration-300">
+  <motion.div
+    initial={{ opacity: 0, y: 8 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.3 }}
+    className="space-y-3"
+  >
+    {/* Header */}
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <div className="w-8 h-8 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center shadow-md">
+          <Activity className="w-4 h-4 text-black" />
+        </div>
+        <span className="text-xs uppercase tracking-wider text-zinc-400">Measurements</span>
+      </div>
+      <Badge className="bg-black/70 border border-[#ff7a2d]/40 text-[#ffd24a] text-[10px] px-2 py-0.5 rounded-full">
+        Live
+      </Badge>
+    </div>
 
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl p-3">
-                <div className="text-xs text-zinc-400">FFT</div>
-                <div className="h-28 mt-2">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={spectrum}>
-                      <CartesianGrid stroke="#111" />
-                      <XAxis dataKey="f" tick={{ fill: "#aaa" }} />
-                      <YAxis hide />
-                      <ReTooltip contentStyle={{ background: "#0b0b0b", border: "1px solid #222", color: "#fff", borderRadius: "8px" }} />
-                      <Bar dataKey="mag" fill="#ff9a4a" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </Card>
+    {/* Values */}
+    <div className="text-3xl font-bold text-[#ff9a4a] tracking-tight flex items-center gap-2">
+      <Zap className="w-5 h-5 text-[#ffd24a]" />
+      {round(measurements.vpp, 4)} <span className="text-sm text-zinc-400 font-medium">Vpp</span>
+    </div>
 
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl p-3">
-                <div className="text-xs text-zinc-400">Tools</div>
-                <div className="flex gap-2 mt-3">
-                  <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={snapshotPNG}><Monitor className="w-4 h-4 mr-2" /> Snapshot</Button>
-                  <Button variant="ghost" className="border border-zinc-800" onClick={() => { setRunning(false); toast("Single capture not implemented in sim mode"); }}>Single</Button>
-                </div>
-                <div className="mt-3 text-xs text-zinc-400">Tip: Use the time/div & sample rate to adjust trace detail. Use FFT for frequency analysis.</div>
-              </Card>
+    <div className="flex flex-col gap-2 text-sm text-zinc-300">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1">
+          <Waves className="w-4 h-4 text-[#00ffbf]" />
+          <span className="text-zinc-400">Vrms</span>
+        </div>
+        <span className="text-[#00ffbf] font-semibold">{round(measurements.vrms, 4)} V</span>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1">
+          <Activity className="w-4 h-4 text-[#ffd24a]" />
+          <span className="text-zinc-400">Frequency</span>
+        </div>
+        <span className="text-[#ffd24a] font-semibold">{round(measurements.freq, 3)} Hz</span>
+      </div>
+    </div>
+
+    {/* Accent Line */}
+    <div className="mt-3 h-[2px] bg-gradient-to-r from-[#ff7a2d]/80 via-[#ffd24a]/80 to-transparent rounded-full"></div>
+  </motion.div>
+</Card>
+
+            
+<Card className="bg-gradient-to-br from-zinc-950 via-black/80 to-zinc-900 border border-zinc-800 rounded-2xl p-4 shadow-md hover:shadow-[0_0_25px_rgba(255,154,74,0.15)] transition-all duration-300">
+  <motion.div
+    initial={{ opacity: 0, y: 8 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.3 }}
+    className="space-y-4"
+  >
+    {/* Header */}
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <div className="w-8 h-8 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center shadow-md">
+          <Wrench className="w-4 h-4 text-black" />
+        </div>
+        <span className="text-xs uppercase tracking-wider text-zinc-400">Tools</span>
+      </div>
+      <Badge className="bg-black/70 border border-[#ff7a2d]/40 text-[#ffd24a] text-[10px] px-2 py-0.5 rounded-full">
+        Utility
+      </Badge>
+    </div>
+
+    {/* Tool Buttons */}
+    <div className="flex gap-2 mt-1">
+      <Button
+        className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black font-semibold hover:shadow-[0_0_10px_rgba(255,154,74,0.4)] transition-all duration-200"
+        onClick={snapshotPNG}
+      >
+        <Monitor className="w-4 h-4 mr-2" /> Snapshot
+      </Button>
+
+      <Button
+        variant="ghost"
+        className="flex-1 cursor-pointer border border-zinc-800 text-zinc-200 hover:border-[#ff7a2d]/60 hover:text-[#ffd24a] transition-all duration-200"
+        onClick={() => {
+          setRunning(false);
+          toast("Single capture not implemented in sim mode");
+        }}
+      >
+        <Zap className="w-4 h-4 mr-2 text-[#ff9a4a]" /> Single
+      </Button>
+    </div>  
+
+    {/* Info Tip */}
+    <div className="mt-2 text-xs text-zinc-400 leading-relaxed border-t border-zinc-800 pt-3">
+      <span className="text-[#ffd24a] font-medium flex items-center gap-1"> <Ticket className="w-4 h-4"/>Tip:</span> Adjust <span className="text-[#ff9a4a] font-semibold">Time/Div</span> 
+      and <span className="text-[#ff9a4a] font-semibold">Sample Rate</span> for better waveform detail.  
+      Use <span className="text-[#00ffbf] font-semibold">FFT</span> for frequency-domain analysis.
+    </div>
+  </motion.div>
+</Card>
             </div>
 
-            {/* circuit visualizer */}
             <div>
               <CircuitVisualizerSVG
                 chSample={(() => {
-                  // approximate instantaneous sample (read latest)
                   const { ch1 } = readBuffer(1);
                   return ch1 && ch1.length ? ch1[ch1.length - 1] : 0;
                 })()}

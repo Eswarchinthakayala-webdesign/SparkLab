@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, useAnimation } from "framer-motion";
 import {
   Zap,
   CircuitBoard,
@@ -14,10 +14,11 @@ import {
   Download,
   Settings,
   Activity,
+  Camera,
 
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
-
+import { Slider } from "@/components/ui/slider";
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { toPng } from "html-to-image";  
 
 import {
   ResponsiveContainer,
@@ -174,128 +176,270 @@ function buildTimeDomain({ R, L, C, freq, measure, Vin = 1, nSamples = 512 }) {
    - shows R, L, C in series and animated dots showing current flow
    - instrument readouts for Vrms, Irms (computed from phasors)
    ============================ */
+ function CircuitSVG({
+  R = 100,
+  L = 10,
+  C = 1,
+  freq = 60,
+  Vin = 5,
+  measure = "AC",
+  running = true,
+  timeDomain = null,
+}) {
+  // --- helpers ---
+  const absC = (z) => {
+    if (!z) return 0;
+    if (typeof z === "number") return Math.abs(z);
+    return Math.sqrt((z.re ?? 0) ** 2 + (z.im ?? 0) ** 2);
+  };
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const round = (v, n = 3) => (Number(v) || 0).toFixed(n);
 
-function CircuitSVG({ R, L, C, freq, Vin, measure, running, timeDomain }) {
-  // timeDomain includes magnitude & phasor info
-  const samples = (timeDomain && timeDomain.data) || [];
-  const phMag = timeDomain ? timeDomain.magnitude : 0;
-  const iph = timeDomain ? timeDomain.Iph : { re: 0, im: 0 };
-  // instantaneous current amplitude (peak)
+  // --- derived values ---
+  const iph = timeDomain?.Iph ?? { re: 0, im: 0 };
+  const phMag = timeDomain?.magnitude ?? 0;
+  const phase = timeDomain?.phase ?? 0;
   const Ipeak = absC(iph);
   const Irms = Ipeak / Math.sqrt(2);
-  const dotCount = clamp(Math.round(4 + Irms * 6), 3, 20);
-  const speed = clamp(0.9 / (Irms + 0.001), 0.12, 2.0);
+  const dotCount = clamp(Math.round(4 + Irms * 8), 4, 28);
+  const speed = clamp(0.9 / (Irms + 0.001), 0.12, 2.2);
 
-  const svgW = 900;
-  const svgH = 240;
+  // --- layout ---
+  const svgW = 980;
+  const svgH = 360;
+  const startX = 120;
+  const busY = 150;
+  const xR = 300;
+  const xL = 520;
+  const xC = 740;
+  const groundY = busY + 110;
 
-  // simple path for series: left supply -> R -> L -> C -> ground
-  const startX = 80;
-  const gap = 200;
-  const xR = startX;
-  const xL = startX + gap;
-  const xC = startX + gap * 2;
-  const busY = 120;
+  // Full circuit path for offset-path animation (top + down + bottom return)
+  // Top: startX -> xR -> xL -> xC -> down to ground -> along bottom back to startX
+  const circuitPath = useMemo(
+    () =>
+      `M ${startX} ${busY} H ${xR - 24} H ${xL - 24} H ${xC - 24} V ${groundY} H ${startX}`,
+    [startX, xR, xL, xC, busY, groundY]
+  );
+
+  // Visible copper trace path (a slightly different route for nicer corners)
+  const visiblePath = useMemo(
+    () =>
+      `M ${startX} ${busY} 
+       H ${xR - 40} 
+       L ${xR - 20} ${busY} 
+       H ${xL - 40} 
+       L ${xL - 20} ${busY}
+       H ${xC - 20}
+       V ${busY + 80}
+       H ${startX}
+       `,
+    [startX, xR, xL, xC, busY]
+  );
+
+  // CSS for dot animation: animationPlayState controlled inline
+  const dotStyleBase = (delay) => ({
+    offsetPath: `path('${circuitPath}')`,
+    animation: `flow ${speed}s linear ${-delay}s infinite`,
+    WebkitOffsetPath: `path('${circuitPath}')`,
+    animationPlayState: running ? "running" : "paused",
+  });
+
+  // --- Colors & theme ---
+  const wireGrad = "url(#wireGrad)";
+  const glowFilter = "url(#glow)";
 
   return (
-    <div className="w-full rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden">
-      <div className="flex items-start justify-between gap-3">
+    <div className="w-full rounded-xl p-5 bg-gradient-to-br from-black via-[#120700] to-[#0b0604] border border-[#662f00]/30 shadow-[0_12px_60px_rgba(255,130,40,0.06)] snapshot">
+      {/* header */}
+      <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
-            <CircuitBoard className="w-5 h-5" />
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-[#ff8a2b] to-[#ffd186] flex items-center justify-center shadow-[0_0_24px_rgba(255,140,40,0.28)]">
+            <CircuitBoard className="w-6 h-6 text-black" />
           </div>
           <div>
-            <div className="text-lg font-semibold text-[#ffd24a]">RLC Frequency Visualizer</div>
-            <div className="text-xs text-zinc-400">Series topology • Realtime Bode & Oscilloscope</div>
+            <div className="text-xl font-semibold text-[#ffb86b]">RLC Circuit</div>
+            <div className="text-xs text-zinc-400">Series R → L → C </div>
           </div>
         </div>
 
-        <div className="flex gap-3 items-center flex-wrap">
-          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">f: <span className="text-[#ffd24a] ml-1">{freq} Hz</span></Badge>
-          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">Vin: <span className="text-[#ffd24a] ml-1">{Vin} V</span></Badge>
-          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">Irms: <span className="text-[#00ffbf] ml-1">{round(Irms, 6)} A</span></Badge>
+        <div className="flex gap-2 items-center flex-wrap text-xs font-mono text-zinc-300">
+          <div className="px-2 py-1 rounded-md border border-[#ffb86b]/20">f: <span className="text-[#ffb86b] ml-1">{freq} Hz</span></div>
+          <div className="px-2 py-1 rounded-md border border-[#ffb86b]/20">Vin: <span className="text-[#ffb86b] ml-1">{Vin} V</span></div>
+          <div className="px-2 py-1 rounded-md border border-[#ffb86b]/20">Irms: <span className="text-[#00ffbf] ml-1">{round(Irms, 6)} A</span></div>
         </div>
       </div>
 
-      <div className="mt-3 overflow-x-auto">
-        <svg viewBox={`0 0 ${svgW} ${svgH}`} preserveAspectRatio="xMidYMid meet" className="w-full h-56">
-          {/* supply left */}
-          <g transform={`translate(${startX - 70},${busY})`}>
-            <rect x="-22" y="-26" width="44" height="52" rx="6" fill="#060606" stroke="#222" />
-            <text x="-34" y="-36" fontSize="12" fill="#ffd24a">{Vin} V</text>
+      {/* svg area */}
+      <div className="overflow-x-auto">
+        <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full h-[380px]" preserveAspectRatio="xMidYMid meet">
+          <defs>
+            <linearGradient id="wireGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#ff7a2b" stopOpacity="1" />
+              <stop offset="50%" stopColor="#ffb86b" stopOpacity="1" />
+              <stop offset="100%" stopColor="#ff7a2b" stopOpacity="1" />
+            </linearGradient>
+
+            <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+              <feMerge>
+                <feMergeNode in="coloredBlur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+
+            <radialGradient id="capPlate" cx="50%" cy="50%" r="60%">
+              <stop offset="0%" stopColor="#ffd9a6" stopOpacity="1" />
+              <stop offset="100%" stopColor="#ff9a2e" stopOpacity="1" />
+            </radialGradient>
+
+            <linearGradient id="resGrad" x1="0" x2="1">
+              <stop offset="0" stopColor="#ffb86b" />
+              <stop offset="1" stopColor="#ff7a2b" />
+            </linearGradient>
+          </defs>
+
+          {/* visible copper trace (thick) */}
+          <path d={visiblePath} stroke={wireGrad} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" fill="none" filter={glowFilter} opacity="0.9" />
+
+          {/* top wire thin highlight */}
+          <path d={visiblePath} stroke="#2b1100" strokeWidth="1" fill="none" opacity="0.25" />
+
+          {/* battery (left) */}
+          <g transform={`translate(${startX - 70}, ${busY - 30})`}>
+            <rect width="22" height="64" rx="6" fill="#0b0b0b" stroke="#ffb86b" strokeWidth="1.5"></rect>
+            <rect x="28" y="18" width="6" height="28" rx="2" fill="#ffd9a6"></rect>
+            <text x="-6" y="-12" fill="#ffd9a6" fontSize="12">Vin</text>
           </g>
 
-          {/* main bus */}
-          <path d={`M ${startX - 20} ${busY} H ${xC + 120}`} stroke="#111" strokeWidth="6" strokeLinecap="round" />
-
-          {/* resistor */}
-          <g transform={`translate(${xR}, ${busY})`}>
-            <rect x="-40" y="-18" width="80" height="36" rx="8" fill="#0a0a0a" stroke="#222" />
-            <text x="-26" y="-26" fontSize="12" fill="#ffd24a">R = {R} Ω</text>
-            <text x="-26" y="6" fontSize="11" fill="#fff">V_R</text>
+          {/* RESISTOR: realistic body with textured zigzag */}
+          <g transform={`translate(${xR - 80}, ${busY})`}>
+            <rect x="-10" y="-22" width="140" height="44" rx="10" fill="#150f09" stroke="#2a1400" />
+            <path d="M0 0 l12 -18 l24 18 l24 -18 l24 18 l24 -18 l28 18" transform="translate(8,0)" stroke="url(#resGrad)" strokeWidth="4" fill="none" strokeLinecap="round" filter={glowFilter} />
+            <text x="22" y="-30" fontSize="12" fill="#ffd9a6">R = {R} Ω</text>
+            <motion.text
+              x="22"
+              y="10"
+              fontSize="11"
+              fill="#fff"
+              animate={running ? { opacity: [0.5, 1, 0.5] } : { opacity: 0.6 }}
+              transition={{ duration: 1.2, repeat: running ? Infinity : 0 }}
+            >
+              Vₙ
+            </motion.text>
           </g>
 
-          {/* inductor */}
-          <g transform={`translate(${xL}, ${busY})`}>
-            <rect x="-40" y="-18" width="80" height="36" rx="8" fill="#0a0a0a" stroke="#222" />
-            <text x="-26" y="-26" fontSize="12" fill="#ffd24a">L = {L} mH</text>
-            <text x="-26" y="6" fontSize="11" fill="#fff">V_L</text>
+          {/* INDUCTOR: coils, aligned and contained */}
+          <g transform={`translate(${xL - 90}, ${busY})`}>
+            {[...Array(6)].map((_, i) => (
+              <motion.circle
+                key={i}
+                cx={i * 20}
+                cy={0}
+                r={9}
+                stroke="#ff9a2e"
+                strokeWidth="3"
+                fill="none"
+                filter={glowFilter}
+                animate={running ? { strokeOpacity: [0.6, 1, 0.6], scale: [1, 1.03, 1] } : { strokeOpacity: 0.6 }}
+                transition={{ duration: 1.6 + i * 0.08, repeat: running ? Infinity : 0, ease: "easeInOut" }}
+              />
+            ))}
+            <text x="30" y="-26" fontSize="12" fill="#ffd9a6">L = {L} mH</text>
           </g>
 
-          {/* capacitor */}
-          <g transform={`translate(${xC}, ${busY})`}>
-            <rect x="-40" y="-18" width="80" height="36" rx="8" fill="#0a0a0a" stroke="#222" />
-            <text x="-26" y="-26" fontSize="12" fill="#ffd24a">C = {C} μF</text>
-            <text x="-26" y="6" fontSize="11" fill="#fff">V_C</text>
+          {/* CAPACITOR SYMBOL: two plates with animated charge dots */}
+          <g transform={`translate(${xC - 10}, ${busY})`}>
+            {/* left plate */}
+            <rect x="-26" y="-30" width="6" height="60" rx="1" fill="url(#capPlate)" stroke="#ffb86b" strokeWidth="1.2" filter={glowFilter} />
+            {/* right plate */}
+            <rect x="20" y="-30" width="6" height="60" rx="1" fill="url(#capPlate)" stroke="#ffb86b" strokeWidth="1.2" filter={glowFilter} />
+
+            {/* plate gap indicator */}
+            <line x1="-10" y1="-40" x2="10" y2="-40" stroke="transparent" />
+
+            <text x="-28" y="-44" fontSize="12" fill="#ffd9a6">C = {C} μF</text>
+
+            {/* Animated charge dots near plates: left (negative) and right (positive) */}
+            {Array.from({ length: 6 }).map((_, i) => {
+              const tDelay = (i / 6) * 0.8;
+              const leftStyle = {
+                transformOrigin: "0 0",
+                animation: `pulseDot ${1.2 + (i % 3) * 0.12}s ease-in-out ${-tDelay}s infinite`,
+                animationPlayState: running ? "running" : "paused",
+              };
+              const rightStyle = {
+                transformOrigin: "0 0",
+                animation: `pulseDot ${1.0 + (i % 3) * 0.14}s ease-in-out ${-tDelay - 0.4}s infinite`,
+                animationPlayState: running ? "running" : "paused",
+              };
+
+              return (
+                <g key={i}>
+                  <circle cx={-40 - (i % 3) * 8} cy={-10 + (i % 2) * 12} r="3" fill="#ffb86b" style={leftStyle} opacity="0.8" />
+                  <circle cx={60 + (i % 3) * 8} cy={-10 + (i % 2) * 12} r="3" fill="#ff9a2e" style={rightStyle} opacity="0.85" />
+                </g>
+              );
+            })}
           </g>
 
-          {/* ground */}
-          <path d={`M ${xC + 120} ${busY} V ${busY + 40} H ${xC + 140}`} stroke="#111" strokeWidth="4" strokeLinecap="round" />
+          {/* ground under capacitor */}
+          <g transform={`translate(${xC + 12}, ${groundY})`}>
+            <line x1="0" y1="0" x2="0" y2="12" stroke="#ff9a2e" strokeWidth="2" />
+            <line x1="-12" y1="12" x2="12" y2="12" stroke="#ff9a2e" strokeWidth="2" />
+            <line x1="-8" y1="18" x2="8" y2="18" stroke="#ff9a2e" strokeWidth="2" />
+          </g>
 
-          {/* animated dots moving along series path */}
-          {Array.from({ length: dotCount }).map((_, di) => {
-            const pathStr = `M ${startX - 20} ${busY} H ${xC + 120}`;
-            const delay = (di / dotCount) * speed;
-            const style = {
-              offsetPath: `path('${pathStr}')`,
-              animationName: "flowRLC",
-              animationDuration: `${speed}s`,
-              animationTimingFunction: "linear",
-              animationDelay: `${-delay}s`,
-              animationIterationCount: "infinite",
-              animationPlayState: running ? "running" : "paused",
-              transformOrigin: "0 0",
-            };
-            const dotColor = phMag >= 0 ? "#ffd24a" : "#ff6a9a";
-            return <circle key={`dot-${di}`} r="4" fill={dotColor} style={style} />;
+          {/* SMALL READOUT PANEL (top-right) */}
+          <g transform={`translate(${svgW - 220}, 18)`}>
+            <rect x="8" y="-100" width="204" height="120" rx="10" fill="#0b0b0b" stroke="#2a1400" />
+            <text x="20" y="-80" fontSize="12" fill="#ffd9a6" fontWeight="700">Readouts</text>
+            <text x="20" y="-67" fontSize="12" fill="#fff">|H|: <tspan fill="#ffb86b">{round(phMag, 6)}</tspan></text>
+            <text x="20" y="-52" fontSize="12" fill="#fff">Phase: <tspan fill="#00ffbf">{round(phase, 2)}°</tspan></text>
+            <text x="20" y="-37" fontSize="12" fill="#fff">Irms: <tspan fill="#00ffbf">{round(Irms, 6)} A</tspan></text>
+            <text x="20" y="-22" fontSize="12" fill="#fff">Mode: <tspan fill="#ffb86b">{measure}</tspan></text>
+          </g>
+
+          {/* animated current flow dots (render always, but pause by animationPlayState) */}
+          {Array.from({ length: dotCount }).map((_, i) => {
+            const delay = (i / dotCount) * speed;
+            const s = dotStyleBase(delay);
+            return (
+              <circle
+                key={i}
+                r="4.5"
+                fill="#ffd9a6"
+                style={s}
+                filter={glowFilter}
+                opacity="0.95"
+              />
+            );
           })}
 
-          {/* readout box */}
-          <g transform={`translate(${svgW - 180}, 20)`}>
-            <rect x="-80" y="-14" width="160" height="120" rx="10" fill="#060606" stroke="#222" />
-            <text x="-68" y="2" fontSize="12" fill="#ffb57a">Readouts</text>
-            <text x="-68" y="26" fontSize="12" fill="#fff">|H|: <tspan fill="#ffd24a">{round(phMag, 6)}</tspan></text>
-            <text x="-68" y="48" fontSize="12" fill="#fff">Phase: <tspan fill="#00ffbf">{round(timeDomain?.phase ?? 0, 2)}°</tspan></text>
-            <text x="-68" y="70" fontSize="12" fill="#fff">Irms: <tspan fill="#00ffbf">{round(Irms, 6)} A</tspan></text>
-            <text x="-68" y="92" fontSize="12" fill="#fff">Mode: <tspan fill="#ffd24a">{measure}</tspan></text>
-          </g>
+        
 
+          {/* CSS keyframes inside SVG */}
           <style>{`
-            @keyframes flowRLC {
-              0% { offset-distance: 0%; opacity: 0.95; transform: translate(-2px,-2px) scale(0.95); }
-              45% { opacity: 0.9; transform: translate(0,0) scale(1.05); }
-              100% { offset-distance: 100%; opacity: 0; transform: translate(6px,6px) scale(0.8); }
+            @keyframes flow {
+              0% { offset-distance: 10%; transform: scale(1); opacity: 0.95; }
+              40% { transform: scale(1.2); opacity: 1; }
+              100% { offset-distance: 100%; transform: scale(0.85); opacity: 0.2; }
             }
+            @keyframes pulseDot {
+              0% { transform: translateY(10px) scale(1); opacity: 0.9; }
+              50% { transform: translateY(-6px) scale(1.25); opacity: 1; }
+              100% { transform: translateY(0px) scale(1); opacity: 0.85; }
+            }
+            /* ensure CSS offset-path works across browsers */
             circle[style] { will-change: offset-distance, transform, opacity; }
-            @media (max-width: 640px) {
-              text { font-size: 9px; }
-            }
           `}</style>
         </svg>
       </div>
     </div>
   );
 }
+
+
 
 /* ============================
    Main Page Component
@@ -392,22 +536,48 @@ export default function RLCVisualizerPage() {
     setSweepPoints(301);
     toast("Reset defaults");
   };
+  
+const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
+
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
 
   return (
-    <div className="min-h-screen bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.2)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
-      <Toaster position="top-center" richColors />
+    <div className="min-h-screen bg-[#05060a] pb-20 bg-[radial-gradient(circle,_rgba(255,122,28,0.2)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
+      <Toaster position="top-right" richColors />
 
       {/* Header */}
-      <header className="fixed w-full top-0 z-50 backdrop-blur-lg bg-black/70 border-b border-zinc-800 shadow-lg py-2">
+      <header className="fixed w-full top-0 z-50 backdrop-blur-lg bg-black/70 border-b border-zinc-800 shadow-lg py-2 sm:py-0">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-12 sm:h-14 md:h-16">
             <motion.div initial={{ y: -6, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.36 }} className="flex items-center gap-3 cursor-pointer select-none" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
-              <div className="w-12 h-12 rounded-lg bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center shadow-md transform transition-transform duration-300 hover:scale-105">
-                <Zap className="w-6 h-6 text-black" />
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center shadow-md transform transition-transform duration-300 hover:scale-105">
+                <Zap className="w-6 h-6 text-black/80" />
               </div>
               <div className="truncate">
-                <div className="text-sm sm:text-base md:text-lg font-semibold text-zinc-200 truncate">SparkLab</div>
-                <div className="text-xs sm:text-sm md:text-sm text-zinc-400 -mt-0.5 truncate">RLC Frequency Response • Bode & Oscilloscope</div>
+                <div className="text-sm font-semibold text-zinc-200 truncate">SparkLab</div>
+                <div className="text-xs  text-zinc-400 mt-0.5 truncate">RLC Frequency Response </div>
               </div>
             </motion.div>
 
@@ -418,17 +588,23 @@ export default function RLCVisualizerPage() {
                     <SelectValue placeholder="Measure" />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                    <SelectItem value="R" className="text-white hover:bg-orange-500/20 data-[highlighted]:text-orange-200">Across R (voltage)</SelectItem>
-                    <SelectItem value="L" className="text-white hover:bg-orange-500/20 data-[highlighted]:text-orange-200">Across L (voltage)</SelectItem>
-                    <SelectItem value="C" className="text-white hover:bg-orange-500/20 data-[highlighted]:text-orange-200">Across C (voltage)</SelectItem>
+                    <SelectItem value="R"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Across R (voltage)</SelectItem>
+                    <SelectItem value="L"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Across L (voltage)</SelectItem>
+                    <SelectItem value="C"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Across C (voltage)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="flex items-center gap-2">
-                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-1 rounded-lg shadow-md" onClick={() => toast.success("Snapshot saved")} title="Snapshot">Snapshot</Button>
-                <Button variant="ghost" className="border border-zinc-700 text-zinc-300 p-2 rounded-lg" onClick={toggleRunning} title={running ? "Pause" : "Play"}>{running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}</Button>
-                <Button variant="ghost" className="border border-zinc-700 text-zinc-300 p-2 rounded-lg" onClick={resetDefaults} title="Reset"><Settings className="w-5 h-5" /></Button>
+                <Button className="cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-1 rounded-lg shadow-md" onClick={snapshotPNG} title="Snapshot"><Camera/> Snapshot</Button>
+                <Button variant="ghost" className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg" onClick={toggleRunning} title={running ? "Pause" : "Play"}>{running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}</Button>
+                <Button variant="ghost" className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg" onClick={resetDefaults} title="Reset"><Settings className="w-5 h-5" /></Button>
               </div>
             </div>
 
@@ -448,14 +624,20 @@ export default function RLCVisualizerPage() {
                     <SelectValue placeholder="Measure" />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                    <SelectItem value="R" className="text-white hover:bg-orange-500/20">Across R</SelectItem>
-                    <SelectItem value="L" className="text-white hover:bg-orange-500/20">Across L</SelectItem>
-                    <SelectItem value="C" className="text-white hover:bg-orange-500/20">Across C</SelectItem>
+                    <SelectItem value="R"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Across R</SelectItem>
+                    <SelectItem value="L"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Across L</SelectItem>
+                    <SelectItem value="C"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Across C</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black py-2" onClick={() => toast.success("Snapshot saved")}>Snapshot</Button>
-              <Button variant="ghost" className="flex-1 border border-zinc-800 py-2" onClick={toggleRunning}>{running ? "Pause" : "Play"}</Button>
+              <Button className="cursor-pointer flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black py-2" onClick={snapshotPNG}> <Camera/> Snapshot</Button>
+              <Button variant="ghost" className="cursor-pointer flex-1 border border-zinc-800 py-2" onClick={toggleRunning}>{running ? "Pause" : "Play"}</Button>
             </div>
           </div>
         </div>
@@ -467,74 +649,191 @@ export default function RLCVisualizerPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left controls */}
           <div className="lg:col-span-4 space-y-4">
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden w-full">
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
-                        <Activity className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="text-lg font-semibold text-[#ffd24a]">RLC: Frequency Response</div>
-                        <div className="text-xs text-zinc-400">Interactive Bode plots • Realtime oscilloscope</div>
-                      </div>
-                    </div>
+<motion.div
+  initial={{ opacity: 0, y: 8 }}
+  animate={{ opacity: 1, y: 0 }}
+  transition={{ duration: 0.3 }}
+>
+  <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden w-full shadow-lg shadow-black/40">
+    <CardHeader>
+      <CardTitle className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
+            <Activity className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-lg font-semibold text-[#ffd24a]">RLC: Frequency Response</div>
+            <div className="text-xs text-zinc-400">Interactive Bode plots & oscilloscope</div>
+          </div>
+        </div>
+        <Badge className="bg-black/80 border border-orange-500 text-orange-300 px-3 py-1 rounded-full shadow-sm">
+          Mode
+        </Badge>
+      </CardTitle>
+    </CardHeader>
 
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-black/80 border border-orange-500 text-orange-300 px-3 py-1 rounded-full shadow-sm">Mode</Badge>
-                    </div>
-                  </CardTitle>
-                </CardHeader>
+    <CardContent className="space-y-6">
+      <div className="grid grid-cols-1 gap-5">
+        {/* Resistance */}
+        <div className="space-y-1">
+        <label className=" text-xs text-zinc-400">Resistance (Ω)</label>
+          <div className="flex items-center pt-2 flex-col-reverse gap-3">
+            <Slider
+              value={[R]}
+              onValueChange={(v) => setR(v[0])}
+              min={1}
+              max={1000}
+              step={1}
+              className="flex-1 cursor-pointer"
+            />
+            <Input
+              type="number"
+              value={R}
+              onChange={(e) => setR(Number(e.target.value))}
+              className="w-full bg-zinc-900/60 border border-zinc-800 text-white text-sm"
+            />
+          </div>
+        </div>
 
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 gap-3">
-                    <div>
-                      <label className="text-xs text-zinc-400">Resistance (Ω)</label>
-                      <Input value={R} onChange={(e) => setR(Number(e.target.value))} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                    </div>
-                    <div>
-                      <label className="text-xs text-zinc-400">Inductance (mH)</label>
-                      <Input value={L} onChange={(e) => setL(Number(e.target.value))} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                    </div>
-                    <div>
-                      <label className="text-xs text-zinc-400">Capacitance (μF)</label>
-                      <Input value={C} onChange={(e) => setC(Number(e.target.value))} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                    </div>
+        {/* Inductance */}
+        <div className="space-y-1">
+          <label className="text-xs text-zinc-400">Inductance (mH)</label>
+          <div className="flex items-center pt-2 flex-col-reverse gap-3">
+            <Slider
+              value={[L]}
+              onValueChange={(v) => setL(v[0])}
+              min={0.1}
+              max={500}
+              step={0.1}
+              className="flex-1 cursor-pointer"
+            />
+            <Input
+              type="number"
+              value={L}
+              onChange={(e) => setL(Number(e.target.value))}
+              className="w-full bg-zinc-900/60 border border-zinc-800 text-white text-sm"
+            />
+          </div>
+        </div>
 
-                    <div>
-                      <label className="text-xs text-zinc-400">Input amplitude (V)</label>
-                      <Input value={Vin} onChange={(e) => setVin(Number(e.target.value))} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                    </div>
-                    <div>
-                      <label className="text-xs text-zinc-400">Selected frequency for time-domain (Hz)</label>
-                      <Input value={fCenter} onChange={(e) => setFCenter(Number(e.target.value))} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                      <div className="text-xs text-zinc-500 mt-1">Use this frequency to view oscilloscope/time-domain waveform.</div>
-                    </div>
+        {/* Capacitance */}
+        <div className="space-y-1">
+          <label className="text-xs text-zinc-400">Capacitance (μF)</label>
+          <div className="flex items-center pt-2 flex-col-reverse gap-3">
+            <Slider
+              value={[C]}
+              onValueChange={(v) => setC(v[0])}
+              min={0.01}
+              max={100}
+              step={0.01}
+              className="flex-1 cursor-pointer"
+            />
+            <Input
+              type="number"
+              value={C}
+              onChange={(e) => setC(Number(e.target.value))}
+              className="w-full bg-zinc-900/60 border border-zinc-800 text-white text-sm"
+            />
+          </div>
+        </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      <div>
-                        <label className="text-xs text-zinc-400">Freq min (Hz)</label>
-                        <Input value={fMin} onChange={(e) => setFMin(e.target.value)} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                      </div>
-                      <div>
-                        <label className="text-xs text-zinc-400">Freq max (Hz)</label>
-                        <Input value={fMax} onChange={(e) => setFMax(e.target.value)} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                      </div>
-                      <div>
-                        <label className="text-xs text-zinc-400">Sweep points</label>
-                        <Input value={sweepPoints} onChange={(e) => setSweepPoints(Number(e.target.value))} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                      </div>
-                    </div>
+        {/* Input amplitude */}
+        <div className="space-y-1">
+          <label className="text-xs text-zinc-400">Input Amplitude (V)</label>
+          <div className="flex items-center flex-col-reverse pt-2 gap-3">
+            <Slider
+              value={[Vin]}
+              onValueChange={(v) => setVin(v[0])}
+              min={0.1}
+              max={20}
+              step={0.1}
+              className="flex-1 cursor-pointer"
+            />
+            <Input
+              type="number"
+              value={Vin}
+              onChange={(e) => setVin(Number(e.target.value))}
+              className="w-full bg-zinc-900/60 border border-zinc-800 text-white text-sm"
+            />
+          </div>
+        </div>
 
-                    <div className="flex gap-2 mt-2">
-                      <Button className="flex-1 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a]" onClick={() => setSweepAuto((s) => !s)}><Layers className="w-4 h-4 mr-2" />{sweepAuto ? "Stop Auto Sweep" : "Auto Sweep"}</Button>
-                      <Button variant="ghost" className="border border-zinc-800" onClick={() => exportBodeCSV()}><Download className="w-4 h-4 mr-2" />Export CSV</Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
+        {/* Center Frequency */}
+        <div className="space-y-1">
+          <label className="text-xs text-zinc-400">Selected Frequency for Time-Domain (Hz)</label>
+          <div className="flex items-center flex-col-reverse pt-2 gap-3">
+            <Slider
+              value={[fCenter]}
+              onValueChange={(v) => setFCenter(v[0])}
+              min={1}
+              max={20000}
+              step={1}
+              className="flex-1 cursor-pointer"
+            />
+            <Input
+              type="number"
+              value={fCenter}
+              onChange={(e) => setFCenter(Number(e.target.value))}
+              className="w-full bg-zinc-900/60 border border-zinc-800 text-white text-sm"
+            />
+          </div>
+          <div className="text-xs text-zinc-500 mt-1">
+            Use this frequency to view oscilloscope/time-domain waveform.
+          </div>
+        </div>
+
+        {/* Sweep settings */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="space-y-1">
+            <label className="text-xs text-zinc-400">Freq Min (Hz)</label>
+            <Input
+              type="number"
+              value={fMin}
+              onChange={(e) => setFMin(Number(e.target.value))}
+              className="bg-zinc-900/60 border border-zinc-800 text-white text-sm"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-zinc-400">Freq Max (Hz)</label>
+            <Input
+              type="number"
+              value={fMax}
+              onChange={(e) => setFMax(Number(e.target.value))}
+              className="bg-zinc-900/60 border border-zinc-800 text-white text-sm"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-zinc-400">Sweep Points</label>
+            <Input
+              type="number"
+              value={sweepPoints}
+              onChange={(e) => setSweepPoints(Number(e.target.value))}
+              className="bg-zinc-900/60 border border-zinc-800 text-white text-sm"
+            />
+          </div>
+        </div>
+
+        {/* Buttons */}
+        <div className="flex gap-2 pt-2">
+          <Button
+            className="flex-1 cursor-pointer bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black font-semibold hover:opacity-90"
+            onClick={() => setSweepAuto((s) => !s)}
+          >
+            <Layers className="w-4 h-4 mr-2" />
+            {sweepAuto ? "Stop Auto Sweep" : "Auto Sweep"}
+          </Button>
+          <Button
+            variant="ghost"
+            className="border cursor-pointer border-zinc-800 hover:border-orange-500 text-zinc-300"
+            onClick={exportBodeCSV}
+          >
+            <Download className="w-4 h-4 mr-2" /> Export CSV
+          </Button>
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+</motion.div>
           </div>
 
           {/* Right: Visual + Bode + Scope */}
@@ -572,7 +871,7 @@ export default function RLCVisualizerPage() {
               <div className="rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden">
                 <div className="flex items-center justify-between mb-2">
                   <div className="text-sm font-medium text-orange-400">Bode Plot — Magnitude (dB)</div>
-                  <div className="text-xs text-zinc-400">Log frequency axis</div>
+                  <div className="bg-black/80 border border-orange-500 text-orange-300 px-3 py-1 rounded-full shadow-sm text-xs">Log frequency axis</div>
                 </div>
 
                 <div className="h-44 sm:h-56">
@@ -626,8 +925,8 @@ export default function RLCVisualizerPage() {
               {/* Oscilloscope / time-domain */}
               <div className="rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-sm font-medium text-orange-400">Oscilloscope — Time Domain</div>
-                  <div className="text-xs text-zinc-400">Showing one period at selected frequency</div>
+                  <div className="text-sm font-medium text-orange-400">Time Domain</div>
+                  <div className=" bg-black/80 border border-orange-500 text-orange-300 px-3 py-1 rounded-full shadow-sm text-xs truncate">Showing one period at selected frequency</div>
                 </div>
 
                 <div className="h-56">
@@ -669,11 +968,11 @@ export default function RLCVisualizerPage() {
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-60 w-[92%] sm:w-auto sm:left-auto sm:translate-x-0 sm:bottom-6 sm:right-6 lg:hidden" role="region" aria-label="Mobile controls">
         <div className="flex items-center justify-between gap-3 bg-black/80 border border-zinc-800 p-3 rounded-full shadow-lg">
           <div className="flex items-center gap-2">
-            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-zinc-300 text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+            <Button className="px-3 cursor-pointer py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
+            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-black cursor-pointer text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" className="border border-zinc-800 text-zinc-300 p-2" onClick={() => exportBodeCSV()}><Download className="w-4 h-4" /></Button>
+            <Button variant="ghost" className="border border-zinc-800 text-zinc-300 cursor-pointer p-2" onClick={() => exportBodeCSV()}><Download className="w-4 h-4" /></Button>
           </div>
         </div>
       </div>

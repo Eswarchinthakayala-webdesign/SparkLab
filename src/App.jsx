@@ -28,6 +28,7 @@ import AnimatedMotorGeneratorPage from "./pages/visualizations/AnimatedMotorGene
 import InteractiveTransformerPage from "./pages/visualizations/InteractiveTransformerPage";
 import RLCVisualizerPage from "./pages/visualizations/RLCVisualizerPage";
 import OscilloscopeSimulatorPage from "./pages/visualizations/OscilloscopeSimulatorPage";
+import TopicsOverviewPage from "./pages/TopicsOverviewPage";
 
 // TODO: You can add these later
 // import LoginPage from "./pages/LoginPage";
@@ -41,29 +42,30 @@ export default function App() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/features" element={<FeaturePage/>}/>
         <Route path="/about" element={<AboutPage/>} />
-        <Route path="/tools" element={<ElectricToolsPage/>} />
-        <Route path="/tools/ohms-law" element={<OhmsLawPage/>}/>
-        <Route path="/tools/power" element={<PowerCalculator/>}/>
-        <Route path="/tools/resistance" element={<ResistanceCalculatorPage/>} />
-        <Route path="/tools/capacitance-inductance" element={<CapacitanceInductanceCalculatorPage/>}/>
-        <Route path="/tools/impedance" element={<ImpedanceCalculatorPage/>} />
-        <Route path="/tools/transformer" element={<TransformerCalculatorPage/>} />
-        <Route path="/tools/three-phase" element={<ThreePhaseCalculatorPage/>} />
-        <Route path="/tools/resonance" element={<ResonanceCalculatorPage/>} />
-        <Route path="/tools/power-factor" element={<PowerFactorCalculator/>} />
-        <Route path="/tools/thevenin-norton" element={<TheveninNortonCalculator/>} />
-        <Route path="visualizations" element={<VisualizationToolsPage/>} />
-        <Route path="/visualizations/waveform-studio" element={<WaveformStudioPage/>} />
-        <Route path="/visualizations/phasor-diagram" element={<PhasorDiagramPage/>} />
-        <Route path="/visualizations/circuit-playground" element={<CircuitPlaygroundPage/>} />
-        <Route path="/visualizations/logic-gate-simulator" element={<LogicGateSimulatorPage/>} />
+         <Route path="/topics" element={<TopicsOverviewPage />} />
+        <Route path="/topics/tools" element={<ElectricToolsPage/>} />
+        <Route path="/topics/tools/ohms-law" element={<OhmsLawPage/>}/>
+        <Route path="/topics/tools/power" element={<PowerCalculator/>}/>
+        <Route path="/topics/tools/resistance" element={<ResistanceCalculatorPage/>} />
+        <Route path="/topics/tools/capacitance-inductance" element={<CapacitanceInductanceCalculatorPage/>}/>
+        <Route path="/topics/tools/impedance" element={<ImpedanceCalculatorPage/>} />
+        <Route path="/topics/tools/transformer" element={<TransformerCalculatorPage/>} />
+        <Route path="/topics/tools/three-phase" element={<ThreePhaseCalculatorPage/>} />
+        <Route path="/topics/tools/resonance" element={<ResonanceCalculatorPage/>} />
+        <Route path="/topics/tools/power-factor" element={<PowerFactorCalculator/>} />
+        <Route path="/topics/tools/thevenin-norton" element={<TheveninNortonCalculator/>} />
+        <Route path="/topics/visualizations" element={<VisualizationToolsPage/>} />
+        <Route path="/topics/visualizations/waveform-studio" element={<WaveformStudioPage/>} />
+        <Route path="/topics/visualizations/phasor-diagram" element={<PhasorDiagramPage/>} />
+        <Route path="/topics/visualizations/circuit-playground" element={<CircuitPlaygroundPage/>} />
+        <Route path="/topics/visualizations/logic-gate-simulator" element={<LogicGateSimulatorPage/>} />
 
-        <Route path="/visualizations/kmap-solver" element={<KarnaughMapSolverPage/>} />
-        <Route path="/visualizations/mesh-nodal-solver" element={<MeshNodalAnalysisPage/>} />
-        <Route path="/visualizations/motor-generator-demo" element={<AnimatedMotorGeneratorPage/>} />
-        <Route path="/visualizations/transformer-animation" element={<InteractiveTransformerPage/>} />
-        <Route path="/visualizations/rlc-response" element={<RLCVisualizerPage/>} />
-        <Route path="/visualizations/oscilloscope-simulator" element={<OscilloscopeSimulatorPage/>} />
+        <Route path="/topics/visualizations/kmap-solver" element={<KarnaughMapSolverPage/>} />
+        <Route path="/topics/visualizations/mesh-nodal-solver" element={<MeshNodalAnalysisPage/>} />
+        <Route path="/topics/visualizations/motor-generator-demo" element={<AnimatedMotorGeneratorPage/>} />
+        <Route path="/topics/visualizations/transformer-animation" element={<InteractiveTransformerPage/>} />
+        <Route path="/topics/visualizations/rlc-response" element={<RLCVisualizerPage/>} />
+        <Route path="/topics/visualizations/oscilloscope-simulator" element={<OscilloscopeSimulatorPage/>} />
       </Routes>
     </Router>
   );

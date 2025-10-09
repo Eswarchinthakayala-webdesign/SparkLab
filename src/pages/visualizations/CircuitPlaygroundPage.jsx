@@ -1,942 +1,1758 @@
-// src/pages/visualizations/CircuitPlaygroundV2.jsx
-"use client";
+// CircuitPlayground.jsx
+// A single-file desktop-only circuit playground with draggable components, wire-connections,
+// simple MNA phasor solver (R, L, C, AC sources), live charts (Recharts) and 3D phasor view (Plotly).
+//
+// Dependencies:
+//   react, uuid, recharts, react-plotly.js, plotly.js, lucide-react
+//
+// Paste into your React app as src/components/CircuitPlayground.jsx and import where needed.
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import ReactFlow, {
-  ReactFlowProvider,
-  addEdge,
-  MiniMap,
-  Controls as RFControls,
-  Background as RFBackground,
-  useNodesState,
-  useEdgesState,
-  Handle,
-} from "reactflow";
-import "reactflow/dist/style.css";
-import { motion } from "framer-motion";
-import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip } from "recharts";
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useMemo,
+  useCallback,
+} from "react";
+import { v4 as uuidv4 } from "uuid";
 import {
-  Activity,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  CartesianGrid,
+} from "recharts";
+import Plot from "react-plotly.js";
+import {
   Play,
   Pause,
-  Plus,
   Trash2,
   Zap,
-  Gauge,
   Battery,
-  Omega,
-  Cable,
-  RotateCcw,
-  DownloadCloud,
+  Minus,
+  GitPullRequest,
+  ArrowRightCircle,
+  Circle,
+  Move,
+  Settings,
+  Cpu as DesktopComputer,
+  Shield,
+  Download,
+  Menu,
+  X,
+  Upload,
+  Cpu,
+  Grid,
+  Gauge,
+  Waves as Waveform,
+  Activity,
+  Settings2,
+  Info
 } from "lucide-react";
-
+import { motion } from "framer-motion";
+import { Toaster, toast } from "sonner";
+import { toPng } from "html-to-image";
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import Footer from "@/components/landing/Footer";
+import { Separator } from "@/components/ui/separator";
+import { Slider } from "@/components/ui/slider";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+/* ===========================
+   Theme & Small helpers
+   =========================== */
+const ORANGE = "#ff8b2d";
+const BG = "#070707";
+const CARD = "#0b0b0b";
+const BORDER = "#2b2b2b";
+const TEXT = "#f3f3f3";
+const MUTED = "#bdbdbd";
 
-// ---------------- THEME ----------------
-const THEME = {
-  bg: "#05060a",
-  cardBg: "rgba(6,6,8,0.44)",
-  border: "rgba(255,255,255,0.06)",
-  accent: "#ff7a2d",
-  accent2: "#ffd24a",
-  alt: "#3a8aff",
-  subtle: "rgba(255,255,255,0.04)",
-  text: "rgba(255,255,255,0.95)",
+const GRID_SIZE = 12;
+
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const snap = (v, g = GRID_SIZE) => Math.round(v / g) * g;
+const fmt = (v, d = 3) => (v == null ? 0 : Number.parseFloat(v).toFixed(d));
+
+/* ===========================
+   Complex arithmetic (small library)
+   Represents complex numbers as objects { re, im }
+   =========================== */
+const C = {
+  add: (a, b) => ({ re: a.re + b.re, im: a.im + b.im }),
+  sub: (a, b) => ({ re: a.re - b.re, im: a.im - b.im }),
+  mul: (a, b) => ({
+    re: a.re * b.re - a.im * b.im,
+    im: a.re * b.im + a.im * b.re,
+  }),
+  div: (a, b) => {
+    const denom = b.re * b.re + b.im * b.im;
+    return {
+      re: (a.re * b.re + a.im * b.im) / denom,
+      im: (a.im * b.re - a.re * b.im) / denom,
+    };
+  },
+  scale: (a, s) => ({ re: a.re * s, im: a.im * s }),
+  conj: (a) => ({ re: a.re, im: -a.im }),
+  abs: (a) => Math.hypot(a.re, a.im),
+  zero: () => ({ re: 0, im: 0 }),
+  fromPolar: (mag, angleRad) => ({ re: mag * Math.cos(angleRad), im: mag * Math.sin(angleRad) }),
 };
 
-// ---------------- complex helpers (small lib) ----------------
-function cAdd(a, b) {
-  return [a[0] + b[0], a[1] + b[1]];
-}
-function cSub(a, b) {
-  return [a[0] - b[0], a[1] - b[1]];
-}
-function cMul(a, b) {
-  return [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
-}
-function cDiv(a, b) {
-  const denom = b[0] * b[0] + b[1] * b[1];
-  return [(a[0] * b[0] + a[1] * b[1]) / denom, (a[1] * b[0] - a[0] * b[1]) / denom];
-}
-function cAbs(a) {
-  return Math.hypot(a[0], a[1]);
-}
-function cConj(a) {
-  return [a[0], -a[1]];
-}
-const toComplex = (r) => [r, 0];
+/* ===========================
+   Simple Gaussian elimination for complex linear systems
+   A is n x n array of complex; b is length n complex vector
+   Returns x vector complex
+   =========================== */
+function solveComplexLinear(A_in, b_in) {
+  // Make deep copies
+  const n = A_in.length;
+  const A = Array.from({ length: n }, (_, i) =>
+    Array.from({ length: n }, (_, j) => ({ re: A_in[i][j].re, im: A_in[i][j].im }))
+  );
+  const b = b_in.map((v) => ({ re: v.re, im: v.im }));
 
-// ---------------- UI component catalog ----------------
-const COMPONENT_CATALOG = [
-  { type: "resistor", label: "Resistor (Ω)", defaultValue: 100, color: THEME.accent, icon: <Omega className="w-4 h-4" /> },
-  { type: "capacitor", label: "Capacitor (F)", defaultValue: 1e-6, color: THEME.alt, icon: <Cable className="w-4 h-4" /> },
-  { type: "inductor", label: "Inductor (H)", defaultValue: 1e-3, color: "#7cd389", icon: <Cable className="w-4 h-4" /> },
-  { type: "voltage", label: "Voltage Source (V)", defaultValue: 5, color: THEME.accent2, icon: <Battery className="w-4 h-4" /> },
-  { type: "ammeter", label: "Ammeter", defaultValue: 0, color: "#e3e3e3", icon: <Gauge className="w-4 h-4" /> },
-  { type: "voltmeter", label: "Voltmeter", defaultValue: 0, color: "#e3e3e3", icon: <Zap className="w-4 h-4" /> },
+  const eps = 1e-12;
+
+  for (let k = 0; k < n; k++) {
+    // pivot: find row with max magnitude in column k
+    let piv = k;
+    let maxMag = C.abs(A[k][k]);
+    for (let r = k + 1; r < n; r++) {
+      const mag = C.abs(A[r][k]);
+      if (mag > maxMag) {
+        maxMag = mag;
+        piv = r;
+      }
+    }
+    if (piv !== k) {
+      [A[k], A[piv]] = [A[piv], A[k]];
+      [b[k], b[piv]] = [b[piv], b[k]];
+    }
+    // singular check
+    const diagMag = C.abs(A[k][k]);
+    if (diagMag < eps) {
+      // singular or ill-conditioned -> return zeros
+      return Array.from({ length: n }, () => C.zero());
+    }
+    // normalize row k
+    const invDiag = C.div({ re: 1, im: 0 }, A[k][k]);
+    for (let j = k; j < n; j++) {
+      A[k][j] = C.mul(A[k][j], invDiag);
+    }
+    b[k] = C.mul(b[k], invDiag);
+
+    // eliminate rows below and above
+    for (let i = 0; i < n; i++) {
+      if (i === k) continue;
+      const factor = A[i][k];
+      if (Math.abs(factor.re) < 1e-15 && Math.abs(factor.im) < 1e-15) continue;
+      for (let j = k; j < n; j++) {
+        A[i][j] = C.sub(A[i][j], C.mul(factor, A[k][j]));
+      }
+      b[i] = C.sub(b[i], C.mul(factor, b[k]));
+    }
+  }
+
+  return b;
+}
+
+/* ===========================
+   Simple union-find for nets
+   =========================== */
+function UnionFind() {
+  const parent = {};
+  function find(a) {
+    if (!(a in parent)) parent[a] = a;
+    if (parent[a] === a) return a;
+    parent[a] = find(parent[a]);
+    return parent[a];
+  }
+  function union(a, b) {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra === rb) return;
+    parent[rb] = ra;
+  }
+  return { find, union, parent };
+}
+
+/* ===========================
+   Component palette
+   Each palette item becomes a node with two pins ("left","right") unless stated.
+   =========================== */
+const PALETTE = [
+  { id: "voltage", label: "AC Voltage Source", color: ORANGE, width: 160, height: 56, icon: <Battery size={18} /> },
+  { id: "current", label: "AC Current Source", color: "#ffb86b", width: 160, height: 56, icon: <Zap size={18} /> },
+  { id: "resistor", label: "Resistor (Ω)", color: ORANGE, width: 120, height: 48, icon: <Minus size={16} /> },
+  { id: "inductor", label: "Inductor (mH)", color: "#ffb86b", width: 120, height: 48, icon: <GitPullRequest size={16} /> },
+  { id: "capacitor", label: "Capacitor (μF)", color: "#ffd28a", width: 120, height: 48, icon: <ArrowRightCircle size={16} /> },
+  { id: "ammeter", label: "Ammeter", color: "#ffd1a7", width: 130, height: 52, icon: <Circle size={16} /> },
+  { id: "voltmeter", label: "Voltmeter", color: "#ffd1a7", width: 130, height: 52, icon: <Circle size={16} /> },
 ];
 
-// ---------------- default node factory ----------------
-const makeNode = (type, position = { x: 50, y: 50 }) => {
-  const id = `${type}_${Math.random().toString(36).slice(2, 8)}`;
-  const catalog = COMPONENT_CATALOG.find((c) => c.type === type) || { label: type, defaultValue: 1, color: THEME.accent };
-  return {
-    id,
-    type: "componentNode",
-    position,
-    data: {
-      id,
-      type,
-      label: catalog.label || type,
-      value: catalog.defaultValue,
-      color: catalog.color,
-      icon: catalog.icon || null,
-    },
-  };
+/* ===========================
+   Default parameters per component type
+   =========================== */
+const DEFAULT_PARAMS = {
+  resistor: { R: 1000 },
+  inductor: { L: 0.01 }, // H
+  capacitor: { C: 1e-6 }, // F
+  voltage: { Vrms: 12, phase: 0, freq: 50 }, // Vrms
+  current: { Irms: 0.05, phase: 0, freq: 50 }, // Irms
+  voltmeter: { Rin: 1e7 },
+  ammeter: { Rin: 0.01 },
 };
 
-// ---------------- React Flow node component ----------------
-function ComponentNode({ data }) {
-  // data: {id, type, label, value, color, icon}
-  // We'll render visible handle markers left (terminal a) and right (terminal b).
-  // Each terminal has TWO hidden handles (one source and one target) with IDs like "a-source","a-target".
-  // When users connect, we normalize handles to 'a' or 'b' on edge creation.
+/* ===========================
+   Utility: build nets from nodes and wires
+   nodes: array of node objects { id, x, y, width, height, meta: { type } }
+   wires: array of wires { id, from: { node, side }, to: { node, side } }
+   Returns:
+     nets: array of net objects with keys: id (root string), pins: [{ nodeId, side }]
+     pinToNet map: key `${node}:${side}` => netIndex
+   =========================== */
+function buildNets(nodes, wires) {
+  const uf = UnionFind();
+  // All pins (side left/right) are named like `${nodeId}:left`
+  // Initially each pin is independent; then union pins that are connected by wires
+  nodes.forEach((n) => {
+    const left = `${n.id}:left`;
+    const right = `${n.id}:right`;
+    uf.find(left);
+    uf.find(right);
+  });
+  wires.forEach((w) => {
+    const a = `${w.from.node}:${w.from.side}`;
+    const b = `${w.to.node}:${w.to.side}`;
+    uf.union(a, b);
+  });
+
+  // group pins by root
+  const groups = {};
+  Object.keys(uf.parent).forEach((pin) => {
+    const root = uf.find(pin);
+    if (!groups[root]) groups[root] = [];
+    const [nodeId, side] = pin.split(":");
+    groups[root].push({ nodeId, side, pin });
+  });
+
+  const roots = Object.keys(groups);
+  const nets = roots.map((r, idx) => ({ id: r, pins: groups[r] }));
+  // map pins -> net index
+  const pinToNet = {};
+  nets.forEach((net, i) => {
+    net.pins.forEach((p) => {
+      pinToNet[`${p.nodeId}:${p.side}`] = i;
+    });
+  });
+
+  // There might be nodes with no wires; ensure their pins remain separate nets
+  nodes.forEach((n) => {
+    const leftKey = `${n.id}:left`;
+    const rightKey = `${n.id}:right`;
+    if (!(leftKey in pinToNet)) {
+      const idx = nets.length;
+      nets.push({ id: leftKey, pins: [{ nodeId: n.id, side: "left", pin: leftKey }] });
+      pinToNet[leftKey] = idx;
+    }
+    if (!(rightKey in pinToNet)) {
+      const idx = nets.length;
+      nets.push({ id: rightKey, pins: [{ nodeId: n.id, side: "right", pin: rightKey }] });
+      pinToNet[rightKey] = idx;
+    }
+  });
+
+  return { nets, pinToNet };
+}
+
+/* ===========================
+   Build MNA matrices and solve phasor circuit
+   Supports:
+     - resistor (R)
+     - inductor (L)
+     - capacitor (C)
+     - AC voltage source (Vrms, phase, freq)
+     - AC current source (Irms,phase,freq)
+   Returns:
+     { netVoltages: Array of complex per net index (RMS phasor), componentCurrents: map compId->complex current (A phasor) }
+   =========================== */
+function solvePhasor(nodes, wires) {
+  // Build nets
+  const { nets, pinToNet } = buildNets(nodes, wires);
+  const nNets = nets.length;
+  if (nNets === 0) return { netVoltages: [], componentCurrents: {} };
+
+  // choose reference net (ground) as net index 0
+  // (That's arbitrary; voltmeter measures differences so it's fine)
+  const groundIndex = 0;
+
+  // map net->unknown index (exclude ground)
+  const netToUnknown = {};
+  let unknownCount = 0;
+  for (let i = 0; i < nNets; i++) {
+    if (i === groundIndex) continue;
+    netToUnknown[i] = unknownCount++;
+  }
+
+  // gather voltage sources
+  const voltageSources = [];
+  const currentSources = [];
+  nodes.forEach((n) => {
+    const type = n.meta?.type;
+    if (type === "voltage") {
+      // nets from left and right pins
+      const a = pinToNet[`${n.id}:left`];
+      const b = pinToNet[`${n.id}:right`];
+      const Vrms = Number(n.params?.Vrms ?? DEFAULT_PARAMS.voltage.Vrms);
+      const phase = Number(n.params?.phase ?? DEFAULT_PARAMS.voltage.phase);
+      const freq = Number(n.params?.freq ?? DEFAULT_PARAMS.voltage.freq);
+      const phasor = C.fromPolar(Vrms, (phase * Math.PI) / 180);
+      voltageSources.push({ node: n, a, b, phasor, freq });
+    } else if (type === "current") {
+      const a = pinToNet[`${n.id}:left`];
+      const b = pinToNet[`${n.id}:right`];
+      const Irms = Number(n.params?.Irms ?? DEFAULT_PARAMS.current.Irms);
+      const phase = Number(n.params?.phase ?? DEFAULT_PARAMS.current.phase);
+      const freq = Number(n.params?.freq ?? DEFAULT_PARAMS.current.freq);
+      const phasor = C.fromPolar(Irms, (phase * Math.PI) / 180);
+      currentSources.push({ node: n, a, b, phasor, freq });
+    }
+  });
+
+  const nVolt = voltageSources.length;
+  const N = unknownCount + nVolt; // MNA matrix size
+
+  // init A and b
+  const A = Array.from({ length: N }, () =>
+    Array.from({ length: N }, () => C.zero())
+  );
+  const B = Array.from({ length: N }, () => C.zero());
+
+  const omegaDefault = 2 * Math.PI * 50;
+
+  // Helper to add admittance between nets
+  function addAdmittance(aNet, bNet, Y) {
+    // if aNet != ground, add to diag
+    if (aNet !== groundIndex) {
+      const ai = netToUnknown[aNet];
+      A[ai][ai] = C.add(A[ai][ai], Y);
+    }
+    if (bNet !== groundIndex) {
+      const bi = netToUnknown[bNet];
+      A[bi][bi] = C.add(A[bi][bi], Y);
+    }
+    if (aNet !== groundIndex && bNet !== groundIndex) {
+      const ai = netToUnknown[aNet];
+      const bi = netToUnknown[bNet];
+      A[ai][bi] = C.sub(A[ai][bi], Y);
+      A[bi][ai] = C.sub(A[bi][ai], Y);
+    }
+  }
+
+  // Stamp passive components and current sources
+  nodes.forEach((n) => {
+    const type = n.meta?.type;
+    const a = pinToNet[`${n.id}:left`];
+    const b = pinToNet[`${n.id}:right`];
+    if (type === "resistor") {
+      const R = Number(n.params?.R ?? DEFAULT_PARAMS.resistor.R);
+      const G = { re: 1 / R, im: 0 };
+      addAdmittance(a, b, G);
+    } else if (type === "inductor") {
+      const L = Number(n.params?.L ?? DEFAULT_PARAMS.inductor.L);
+      // get freq: choose source frequency if present else default 50Hz
+      const f = Number(n.params?.freq ?? 50);
+      const omega = 2 * Math.PI * f;
+      const Z = { re: 0, im: omega * L }; // jωL
+      // admittance Y = 1/Z
+      const Y = C.div({ re: 1, im: 0 }, Z);
+      addAdmittance(a, b, Y);
+    } else if (type === "capacitor") {
+      const Cval = Number(n.params?.C ?? DEFAULT_PARAMS.capacitor.C);
+      const f = Number(n.params?.freq ?? 50);
+      const omega = 2 * Math.PI * f;
+      // Zc = 1/(jωC) = -j/(ωC)
+      const Z = { re: 0, im: -1 / (omega * Cval) };
+      const Y = C.div({ re: 1, im: 0 }, Z);
+      addAdmittance(a, b, Y);
+    } else if (type === "ammeter" || type === "voltmeter") {
+      // treat as resistor with very low (ammeter) or very high (voltmeter) Rin
+      const Rin = Number(n.params?.Rin ?? (type === "ammeter" ? DEFAULT_PARAMS.ammeter.Rin : DEFAULT_PARAMS.voltmeter.Rin));
+      const G = { re: 1 / Rin, im: 0 };
+      addAdmittance(a, b, G);
+    } else if (type === "current") {
+      // We'll stamp current source into RHS (KCL)
+      const Irms = Number(n.params?.Irms ?? DEFAULT_PARAMS.current.Irms);
+      const phase = Number(n.params?.phase ?? DEFAULT_PARAMS.current.phase);
+      const phasor = C.fromPolar(Irms, (phase * Math.PI) / 180);
+      // Current flows from left -> right (left pin positive to right)
+      if (a !== groundIndex) {
+        const ai = netToUnknown[a];
+        B[ai] = C.sub(B[ai], phasor); // leaving left
+      }
+      if (b !== groundIndex) {
+        const bi = netToUnknown[b];
+        B[bi] = C.add(B[bi], phasor); // entering right
+      }
+    }
+  });
+
+  // Stamp voltage sources (MNA) - add rows/cols for each voltage source
+  // Voltage sources ordered as in voltageSources array
+  // For each voltage source k, its extra unknown index is unknownCount + k
+  voltageSources.forEach((vs, k) => {
+    const a = vs.a;
+    const b = vs.b;
+    const row = unknownCount + k;
+    // For node a, column for current unknown gets +1; For node b gets -1
+    if (a !== groundIndex) {
+      const ai = netToUnknown[a];
+      A[ai][row] = C.add(A[ai][row], { re: 1, im: 0 });
+      A[row][ai] = C.add(A[row][ai], { re: 1, im: 0 });
+    }
+    if (b !== groundIndex) {
+      const bi = netToUnknown[b];
+      A[bi][row] = C.sub(A[bi][row], { re: 1, im: 0 });
+      A[row][bi] = C.sub(A[row][bi], { re: 1, im: 0 });
+    }
+    // RHS for voltage equation = phasor voltage (we've chosen RMS phasors)
+    B[row] = C.add(B[row], vs.phasor);
+  });
+
+  // Solve linear system A x = B
+  const x = solveComplexLinear(A, B); // complex vector length N
+
+  // Build net voltages
+  const netVoltages = Array.from({ length: nNets }, () => C.zero());
+  netVoltages[groundIndex] = C.zero();
+  for (let i = 0; i < nNets; i++) {
+    if (i === groundIndex) continue;
+    const ui = netToUnknown[i];
+    netVoltages[i] = x[ui];
+  }
+
+  // For voltage sources, we could extract currents from x[unknownCount + k]
+  const componentCurrents = {};
+  // compute currents through each passive component as (Va - Vb)/Z or (Va-Vb)/R
+  nodes.forEach((n) => {
+    const type = n.meta?.type;
+    const a = pinToNet[`${n.id}:left`];
+    const b = pinToNet[`${n.id}:right`];
+    const Va = netVoltages[a] || C.zero();
+    const Vb = netVoltages[b] || C.zero();
+    const Vdiff = C.sub(Va, Vb);
+    if (type === "resistor") {
+      const R = Number(n.params?.R ?? DEFAULT_PARAMS.resistor.R);
+      const I = C.scale(Vdiff, 1 / R);
+      componentCurrents[n.id] = I;
+    } else if (type === "inductor") {
+      const L = Number(n.params?.L ?? DEFAULT_PARAMS.inductor.L);
+      const f = Number(n.params?.freq ?? 50);
+      const omega = 2 * Math.PI * f;
+      const Z = { re: 0, im: omega * L };
+      const I = C.div(Vdiff, Z);
+      componentCurrents[n.id] = I;
+    } else if (type === "capacitor") {
+      const Cval = Number(n.params?.C ?? DEFAULT_PARAMS.capacitor.C);
+      const f = Number(n.params?.freq ?? 50);
+      const omega = 2 * Math.PI * f;
+      const Z = { re: 0, im: -1 / (omega * Cval) };
+      const I = C.div(Vdiff, Z);
+      componentCurrents[n.id] = I;
+    } else if (type === "voltage") {
+      // current through voltage source: unknownCount + sourceIndex
+      const idx = voltageSources.findIndex((vs) => vs.node.id === n.id);
+      if (idx >= 0) {
+        const currentPhasor = x[unknownCount + idx] || C.zero();
+        componentCurrents[n.id] = currentPhasor; // current through voltage source (A)
+      }
+    } else if (type === "current") {
+      // current source current is the known phasor; we recorded earlier
+      const Irms = Number(n.params?.Irms ?? DEFAULT_PARAMS.current.Irms);
+      const phase = Number(n.params?.phase ?? DEFAULT_PARAMS.current.phase);
+      componentCurrents[n.id] = C.fromPolar(Irms, (phase * Math.PI) / 180);
+    } else if (type === "ammeter" || type === "voltmeter") {
+      const Rin = Number(n.params?.Rin ?? (type === "ammeter" ? DEFAULT_PARAMS.ammeter.Rin : DEFAULT_PARAMS.voltmeter.Rin));
+      const I = C.scale(Vdiff, 1 / Rin);
+      componentCurrents[n.id] = I;
+    } else {
+      componentCurrents[n.id] = C.zero();
+    }
+  });
+
+  return { netVoltages, componentCurrents, pinToNet, nets };
+}
+
+/* ===========================
+   Component Node UI (draggable)
+   =========================== */
+function NodeCard({ node, onMouseDown, selected, onClick }) {
+  const style = {
+    position: "absolute",
+    left: node.x,
+    top: node.y,
+    width: node.width,
+    height: node.height,
+    borderRadius: 10,
+    background: CARD,
+    border: `1px solid ${BORDER}`,
+    color: TEXT,
+    boxShadow: "0 6px 24px rgba(0,0,0,0.5)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "move",
+    userSelect: "none",
+    transition: "transform 120ms ease",
+    transform: selected ? "scale(1.02)" : "none",
+  };
   return (
     <div
-      style={{
-        minWidth: 170,
-        borderRadius: 12,
-        overflow: "hidden",
-        border: `1px solid ${THEME.border}`,
-        background: "linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01))",
-        padding: 8,
-        color: THEME.text,
+      style={style}
+      onMouseDown={(e) => onMouseDown(e)}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick?.();
       }}
+      title={node.label}
     >
-      {/* left handles (terminal a) */}
-      <Handle
-        id={`a-target`}
-        type="target"
-        position="left"
-        style={{ background: "transparent", left: -8 }}
-      />
-      <Handle
-        id={`a-source`}
-        type="source"
-        position="left"
-        style={{ background: "transparent", left: -8 }}
-      />
-
-      {/* right handles (terminal b) */}
-      <Handle
-        id={`b-target`}
-        type="target"
-        position="right"
-        style={{ background: "transparent", right: -8 }}
-      />
-      <Handle
-        id={`b-source`}
-        type="source"
-        position="right"
-        style={{ background: "transparent", right: -8 }}
-      />
-
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <div style={{ width: 40, height: 40, borderRadius: 8, background: data.color, display: "flex", alignItems: "center", justifyContent: "center", color: "black" }}>
-          {data.icon}
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 12, color: THEME.text, fontWeight: 700 }}>{data.type.toUpperCase()}</div>
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>{data.id}</div>
-        </div>
-      </div>
-
-      <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", gap: 8 }}>
-        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.85)" }}>{typeof data.value === "number" ? `${data.value}` : data.value}</div>
-        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>{data.label}</div>
-      </div>
-
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10 }}>
-        {/* visual small ports */}
-        <div style={{ width: 12, height: 12, borderRadius: 6, background: "rgba(255,255,255,0.06)" }} />
-        <div style={{ width: 12, height: 12, borderRadius: 6, background: "rgba(255,255,255,0.06)" }} />
+      <div style={{ textAlign: "center", pointerEvents: "none" }}>
+        <div style={{ fontWeight: 700, color: ORANGE }}>{node.label}</div>
+        <div style={{ fontSize: 11, color: MUTED }}>{node.meta?.type}</div>
       </div>
     </div>
   );
 }
 
-// Register custom node types for React Flow mapping
-const nodeTypes = {
-  componentNode: ComponentNode,
-};
-
-// ---------------- Utility: union-find to compute nets ----------------
-function unionFindInit() {
-  return { parent: {} };
-}
-function ufFind(uf, x) {
-  if (!(x in uf.parent)) uf.parent[x] = x;
-  if (uf.parent[x] !== x) uf.parent[x] = ufFind(uf, uf.parent[x]);
-  return uf.parent[x];
-}
-function ufUnion(uf, a, b) {
-  const ra = ufFind(uf, a);
-  const rb = ufFind(uf, b);
-  if (ra !== rb) uf.parent[ra] = rb;
+/* ===========================
+   Wire path helper (nice cubic)
+   =========================== */
+function makeWirePath(x1, y1, x2, y2) {
+  const dx = Math.max(30, Math.abs(x2 - x1));
+  const cx1 = x1 + dx * 0.35;
+  const cx2 = x2 - dx * 0.35;
+  return `M ${x1} ${y1} C ${cx1} ${y1}, ${cx2} ${y2}, ${x2} ${y2}`;
 }
 
-// ---------------- Build nets from nodes & edges ----------------
-// Each node has two default handles: "a" and "b" (terminal 0 and 1)
-function buildNetsFromReactFlow(nodes, edges) {
-  const uf = unionFindInit();
-  nodes.forEach((n) => {
-    ufFind(uf, `${n.id}:a`);
-    ufFind(uf, `${n.id}:b`);
+/* ===========================
+   MAIN Component
+   =========================== */
+export default function CircuitPlayground() {
+  // nodes and wires state
+  const [nodes, setNodes] = useState(() => {
+    // initial demo scene: voltage source -> resistor -> resistor -> ground
+    return [
+      {
+        id: uuidv4(),
+        x: 120,
+        y: 120,
+        width: 160,
+        height: 56,
+        label: "AC Source",
+        meta: { type: "voltage" },
+        params: { Vrms: 12, phase: 0, freq: 50 },
+      },
+      {
+        id: uuidv4(),
+        x: 360,
+        y: 120,
+        width: 120,
+        height: 48,
+        label: "R 1 kΩ",
+        meta: { type: "resistor" },
+        params: { R: 1000 },
+      },
+      {
+        id: uuidv4(),
+        x: 560,
+        y: 120,
+        width: 120,
+        height: 48,
+        label: "R 2.2 kΩ",
+        meta: { type: "resistor" },
+        params: { R: 2200 },
+      },
+      {
+        id: uuidv4(),
+        x: 760,
+        y: 120,
+        width: 130,
+        height: 52,
+        label: "Voltmeter",
+        meta: { type: "voltmeter" },
+        params: { Rin: 1e7 },
+      },
+      {
+        id: uuidv4(),
+        x: 560,
+        y: 240,
+        width: 130,
+        height: 52,
+        label: "Ammeter (in series)",
+        meta: { type: "ammeter" },
+        params: { Rin: 0.01 },
+      },
+    ];
+  });
+  const [wires, setWires] = useState(() => {
+    // initial wires to connect the demo nodes left/right pins in sequence
+    // We'll connect AC Source.right -> R1.left, R1.right -> R2.left, R2.right -> Voltmeter.left,
+    // Voltmeter.right -> AC Source.left to complete loop. Ammeter is connected in series to R2.right -> Amm.left, Amm.right -> Voltmeter.left
+    const ids = nodes.map((n) => n.id);
+    if (ids.length < 5) return [];
+    const [src, r1, r2, volt, amm] = ids;
+    return [
+      { id: uuidv4(), from: { node: src, side: "right" }, to: { node: r1, side: "left" } },
+      { id: uuidv4(), from: { node: r1, side: "right" }, to: { node: r2, side: "left" } },
+      { id: uuidv4(), from: { node: r2, side: "right" }, to: { node: amm, side: "left" } },
+      { id: uuidv4(), from: { node: amm, side: "right" }, to: { node: volt, side: "left" } },
+      { id: uuidv4(), from: { node: volt, side: "right" }, to: { node: src, side: "left" } },
+    ];
   });
 
-  edges.forEach((e) => {
-    // Normalize handles: if edge stored with '-source' or '-target', split to base terminal id
-    const srcHandle = e.sourceHandle ? e.sourceHandle.split("-")[0] : "a";
-    const tgtHandle = e.targetHandle ? e.targetHandle.split("-")[0] : "a";
-    const src = `${e.source}:${srcHandle}`;
-    const dst = `${e.target}:${tgtHandle}`;
-    ufFind(uf, src);
-    ufFind(uf, dst);
-    ufUnion(uf, src, dst);
-  });
-
-  // group terminals by root to nets
-  const netMap = {};
-  Object.keys(uf.parent).forEach((term) => {
-    const root = ufFind(uf, term);
-    netMap[root] = netMap[root] || [];
-    netMap[root].push(term);
-  });
-
-  // map each terminal to a net index 0..N-1
-  const roots = Object.keys(netMap);
-  const terminalToNet = {};
-  roots.forEach((r, idx) => {
-    netMap[r].forEach((t) => (terminalToNet[t] = idx));
-  });
-
-  return { terminalToNet, netCount: roots.length, netGroups: netMap };
-}
-
-// ---------------- MNA solver (AC steady-state) ----------------
-// (The solver code is preserved from original file with minor safety tweaks)
-function solveMNA(nodes, edges, frequency) {
-  const { terminalToNet, netCount } = buildNetsFromReactFlow(nodes, edges);
-
-  const comps = nodes.map((n) => {
-    const aTerm = `${n.id}:a`;
-    const bTerm = `${n.id}:b`;
-    const na = terminalToNet[aTerm] !== undefined ? terminalToNet[aTerm] : null;
-    const nb = terminalToNet[bTerm] !== undefined ? terminalToNet[bTerm] : null;
-    return {
-      id: n.id,
-      type: n.data.type,
-      value: n.data.value,
-      na,
-      nb,
-      label: n.data.label,
-    };
-  });
-
-  const refNet = 0;
-  const netIndexToVar = {};
-  let varIdx = 0;
-  for (let i = 0; i < netCount; i++) {
-    if (i === refNet) continue;
-    netIndexToVar[i] = varIdx++;
-  }
-
-  const voltageSources = comps.filter((c) => c.type === "voltage");
-  const nv = voltageSources.length;
-  const nVar = varIdx + nv;
-
-  const A = Array.from({ length: nVar }, () => Array.from({ length: nVar }, () => [0, 0]));
-  const b = Array.from({ length: nVar }, () => [0, 0]);
-
-  const omega = 2 * Math.PI * Math.max(0.0001, frequency);
-
-  function aAdd(i, j, c) {
-    A[i][j] = cAdd(A[i][j], c);
-  }
-  function bAdd(i, c) {
-    b[i] = cAdd(b[i], c);
-  }
-
-  comps.forEach((c) => {
-    const { na, nb } = c;
-    if (c.type === "voltage") return;
-
-    let Y;
-    if (c.type === "resistor") Y = [1 / Math.max(1e-12, c.value), 0];
-    else if (c.type === "capacitor") Y = [0, omega * c.value];
-    else if (c.type === "inductor") Y = [0, -1 / (omega * c.value)];
-    else Y = [1 / Math.max(1e-12, c.value || 1), 0];
-
-    const ia = na === null ? null : na === refNet ? null : netIndexToVar[na];
-    const ib = nb === null ? null : nb === refNet ? null : netIndexToVar[nb];
-
-    if (ia !== null) aAdd(ia, ia, Y);
-    if (ib !== null) aAdd(ib, ib, Y);
-    if (ia !== null && ib !== null) {
-      aAdd(ia, ib, [-Y[0], -Y[1]]);
-      aAdd(ib, ia, [-Y[0], -Y[1]]);
-    }
-  });
-
-  voltageSources.forEach((vs, idx) => {
-    const srcVar = varIdx + idx;
-    const { na, nb } = vs;
-    const ia = na === refNet ? null : netIndexToVar[na];
-    const ib = nb === refNet ? null : netIndexToVar[nb];
-
-    if (ia !== null) aAdd(ia, srcVar, [1, 0]);
-    if (ib !== null) aAdd(ib, srcVar, [-1, 0]);
-
-    if (ia !== null) aAdd(srcVar, ia, [1, 0]);
-    if (ib !== null) aAdd(srcVar, ib, [-1, 0]);
-
-    const Vph = [vs.value || 0, 0];
-    bAdd(srcVar, Vph);
-  });
-
-  // Solve complex linear system by Gaussian elimination (naive)
-  const N = nVar;
-  const M = A.map((row) => row.map((c) => [c[0], c[1]]));
-  const rhs = b.map((c) => [c[0], c[1]]);
-
-  function swapRows(i, j) {
-    const tmp = M[i];
-    M[i] = M[j];
-    M[j] = tmp;
-    const t2 = rhs[i];
-    rhs[i] = rhs[j];
-    rhs[j] = t2;
-  }
-  function complexAbsSq(z) {
-    return z[0] * z[0] + z[1] * z[1];
-  }
-
-  for (let k = 0; k < N; k++) {
-    let piv = k;
-    let pivMag = complexAbsSq(M[k][k]);
-    for (let r = k + 1; r < N; r++) {
-      const mag = complexAbsSq(M[r][k]);
-      if (mag > pivMag) {
-        piv = r;
-        pivMag = mag;
-      }
-    }
-    if (piv !== k) swapRows(k, piv);
-
-    const pivot = M[k][k];
-    if (Math.abs(pivot[0]) < 1e-12 && Math.abs(pivot[1]) < 1e-12) continue;
-
-    for (let col = k; col < N; col++) M[k][col] = cDiv(M[k][col], pivot);
-    rhs[k] = cDiv(rhs[k], pivot);
-
-    for (let r = 0; r < N; r++) {
-      if (r === k) continue;
-      const factor = M[r][k];
-      if (Math.abs(factor[0]) < 1e-15 && Math.abs(factor[1]) < 1e-15) continue;
-      for (let c = k; c < N; c++) {
-        M[r][c] = cSub(M[r][c], cMul(factor, M[k][c]));
-      }
-      rhs[r] = cSub(rhs[r], cMul(factor, rhs[k]));
-    }
-  }
-
-  const x = rhs.map((v) => [v[0], v[1]]);
-
-  const nodeVoltages = Array.from({ length: netCount }, () => [0, 0]);
-  for (let net = 0; net < netCount; net++) {
-    if (net === refNet) nodeVoltages[net] = [0, 0];
-    else {
-      const vidx = netIndexToVar[net];
-      if (vidx !== undefined && vidx < x.length) nodeVoltages[net] = x[vidx];
-      else nodeVoltages[net] = [0, 0];
-    }
-  }
-
-  const vsCurrents = voltageSources.map((vs, idx) => {
-    const vidx = varIdx + idx;
-    return x[vidx] || [0, 0];
-  });
-
-  const branchCurrents = comps.map((c) => {
-    const na = c.na;
-    const nb = c.nb;
-    const Vna = na !== null ? nodeVoltages[na] : [0, 0];
-    const Vnb = nb !== null ? nodeVoltages[nb] : [0, 0];
-    const Vab = cSub(Vna, Vnb);
-    if (c.type === "voltage") {
-      return { id: c.id, current: null };
-    }
-    let Z;
-    if (c.type === "resistor") Z = [c.value, 0];
-    else if (c.type === "capacitor") Z = [0, -1 / (omega * c.value)];
-    else if (c.type === "inductor") Z = [0, omega * c.value];
-    else Z = [c.value || 1, 0];
-    const I = cDiv(Vab, Z);
-    return { id: c.id, current: I };
-  });
-
-  return {
-    netCount,
-    nodeVoltages,
-    vsCurrents,
-    branchCurrents,
-    comps,
-    success: true,
-  };
-}
-
-// ---------------- waveform builder ----------------
-function makeWaveformFromNodeVoltage(phComplex, frequency, sampleCount = 240) {
-  const omega = 2 * Math.PI * Math.max(0.0001, frequency);
-  const data = [];
-  for (let i = 0; i < sampleCount; i++) {
-    const t = (i / sampleCount) * (1 / frequency) * 2;
-    const vt = phComplex[0] * Math.cos(omega * t) - phComplex[1] * Math.sin(omega * t);
-    data.push({ t, v: vt });
-  }
-  return data;
-}
-
-// ---------------- SVG overlay for animated wire currents ----------------
-function WireFlowOverlay({ edges, branchCurrents, nodes }) {
-  const currentsMap = {};
-  branchCurrents.forEach((b) => {
-    currentsMap[b.id] = b.current;
-  });
-
-  return (
-    <svg className="pointer-events-none absolute inset-0 w-full h-full">
-      {edges.map((e) => {
-        const srcNode = nodes.find((n) => n.id === e.source);
-        const tgtNode = nodes.find((n) => n.id === e.target);
-        if (!srcNode || !tgtNode) return null;
-        const sx = srcNode.position.x + 120;
-        const sy = srcNode.position.y + 24;
-        const tx = tgtNode.position.x + 120;
-        const ty = tgtNode.position.y + 24;
-
-        const compId = srcNode.id;
-        const c = currentsMap[compId];
-        let mag = 0;
-        if (c && c.current) mag = Math.min(1.0, cAbs(c.current));
-        const stroke = `rgba(255,122,45,${0.12 + 0.6 * Math.min(1, mag)})`;
-        const dashOffset = ((Date.now() / 60) % 100) * (0.5 + mag);
-
-        return (
-          <g key={e.id}>
-            <defs>
-              <linearGradient id={`g-${e.id}`} x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor={THEME.accent} stopOpacity="0.9" />
-                <stop offset="100%" stopColor={THEME.accent2} stopOpacity="0.85" />
-              </linearGradient>
-            </defs>
-            <line x1={sx} y1={sy} x2={tx} y2={ty} stroke={`url(#g-${e.id})`} strokeWidth={4} strokeLinecap="round" strokeDasharray="8 6" strokeDashoffset={dashOffset} opacity={0.9} />
-            <circle cx={(sx + tx) / 2} cy={(sy + ty) / 2} r={4 + mag * 4} fill={THEME.accent2} opacity={0.95} />
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-// ---------------- Modal component (simple inline) ----------------
-function Modal({ open, onClose, children, title }) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-      <div className="relative z-50 w-full max-w-md p-4">
-        <div style={{ borderRadius: 12, background: THEME.cardBg, border: `1px solid ${THEME.border}`, padding: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <div style={{ fontWeight: 700 }}>{title}</div>
-            <button onClick={onClose} className="text-zinc-400">✕</button>
-          </div>
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ---------------- Main Page ----------------
-export default function CircuitPlaygroundV2() {
-  // React Flow state hooks
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const reactFlowWrapper = useRef(null);
-  const [rfInstance, setRfInstance] = useState(null);
-
-  // Simulation & UI state
-  const [frequency, setFrequency] = useState(50);
+  const [selectedId, setSelectedId] = useState(null);
+  const [pendingPin, setPendingPin] = useState(null); // { node, side } when user clicked first pin to connect
+  const [isMobile, setIsMobile] = useState(false);
   const [running, setRunning] = useState(true);
-  const [selectedNodeId, setSelectedNodeId] = useState(null);
-  const [mnaResult, setMnaResult] = useState(null);
-  const [showWaveformForNet, setShowWaveformForNet] = useState(null);
+  const [timeMs, setTimeMs] = useState(0);
+   const [mobileOpen, setMobileOpen] = useState(false);
+  // chart samples
+  const [chartData, setChartData] = useState([]);
+  const chartRef = useRef([]);
 
-  // Modal editable fields
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalValue, setModalValue] = useState("");
-  const [modalLabel, setModalLabel] = useState("");
+  // phasor solution
+  const lastSolution = useRef({ netVoltages: [], componentCurrents: {}, pinToNet: {}, nets: [] });
 
-  // initial sample circuit
+  // detect mobile/desktop
   useEffect(() => {
-    if (nodes.length === 0) {
-      const n1 = makeNode("voltage", { x: 40, y: 120 });
-      const n2 = makeNode("resistor", { x: 320, y: 120 });
-      const n3 = makeNode("resistor", { x: 620, y: 120 });
-      setNodes([n1, n2, n3]);
-      setEdges([
-        { id: "e1", source: n1.id, sourceHandle: "a", target: n2.id, targetHandle: "a", animated: true },
-        { id: "e2", source: n2.id, sourceHandle: "b", target: n3.id, targetHandle: "a", animated: true },
-        { id: "e3", source: n3.id, sourceHandle: "b", target: n1.id, targetHandle: "b", animated: true },
-      ]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const onResize = () => setIsMobile(window.innerWidth < 1024);
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // Normalize a handle id such as "a-source" => "a"
-  const normalizeHandle = (h) => (h ? h.split("-")[0] : h);
-
-  // React Flow onConnect: enforce port-to-port connections; normalize handles; reject same-node direct self-connection
-  const onConnect = useCallback(
-    (params) => {
-      // must have source and target
-      if (!params.source || !params.target) {
-        window.alert("Invalid connection (missing source/target).");
-        return;
-      }
-      // reject connecting node -> same node on same terminal
-      if (params.source === params.target) {
-        // allow connecting different handles on same node? usually no. Block for safety.
-        window.alert("Cannot connect a node to itself.");
-        return;
-      }
-
-      // Normalize handles like "a-source" -> "a"
-      const srcHandle = normalizeHandle(params.sourceHandle) || "a";
-      const tgtHandle = normalizeHandle(params.targetHandle) || "a";
-
-      // ensure handles exist (only 'a' and 'b' allowed)
-      const allowed = ["a", "b"];
-      if (!allowed.includes(srcHandle) || !allowed.includes(tgtHandle)) {
-        window.alert("Connections must be between valid component ports (a or b).");
-        return;
-      }
-
-      // create unique id for edge
-      const newEdge = {
-        ...params,
-        id: `e-${Math.random().toString(36).slice(2, 7)}`,
-        animated: true,
-        style: { stroke: THEME.accent2, strokeWidth: 3 },
-        sourceHandle: srcHandle,
-        targetHandle: tgtHandle,
-      };
-
-      // prevent duplicates (same source/target and handles)
-      const exists = edges.some(
-        (e) =>
-          e.source === newEdge.source &&
-          e.target === newEdge.target &&
-          (e.sourceHandle === newEdge.sourceHandle || e.targetHandle === newEdge.targetHandle)
-      );
-      if (exists) {
-        // still allow multiple wires between same nodes but different handles? block for now
-        window.alert("A similar connection already exists.");
-        return;
-      }
-
-      setEdges((eds) => addEdge(newEdge, eds));
-    },
-    [edges, setEdges]
-  );
-
-  // Add component from palette
-  function addComponent(type) {
-    const rect = reactFlowWrapper.current?.getBoundingClientRect();
-    const pos = rect ? { x: Math.max(40, rect.width / 2 - 60), y: rect.height / 2 - 40 } : { x: 40, y: 40 };
-    const node = makeNode(type, pos);
-    setNodes((nds) => nds.concat(node));
-  }
-
-  function removeNodeById(nodeId) {
-    setNodes((nds) => nds.filter((n) => n.id !== nodeId));
-    setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
-    if (selectedNodeId === nodeId) {
-      setSelectedNodeId(null);
-      setModalOpen(false);
-    }
-  }
-
-  function resetCanvas() {
-    setNodes([]);
-    setEdges([]);
-    setMnaResult(null);
-    setSelectedNodeId(null);
-    setModalOpen(false);
-  }
-
-  // Update node property
-  function updateNodeValue(nodeId, newValue) {
-    setNodes((nds) => nds.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, value: newValue } } : n)));
-  }
-  function updateNodeLabel(nodeId, newLabel) {
-    setNodes((nds) => nds.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, label: newLabel } } : n)));
-  }
-
-  // When user clicks a node -> open modal to edit or delete
-  function handleNodeClick(evt, node) {
-    setSelectedNodeId(node.id);
-    setModalValue(String(node.data.value ?? ""));
-    setModalLabel(String(node.data.label ?? ""));
-    setModalOpen(true);
-  }
-
-  // Main simulation runner
+  // Simulation loop: every 60ms compute phasor solution and push sample (instantaneous) for charts
   useEffect(() => {
-    let tick = null;
-    function runOnce() {
-      try {
-        const result = solveMNA(nodes, edges, frequency);
-        setMnaResult(result);
-      } catch (err) {
-        console.error("Solver error", err);
-        setMnaResult(null);
+    let raf = null;
+    let t0 = performance.now();
+    function step(now) {
+      const dt = now - t0;
+      t0 = now;
+      if (running) {
+        setTimeMs((prev) => prev + dt);
+      }
+      raf = requestAnimationFrame(step);
+    }
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [running]);
+
+  // Recompute phasor solution whenever nodes/wires change or frequency changes
+  const recompute = useCallback(() => {
+    const sol = solvePhasor(nodes, wires);
+    lastSolution.current = sol;
+    // sample instantaneous waveform for primary node (choose first net if exists)
+    const netVoltages = sol.netVoltages || [];
+    if (netVoltages.length === 0) return;
+    // choose a representative net (net index 1 if >1 else 0) - pick net connected to first voltage source's positive pin ideally
+    // find a node that's a voltage source and use its right pin net as displayed node
+    let chosenNetIndex = 0;
+    for (let n of nodes) {
+      if (n.meta?.type === "voltage") {
+        const pinKey = `${n.id}:right`;
+        const pinToNet = sol.pinToNet || {};
+        if (pinKey in pinToNet) {
+          chosenNetIndex = pinToNet[pinKey];
+          break;
+        }
       }
     }
-    runOnce();
-    if (running) {
-      tick = setInterval(runOnce, 450);
-    }
-    return () => clearInterval(tick);
-  }, [nodes, edges, frequency, running]);
+    // default fallback
+    if (typeof chosenNetIndex === "undefined") chosenNetIndex = 0;
 
-  // Build waveform data for selected net or first net
-  const waveformData = useMemo(() => {
-    if (!mnaResult) return [];
-    const netVoltages = mnaResult.nodeVoltages || [];
-    const netIndex = showWaveformForNet !== null ? showWaveformForNet : 0;
-    const ph = netVoltages[netIndex] || [0, 0];
-    const data = [];
-    const sampleCount = 240;
-    const omega = 2 * Math.PI * Math.max(0.0001, frequency);
-    for (let i = 0; i < sampleCount; i++) {
-      const t = (i / sampleCount) * (1 / frequency) * 2;
-      const v = ph[0] * Math.cos(omega * t) - ph[1] * Math.sin(omega * t);
-      data.push({ t: t.toFixed(4), v: parseFloat(v.toFixed(4)) });
-    }
-    return data;
-  }, [mnaResult, showWaveformForNet, frequency]);
+    // Build sample points by computing v(t) = Re{V_phasor * e^{j ω t}} over a few samples
+    const samples = [];
+    const maxSamples = 120; // window
+    const nowMs = performance.now();
+    const times = Array.from({ length: 80 }, (_, i) => nowMs - (80 - i) * (1000 / 120));
+    // For chosen net, attempt to find frequency: if there is at least one voltage source, take its freq else 50Hz
+    const freqs = nodes.filter(n => n.meta?.type === "voltage").map(n => Number(n.params?.freq ?? DEFAULT_PARAMS.voltage.freq));
+    const freq = freqs.length ? freqs[0] : 50;
+    const omega = 2 * Math.PI * freq;
 
-  // Utility: export circuit JSON
-  function exportCircuit() {
-    const payload = { nodes, edges, frequency };
+    const Vphasor = netVoltages[chosenNetIndex] || C.zero();
+    for (let t of times) {
+      const td = (t / 1000) % (1 / freq); // seconds into waveform
+      const angle = omega * (t / 1000);
+      // v(t) = Re{V * e^{jωt}} where V is RMS phasor; since V is RMS phasor, v(t) amplitude is sqrt(2)*|V|*cos(ωt+φ)
+      // But since we want instantaneous value consistent with phasor (RMS), compute instantaneous: v_inst = Re{V * e^{j ω t}} * sqrt(2)
+      const complexExp = C.fromPolar(1, angle);
+      const vComplex = C.mul(Vphasor, complexExp);
+      const vInst = vComplex.re * Math.SQRT2;
+      samples.push({ time: t, voltage: vInst });
+    }
+    // roll buffer
+    chartRef.current = chartRef.current.concat(samples).slice(-400);
+    // provide chart data reduced
+    const chartView = chartRef.current.map((s, i) => ({ name: i, voltage: s.voltage }));
+    setChartData(chartView);
+  }, [nodes, wires]);
+
+  // recompute whenever nodes/wires change or running toggled
+  useEffect(() => {
+    recompute();
+  }, [nodes, wires, recompute, running]);
+
+  // clocked sampling for chart while running
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => {
+      recompute();
+    }, 120);
+    return () => clearInterval(id);
+  }, [running, recompute]);
+
+  /* ===========================
+     Node dragging & interactions
+     =========================== */
+  const dragState = useRef(null); // { nodeId, offsetX, offsetY, startX, startY }
+
+  function onNodeMouseDown(e, node) {
+    e.stopPropagation();
+    dragState.current = {
+      nodeId: node.id,
+      offsetX: e.clientX - node.x,
+      offsetY: e.clientY - node.y,
+      startX: node.x,
+      startY: node.y,
+    };
+    setSelectedId(node.id);
+  }
+
+  useEffect(() => {
+    function onMouseMove(e) {
+      if (!dragState.current) return;
+      const { nodeId, offsetX, offsetY } = dragState.current;
+      setNodes((prev) => prev.map((n) => (n.id === nodeId ? { ...n, x: snap(e.clientX - offsetX), y: snap(e.clientY - offsetY) } : n)));
+    }
+    function onMouseUp(e) {
+      if (!dragState.current) return;
+      const { nodeId, startX, startY } = dragState.current;
+      // if dropped into trash area, remove node
+      const trash = document.getElementById("trash-area");
+      if (trash) {
+        const rect = trash.getBoundingClientRect();
+        if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
+          // delete node and wires connected
+          setNodes((prev) => prev.filter((n) => n.id !== nodeId));
+          setWires((prev) => prev.filter((w) => w.from.node !== nodeId && w.to.node !== nodeId));
+        }
+      }
+      dragState.current = null;
+    }
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, []);
+
+  /* ===========================
+     Pin click (connect wires)
+     =========================== */
+  function onPinClick(nodeId, side) {
+    if (!pendingPin) {
+      setPendingPin({ node: nodeId, side });
+      return;
+    }
+    // if same pin clicked, cancel
+    if (pendingPin.node === nodeId && pendingPin.side === side) {
+      setPendingPin(null);
+      return;
+    }
+    // add wire
+    const wire = { id: uuidv4(), from: pendingPin, to: { node: nodeId, side } };
+    setWires((prev) => [...prev, wire]);
+    setPendingPin(null);
+  }
+
+  /* ===========================
+     Add component from palette
+     =========================== */
+  function addComponent(tpl) {
+    const id = uuidv4();
+    const node = {
+      id,
+      x: 120 + Math.floor(Math.random() * 320),
+      y: 140 + Math.floor(Math.random() * 240),
+      width: tpl.width,
+      height: tpl.height,
+      label: tpl.label,
+      meta: { type: tpl.id },
+      params: { ...(DEFAULT_PARAMS[tpl.id] || {}) },
+    };
+    setNodes((prev) => [...prev, node]);
+  }
+
+  /* ===========================
+     Remove Selection / Export / Import
+     =========================== */
+  function removeSelected() {
+    if (!selectedId) return;
+    setNodes((prev) => prev.filter((n) => n.id !== selectedId));
+    setWires((prev) => prev.filter((w) => w.from.node !== selectedId && w.to.node !== selectedId));
+    setSelectedId(null);
+  }
+
+  function exportScene() {
+    const payload = { nodes, wires };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "circuit.json";
-    document.body.appendChild(a);
+    a.download = `circuit-${Date.now()}.json`;
     a.click();
-    a.remove();
+    URL.revokeObjectURL(url);
   }
 
-  // Utility: import (simple file input)
-  function importCircuit(file) {
+  function importScene(file) {
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = () => {
       try {
-        const parsed = JSON.parse(ev.target.result);
-        if (parsed.nodes && parsed.edges) {
-          setNodes(parsed.nodes);
-          setEdges(parsed.edges);
-          if (parsed.frequency) setFrequency(parsed.frequency);
-        } else {
-          window.alert("Invalid circuit file.");
-        }
-      } catch (e) {
-        console.error("Invalid file", e);
-        window.alert("Failed to parse file.");
+        const data = JSON.parse(reader.result);
+        setNodes(data.nodes || []);
+        setWires(data.wires || []);
+      } catch (err) {
+        console.error("Import failed", err);
       }
     };
     reader.readAsText(file);
   }
 
-  // When modal save
-  function saveModal() {
-    if (!selectedNodeId) return;
-    const parsedVal = Number(modalValue);
-    if (!Number.isNaN(parsedVal)) updateNodeValue(selectedNodeId, parsedVal);
-    updateNodeLabel(selectedNodeId, modalLabel);
-    setModalOpen(false);
+  /* ===========================
+     Inspector UI updates (edit params)
+     =========================== */
+  function updateNodeParams(nodeId, patch) {
+    setNodes((prev) => prev.map((n) => (n.id === nodeId ? { ...n, params: { ...n.params, ...patch } } : n)));
   }
 
-  // Responsive canvas height style
-  const canvasHeight = typeof window !== "undefined" ? Math.max(420, window.innerHeight - 220) : 560;
+  /* ===========================
+     Visual helpers for pin coordinates on screen
+     =========================== */
+  function pinScreenPos(node, side) {
+    // left pin at x = node.x, y = node.y + node.height/2
+    const x = side === "left" ? node.x : node.x + node.width;
+    const y = node.y + node.height / 2;
+    return { x, y };
+  }
 
+  /* ===========================
+     Derived: solutions and readouts
+     =========================== */
+  const solution = useMemo(() => solvePhasor(nodes, wires), [nodes, wires]);
+  // map component readouts
+  const readouts = useMemo(() => {
+    const ro = {};
+    for (let n of nodes) {
+      const type = n.meta?.type;
+      if (type === "voltmeter") {
+        // determine RMS voltage between its pins
+        const pinKeyL = `${n.id}:left`;
+        const pinKeyR = `${n.id}:right`;
+        const pinToNet = solution.pinToNet || {};
+        const netL = pinToNet[pinKeyL];
+        const netR = pinToNet[pinKeyR];
+        const Vl = (solution.netVoltages && solution.netVoltages[netL]) || C.zero();
+        const Vr = (solution.netVoltages && solution.netVoltages[netR]) || C.zero();
+        const Vdiff = C.sub(Vl, Vr);
+        const Vrms = C.abs(Vdiff);
+        ro[n.id] = { Vrms, phasor: Vdiff };
+      } else if (type === "ammeter") {
+        const I = solution.componentCurrents[n.id] || C.zero();
+        const Irms = C.abs(I);
+        ro[n.id] = { Irms, phasor: I };
+      } else if (type === "voltage") {
+        // show the phasor computed current through the voltage source
+        const I = solution.componentCurrents[n.id] || C.zero();
+        ro[n.id] = { I_rms: C.abs(I), phasor: I };
+      } else if (type === "resistor" || type === "inductor" || type === "capacitor") {
+        const I = solution.componentCurrents[n.id] || C.zero();
+        ro[n.id] = { I_rms: C.abs(I), phasor: I };
+      }
+    }
+    return ro;
+  }, [nodes, solution]);
+
+  /* ===========================
+     Render
+     =========================== */
+  if (isMobile) {
+    return (
+      <div className="fixed inset-0 bg-black text-white flex flex-col items-center justify-center p-6">
+        <DesktopComputer size={36} />
+        <h2 style={{ color: ORANGE, marginTop: 12, marginBottom: 6 }}>Desktop Recommended</h2>
+        <div style={{ maxWidth: 640, textAlign: "center", color: MUTED }}>
+          This interactive Circuit Playground is optimized for desktops and laptops — drag & wire features,
+          detailed charts, and 3D visualizations are hidden on small screens.
+          Please open this page on a desktop device for full functionality.
+        </div>
+      </div>
+    );
+  }
+  const node = selectedId ? nodes.find((n) => n.id === selectedId) : null;
   return (
-    <div style={{ background: THEME.bg, minHeight: "100vh", color: THEME.text }}>
-      {/* header */}
-      <header className="fixed top-0 left-0 right-0 z-40 backdrop-blur-md bg-black/30 border-b" style={{ borderColor: THEME.border }}>
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
-              <div style={{ width: 44, height: 44, borderRadius: 10, background: `linear-gradient(135deg, ${THEME.accent}, ${THEME.accent2})`, display: "flex", alignItems: "center", justifyContent: "center", color: "black" }}>
-                <Activity className="w-5 h-5" />
+    <div style={{ minHeight: "100vh", background: `linear-gradient(180deg, ${BG}, #0b0b0b)`, color: TEXT, padding: 12 }}>
+      {/* Header */}
+    <header className="fixed  w-full top-0 z-50 backdrop-blur-lg bg-black/70 border-b border-zinc-800 shadow-lg py-2 sm:py-0">
+      <div className=" px-3 sm:px-6 lg:px-8">
+        {/* Top Row */}
+        <div className="flex items-center justify-between h-12 sm:h-14 md:h-16">
+          {/* Left Side Logo + Title */}
+          <motion.div
+            initial={{ y: -6, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.4 }}
+            className="flex items-center gap-2 sm:gap-3 cursor-pointer select-none min-w-0"
+            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          >
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center shadow-md hover:scale-105 transition-transform duration-300">
+              <Zap className="w-5 h-5 text-black" />
+            </div>
+            <div className="truncate">
+              <div className="text-sm font-semibold text-zinc-200 truncate">
+                SparkLab
               </div>
-              <div>
-                <div className="text-sm text-zinc-300">SparkLab</div>
-                <div className="text-xs text-zinc-400 -mt-0.5">Circuit Playground • v2</div>
+              <div className="text-xs text-zinc-400 -mt-0.5 truncate">
+               Circuit Playground
               </div>
             </div>
+          </motion.div>
 
-            <div className="flex items-center gap-3">
-              <div className="hidden md:block text-xs text-zinc-400">Drag components → connect ports (left ↔ right) → run</div>
-              <Button className="bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black" onClick={() => setRunning((r) => !r)}>
-                {running ? <><Pause className="w-4 h-4 mr-2" /> Pause</> : <><Play className="w-4 h-4 mr-2" /> Run</>}
+          {/* Desktop Controls */}
+          <div className="hidden md:flex items-center gap-4">
+            {/* Simulation Mode Selector */}
+            <div className="w-32">
+ 
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2">
+              <Button
+                className={`font-semibold text-sm px-3 py-1 rounded-lg shadow-md transition-transform duration-200 ${
+                  running
+                    ? "bg-zinc-900 text-orange-400 border border-orange-500/40"
+                    : "bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black hover:scale-105"
+                }`}
+                onClick={() => setRunning((r) => !r)}
+                title={running ? "Pause simulation" : "Run simulation"}
+              >
+                {running ? <Pause className="w-4 h-4 mr-1" /> : <Play className="w-4 h-4 mr-1" />}{" "}
+                {running ? "Pause" : "Run"}
               </Button>
-              <Button variant="outline" className="border border-zinc-700" onClick={resetCanvas}><RotateCcw className="w-4 h-4 mr-2" /> Reset</Button>
-              <Button variant="ghost" className="border border-zinc-700" onClick={exportCircuit}><DownloadCloud className="w-4 h-4 mr-2" /> Export</Button>
-            </div>
-          </div>
-        </div>
-      </header>
 
-      {/* main */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-16">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* palette and controls */}
-          <div className="lg:col-span-3 space-y-4">
-            <Card className="rounded-2xl border" style={{ borderColor: THEME.border, background: THEME.cardBg }}>
-              <CardHeader className="p-4">
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 8, background: THEME.accent, display: "flex", alignItems: "center", justifyContent: "center", color: "black" }}>
-                    <Plus className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-sm">Component Library</CardTitle>
-                    <div className="text-xs text-zinc-400">Click to add → then connect left/right ports</div>
-                  </div>
-                </div>
-              </CardHeader>
+              <Button
+                variant="ghost"
+                className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg hover:bg-zinc-800 hover:text-orange-400 transition-colors"
+                onClick={exportScene}
+                title="Export Circuit"
+              >
+                <Download className="w-4 h-4" />
+              </Button>
 
-              <CardContent className="p-3 space-y-2">
-                {COMPONENT_CATALOG.map((c) => (
-                  <motion.div key={c.type} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="flex items-center justify-between p-2 rounded-md border cursor-pointer" style={{ borderColor: THEME.border }} onClick={() => addComponent(c.type)}>
-                    <div className="flex items-center gap-2">
-                      <div style={{ width: 36, height: 36, borderRadius: 8, background: c.color, display: "flex", alignItems: "center", justifyContent: "center", color: "black" }}>{c.icon}</div>
-                      <div>
-                        <div className="text-sm">{c.label}</div>
-                        <div className="text-xs text-zinc-400">Default: {c.defaultValue}</div>
-                      </div>
-                    </div>
-                    <Plus className="w-4 h-4 text-zinc-400" />
-                  </motion.div>
-                ))}
-
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <Button onClick={() => setNodes([])} variant="outline" className="border border-zinc-700">Clear Nodes</Button>
-                  <Button onClick={() => setEdges([])} variant="outline" className="border border-zinc-700">Clear Wires</Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-2xl border" style={{ borderColor: THEME.border, background: THEME.cardBg }}>
-              <CardHeader className="p-4">
-                <CardTitle className="text-sm">Simulation</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-xs text-zinc-400">AC Frequency (Hz)</div>
-                <Input type="number" value={frequency} onChange={(e) => setFrequency(Number(e.target.value) || 1)} className="bg-zinc-900/60 mt-2" />
-                <div className="mt-3 text-xs text-zinc-400">Selected Component</div>
-                <div className="mt-2">
-                  <div className="text-sm">{selectedNodeId ? selectedNodeId : <span className="text-zinc-500">None</span>}</div>
-                  {selectedNodeId && (
-                    <>
-                      <div className="mt-2">
-                        <label className="text-xs text-zinc-400">Value</label>
-                        <Input type="number" onChange={(e) => updateNodeValue(selectedNodeId, Number(e.target.value) || 0)} className="bg-zinc-900/60 mt-1" />
-                      </div>
-                      <div className="flex gap-2 mt-3">
-                        <Button className="border border-zinc-700" onClick={() => removeNodeById(selectedNodeId)}><Trash2 className="w-4 h-4 mr-2" />Remove</Button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-2xl border p-3" style={{ borderColor: THEME.border, background: THEME.cardBg }}>
-              <CardHeader className="p-3">
-                <CardTitle className="text-sm">Measurement</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-xs text-zinc-400 mb-2">Live Readings</div>
-                {mnaResult ? (
-                  <>
-                    <div className="text-sm">Nets: {mnaResult.netCount}</div>
-                    <div className="mt-2 grid grid-cols-1 gap-2">
-                      {mnaResult.nodeVoltages.map((v, idx) => (
-                        <div key={idx} className="flex justify-between items-center">
-                          <div className="text-xs text-zinc-400">Net {idx}</div>
-                          <div className="text-sm">{(v[0] || 0).toFixed(3)} + j{(v[1] || 0).toFixed(3)} V</div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-2 text-xs text-zinc-400">Branch currents</div>
-                    <div className="mt-1 text-sm">
-                      {mnaResult.branchCurrents.map((b) => (
-                        <div key={b.id} className="flex justify-between">
-                          <div>{b.id}</div>
-                          <div>{b.current ? cAbs(b.current).toFixed(4) + " A" : "-"}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-xs text-zinc-500">No simulation result yet</div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* canvas area */}
-          <div className="lg:col-span-6 relative" ref={reactFlowWrapper} style={{ minHeight: canvasHeight }}>
-            <div className="absolute inset-0 pointer-events-none z-10">
-              {mnaResult && <WireFlowOverlay edges={edges} branchCurrents={mnaResult.branchCurrents} nodes={nodes} />}
-            </div>
-
-            <div style={{ width: "100%", height: canvasHeight, borderRadius: 16, overflow: "hidden", border: `1px solid ${THEME.border}` }}>
-              <ReactFlowProvider>
-                <ReactFlow
-                  nodes={nodes}
-                  edges={edges}
-                  onNodesChange={onNodesChange}
-                  onEdgesChange={onEdgesChange}
-                  onConnect={onConnect}
-                  onInit={(rf) => setRfInstance(rf)}
-                  onNodeClick={handleNodeClick}
-                  nodeTypes={nodeTypes}
-                  fitView
-                  connectionLineStyle={{ stroke: THEME.accent2, strokeWidth: 2 }}
-                  connectionLineType="bezier"
+              <label>
+                <input
+                  type="file"
+                  accept="application/json"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) importScene(f);
+                  }}
+                />
+                <Button
+                  variant="ghost"
+                  className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg hover:bg-zinc-800 hover:text-orange-400 transition-colors"
+                  asChild
                 >
-                  <MiniMap style={{ background: THEME.cardBg, borderRadius: 8 }} nodeColor={(n) => n.data.color || THEME.accent} />
-                  <RFControls />
-                  <RFBackground gap={16} size={1} style={{ background: THEME.bg }} />
-                </ReactFlow>
-              </ReactFlowProvider>
+                  <div title="Import Circuit">
+                    <Upload className="w-4  h-4"/>
+                  </div>
+                </Button>
+              </label>
+
+              <Button
+                variant="ghost"
+                className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg hover:bg-zinc-800 hover:text-red-400 transition-colors"
+                onClick={removeSelected}
+                title="Delete Selected"
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+
+              <Button
+                variant="ghost"
+                className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg hover:bg-zinc-800 hover:text-orange-400 transition-colors"
+                title="Settings"
+              >
+                <Settings className="w-4 h-4" />
+              </Button>
             </div>
           </div>
 
-          {/* right: waveform and details */}
-          <div className="lg:col-span-3 space-y-4">
-            <Card className="rounded-2xl border p-3" style={{ borderColor: THEME.border, background: THEME.cardBg }}>
-              <CardHeader className="p-3 flex items-center justify-between">
-                <CardTitle className="text-sm">Oscilloscope</CardTitle>
-                <div className="text-xs text-zinc-400">Voltage vs Time</div>
-              </CardHeader>
-              <CardContent>
-                <div className="h-56 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={waveformData}>
-                      <CartesianGrid stroke={THEME.subtle} strokeDasharray="3 3" />
-                      <XAxis dataKey="t" hide />
-                      <YAxis domain={["auto", "auto"]} />
-                      <Tooltip />
-                      <Line isAnimationActive={false} type="monotone" dataKey="v" stroke={THEME.accent} dot={false} strokeWidth={2} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-
-                <div className="mt-3 flex gap-2">
-                  <Button className="border border-zinc-700" onClick={() => setShowWaveformForNet((s) => (s === null ? 0 : null))}>Toggle Net Wave</Button>
-                  <Button onClick={() => exportCircuit()} className="bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black">Export JSON</Button>
-                  <input type="file" accept="application/json" onChange={(e) => e.target.files && importCircuit(e.target.files[0])} className="hidden" id="import-file" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-2xl border p-3" style={{ borderColor: THEME.border, background: THEME.cardBg }}>
-              <CardHeader className="p-3 flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-sm">Quick Actions</CardTitle>
-                </div>
-                <div className="text-xs text-zinc-400">Tools</div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 gap-2">
-                  <Button onClick={() => setNodes((n) => n.concat(makeNode("resistor", { x: 160 + n.length * 20, y: 180 })))} className="border border-zinc-700">Add Resistor</Button>
-                  <Button onClick={() => setNodes((n) => n.concat(makeNode("capacitor", { x: 200 + n.length * 20, y: 220 })))} className="border border-zinc-700">Add Capacitor</Button>
-                  <Button onClick={() => setNodes((n) => n.concat(makeNode("inductor", { x: 240 + n.length * 20, y: 260 })))} className="border border-zinc-700">Add Inductor</Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-2xl border p-3" style={{ borderColor: THEME.border, background: THEME.cardBg }}>
-              <CardHeader className="p-3">
-                <CardTitle className="text-sm">Netlist Preview</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-xs text-zinc-400">Nodes</div>
-                <div className="mt-2 text-sm">
-                  {nodes.map((n) => (
-                    <div key={n.id} className="flex justify-between">
-                      <div>{n.id}</div>
-                      <div className="text-zinc-400">{n.data.type}</div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-3 text-xs text-zinc-400">Wires</div>
-                <div className="mt-2 text-sm">
-                  {edges.map((e) => (
-                    <div key={e.id} className="flex justify-between">
-                      <div>{e.id}</div>
-                      <div className="text-zinc-400">{e.source}:{e.sourceHandle} → {e.target}:{e.targetHandle}</div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+          {/* Mobile Menu Button */}
+          <div className="md:hidden">
+            <Button
+              variant="ghost"
+              className="border cursor-pointer border-zinc-800 p-2 rounded-lg"
+              onClick={() => setMobileOpen(!mobileOpen)}
+            >
+              {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </Button>
           </div>
         </div>
-      </main>
 
-      {/* modal for node edit / delete */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={selectedNodeId ? `Edit ${selectedNodeId}` : "Edit"}>
-        <div>
-          <div className="mb-2 text-xs text-zinc-400">Label</div>
-          <Input value={modalLabel} onChange={(e) => setModalLabel(e.target.value)} className="mb-3 bg-zinc-900/60" />
-          <div className="mb-2 text-xs text-zinc-400">Value</div>
-          <Input value={modalValue} onChange={(e) => setModalValue(e.target.value)} type="number" className="mb-4 bg-zinc-900/60" />
+        {/* Mobile Menu Dropdown */}
+        <div
+          className={`md:hidden transition-all duration-300 overflow-hidden ${
+            mobileOpen ? "max-h-60 py-3" : "max-h-0"
+          }`}
+        >
+          <div className="flex flex-col gap-2 mb-3">
+     
 
+            <div className="flex gap-2 mt-2">
+              <Button
+                className={`flex-1 text-xs py-2 rounded-md ${
+                  running
+                    ? "bg-zinc-900 text-orange-400 border border-orange-500/40"
+                    : "bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black"
+                }`}
+                onClick={() => setRunning((r) => !r)}
+              >
+                {running ? "Pause" : "Run"}
+              </Button>
+              <Button
+                variant="ghost"
+                className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2 rounded-md"
+                onClick={exportScene}
+              >
+                Export
+              </Button>
+              <Button
+                variant="ghost"
+                className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2 rounded-md"
+                onClick={removeSelected}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+      <div className="mt-20 flex gap-2 " >
+        {/* Left: palette */}
+    <motion.aside
+      initial={{ opacity: 0, x: -20 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
+      className="w-[280px] flex flex-col gap-5 bg-gradient-to-b from-black/40 to-zinc-950/80 p-2 rounded-2xl border border-zinc-900/80 shadow-lg shadow-orange-500/5 backdrop-blur-sm"
+    >
+      {/* Components Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+      >
+        <Card className="bg-gradient-to-b from-zinc-950/90 to-black/80 border border-zinc-800/80 rounded-2xl shadow-inner shadow-black/40 hover:shadow-orange-500/10 transition-all duration-300">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-orange-400 text-base font-semibold flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-orange-500 drop-shadow-[0_0_5px_#ff7b00]" />
+              Components
+            </CardTitle>
+            <p className="text-zinc-400 text-xs font-light mt-1 leading-snug">
+              Click to add, drag components on the board, click pins to wire.
+            </p>
+          </CardHeader>
+
+          <CardContent className="pt-1 grid gap-2">
+            {PALETTE.map((p, i) => (
+              <motion.div
+                key={p.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 + i * 0.05 }}
+                
+              >
+                <Button
+                  onClick={() => addComponent(p)}
+                  variant="outline"
+                  className="flex justify-start p-7 cursor-pointer items-center gap-3 w-full rounded-xl bg-zinc-950/80 border border-zinc-800 hover:border-orange-500/60 hover:bg-black/60 hover:text-orange-400 transition-all duration-200 text-zinc-100"
+                >
+                  <div
+                    className="w-9 h-9 rounded-lg flex items-center  justify-center font-bold text-black text-sm shadow-inner group-hover:scale-110 transition-transform"
+                    style={{ background: p.color }}
+                  >
+                    {p.icon || <Grid size={16} />}
+                  </div>
+                  <div className="text-left">
+                    <div className="font-semibold text-sm tracking-wide group-hover:text-orange-300 transition-colors">
+                      {p.label}
+                    </div>
+                    <div className="text-[11px] text-zinc-500">{p.id}</div>
+                  </div>
+                </Button>
+              </motion.div>
+            ))}
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Instruments Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.25 }}
+      >
+        <Card className="bg-gradient-to-b from-zinc-950/90 to-black/80 border border-zinc-800/80 rounded-2xl shadow-inner shadow-black/40 hover:shadow-orange-500/10 transition-all duration-300">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-orange-400 text-base font-semibold flex items-center gap-2">
+              <Zap className="w-4 h-4 text-orange-500 drop-shadow-[0_0_5px_#ff7b00]" />
+              Instruments
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent className="grid gap-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-zinc-400">Selected</span>
+              <span className="font-semibold text-orange-100">
+                {selectedId
+                  ? nodes.find((n) => n.id === selectedId)?.label
+                  : "—"}
+              </span>
+            </div>
+
+            <Separator className="my-2 bg-zinc-800" />
+
+            <div className="flex justify-between">
+              <span className="text-zinc-400">Time</span>
+              <span className="font-semibold text-orange-100">
+                {(timeMs / 1000).toFixed(2)} s
+              </span>
+            </div>
+
+            <div className="flex justify-between">
+              <span className="text-zinc-400">Nodes</span>
+              <span className="font-semibold text-orange-100">
+                {nodes.length}
+              </span>
+            </div>
+
+            <div className="flex justify-between">
+              <span className="text-zinc-400">Wires</span>
+              <span className="font-semibold text-orange-100">
+                {wires.length}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Trash Area */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.35 }}
+      >
+        <Card
+          id="trash-area"
+          className="bg-gradient-to-r from-[#2b1510]/90 to-[#1a0b08]/90 border-2 border-dashed border-zinc-800 rounded-2xl p-4 text-[#ffbdb4] flex items-center justify-center gap-3 hover:from-[#3a1d15]/90 hover:to-[#1f0f0a]/90 transition-all shadow-inner"
+        >
+          <Trash2
+            size={18}
+            className="text-[#ffbdb4] animate-pulse-slow drop-shadow-[0_0_6px_#ff7b00]"
+          />
+          <span className="text-sm font-medium tracking-wide">
+            Drag here to delete
+          </span>
+        </Card>
+      </motion.div>
+    </motion.aside>
+
+        {/* Center: canvas */}
+    <main className="flex-1 relative">
+      {/* Board Grid */}
+      <motion.div
+        className="relative h-[520px] rounded-xl border border-zinc-800 bg-gradient-to-b from-black/90 to-zinc-950 overflow-hidden"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.4 }}
+      >
+        {/* Subtle animated grid */}
+        <div className="absolute inset-0 opacity-[0.06] bg-[repeating-linear-gradient(90deg,_#ff8c2d1a_0px,_#ff8c2d1a_12px,_transparent_12px,_transparent_24px)] animate-[pulse_8s_ease-in-out_infinite]" />
+
+        {/* SVG wires overlay */}
+        <svg
+          className="absolute inset-0 pointer-events-none z-50"
+          width="100%"
+          height="100%"
+          preserveAspectRatio="none"
+        >
+          <defs>
+            <filter id="wireGlow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="6" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+            <linearGradient id="wireCore" x1="0" x2="1">
+              <stop offset="0%" stopColor="#ffdca8" stopOpacity="1" />
+              <stop offset="100%" stopColor="#ffb86b" stopOpacity="1" />
+            </linearGradient>
+          </defs>
+
+          {wires.map((w) => {
+            const fromNode = nodes.find((n) => n.id === w.from.node);
+            const toNode = nodes.find((n) => n.id === w.to.node);
+            if (!fromNode || !toNode) return null;
+            const p1 = pinScreenPos(fromNode, w.from.side);
+            const p2 = pinScreenPos(toNode, w.to.side);
+            const d = makeWirePath(p1.x, p1.y, p2.x, p2.y);
+            return (
+              <g key={w.id}>
+                <path
+                  d={d}
+                  stroke={ORANGE}
+                  strokeWidth={8}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                  opacity={0.22}
+                  style={{ filter: "url(#wireGlow)" }}
+                />
+                <path
+                  d={d}
+                  stroke="#1f1f1f"
+                  strokeWidth={3.5}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+                <path
+                  d={d}
+                  stroke="url(#wireCore)"
+                  strokeWidth={2.0}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+              </g>
+            );
+          })}
+        </svg>
+
+        {/* Node elements */}
+        {nodes.map((n) => (
+          <div key={n.id}>
+            {/* Node Card */}
+            <motion.div
+              onMouseDown={(e) => onNodeMouseDown(e, n)}
+              onClick={() => setSelectedId(n.id)}
+              className={`absolute cursor-pointer transition-transform ${
+                selectedId === n.id ? "scale-105 drop-shadow-[0_0_6px_#ff7b00]" : ""
+              }`}
+              style={{
+                left: n.x,
+                top: n.y,
+              }}
+            >
+              <Card className="bg-zinc-900/80 border border-zinc-800 rounded-xl px-3 py-2 shadow-sm hover:border-orange-400/40 transition-all ">
+                <div className="text-sm font-semibold text-white">{n.label}</div>
+              </Card>
+            </motion.div>
+
+            {/* Left Pin */}
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                onPinClick(n.id, "left");
+              }}
+              title="Left Pin"
+              className={`absolute w-4 h-4 rounded-full border-2 border-zinc-700 grid place-items-center cursor-pointer transition-all ${
+                pendingPin?.node === n.id && pendingPin?.side === "left"
+                  ? "bg-orange-500"
+                  : "bg-zinc-800"
+              }`}
+              style={{
+                left: n.x - 8,
+                top: n.y + n.height / 2 - 8,
+              }}
+            >
+              <div className="w-2 h-2 rounded-full bg-orange-200" />
+            </div>
+
+            {/* Right Pin */}
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                onPinClick(n.id, "right");
+              }}
+              title="Right Pin"
+              className={`absolute w-4 h-4 rounded-full border-2 border-zinc-700 grid place-items-center cursor-pointer transition-all ${
+                pendingPin?.node === n.id && pendingPin?.side === "right"
+                  ? "bg-orange-500"
+                  : "bg-zinc-800"
+              }`}
+              style={{
+                left: n.x + n.width-8,
+                top: n.y + n.height / 2 - 8,
+              }}
+            >
+              <div className="w-2 h-2 rounded-full bg-cyan-200" />
+            </div>
+          </div>
+        ))}
+      </motion.div>
+
+      {/* Bottom Section: Readouts + Charts */}
+      <div className="mt-4 grid grid-cols-[minmax(0,1fr)_420px] gap-4">
+        {/* Live Readouts */}
+        <Card className="bg-zinc-900/90 border border-zinc-800 rounded-xl shadow-md p-4">
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="text-orange-400 font-semibold flex items-center gap-2">
+              <Gauge className="w-4 h-4 text-orange-500" />
+              Live Readouts
+            </h3>
+            <span className="text-zinc-500 text-xs">Phasor solver (RMS)</span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            {/* Component Values */}
+            <div>
+              <h4 className="text-white font-semibold mb-2">Component Values</h4>
+              <div className="space-y-2">
+                {nodes.map((n) => (
+                  <div
+                    key={n.id}
+                    className="flex justify-between items-center bg-black/50 border border-zinc-800 rounded-lg p-2.5"
+                  >
+                    <div>
+                      <div className="font-medium text-white">{n.label}</div>
+                      <div className="text-zinc-500 text-xs">
+                        {n.meta?.type}
+                      </div>
+                    </div>
+                    <div className="text-right text-orange-400 font-semibold text-sm">
+                      {n.meta?.type === "resistor" &&
+                        `${fmt(
+                          n.params?.R ?? DEFAULT_PARAMS.resistor.R,
+                          0
+                        )} Ω`}
+                      {n.meta?.type === "inductor" &&
+                        `${(n.params?.L ?? DEFAULT_PARAMS.inductor.L) * 1000} mH`}
+                      {n.meta?.type === "capacitor" &&
+                        `${(n.params?.C ?? DEFAULT_PARAMS.capacitor.C) * 1e6} µF`}
+                      {n.meta?.type === "voltage" &&
+                        `${fmt(
+                          n.params?.Vrms ?? DEFAULT_PARAMS.voltage.Vrms,
+                          2
+                        )} V RMS`}
+                      {n.meta?.type === "current" &&
+                        `${fmt(
+                          n.params?.Irms ?? DEFAULT_PARAMS.current.Irms,
+                          3
+                        )} A RMS`}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Meter Values */}
+            <div>
+              <h4 className="text-white font-semibold mb-2">Meters</h4>
+              <div className="space-y-2">
+                {nodes
+                  .filter((n) => n.meta?.type === "voltmeter")
+                  .map((n) => {
+                    const Vrms = readouts[n.id]?.Vrms ?? 0;
+                    return (
+                      <div
+                        key={n.id}
+                        className="flex justify-between items-center bg-black/50 border border-zinc-800 rounded-lg p-2.5"
+                      >
+                        <div>
+                          <div className="font-medium text-white">
+                            {n.label}
+                          </div>
+                          <div className="text-zinc-500 text-xs">
+                            Across pins
+                          </div>
+                        </div>
+                        <div className="text-orange-400 font-bold text-sm">
+                          {fmt(Vrms, 3)} V
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                {nodes
+                  .filter((n) => n.meta?.type === "ammeter")
+                  .map((n) => {
+                    const Irms = readouts[n.id]?.Irms ?? 0;
+                    return (
+                      <div
+                        key={n.id}
+                        className="flex justify-between items-center bg-black/50 border border-zinc-800 rounded-lg p-2.5"
+                      >
+                        <div>
+                          <div className="font-medium text-white">
+                            {n.label}
+                          </div>
+                          <div className="text-zinc-500 text-xs">
+                            Series current
+                          </div>
+                        </div>
+                        <div className="text-orange-400 font-bold text-sm">
+                          {fmt(Irms, 4)} A
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* Right: Waveform + Phasor Chart */}
+        <Card className="bg-zinc-900/90 border border-zinc-800 rounded-xl shadow-md p-4 flex flex-col gap-4">
           <div className="flex justify-between items-center">
-            <div>
-              <Button className="border border-zinc-700 mr-2" onClick={() => { saveModal(); }} >Save</Button>
-              <Button variant="outline" className="border border-zinc-700" onClick={() => { setModalOpen(false); }}>Cancel</Button>
-            </div>
-            <div>
-              <Button className="bg-red-600" onClick={() => { if (selectedNodeId && confirm("Delete this component?")) removeNodeById(selectedNodeId); }}>Delete</Button>
-            </div>
+            <h3 className="text-orange-400 font-semibold flex items-center gap-2">
+              <Waveform className="w-4 h-4 text-orange-500" />
+              Waveform (sampled)
+            </h3>
+            <span className="text-zinc-500 text-xs">
+              {nodes.filter((n) => n.meta?.type === "voltage").length
+                ? `Source f=${
+                    nodes.find((n) => n.meta?.type === "voltage")?.params
+                      ?.freq ?? 50
+                  } Hz`
+                : ""}
+            </span>
           </div>
-        </div>
-      </Modal>
 
-      <Footer />
+          <div className="h-[160px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData}>
+                <CartesianGrid stroke="#111" strokeDasharray="3 3" />
+                <XAxis dataKey="name" tick={false} />
+                <YAxis domain={["dataMin - 2", "dataMax + 2"]} />
+                <Tooltip  contentStyle={{ background: "#0b0b0b", border: "1px solid #222", color: "#fff",borderRadius:"10px" }}/>
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="voltage"
+                  stroke={ORANGE}
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          <Separator className="bg-zinc-800" />
+
+          <h3 className="text-orange-400 font-semibold flex items-center gap-2">
+            <Activity className="w-4 h-4 text-orange-500" />
+            3D Phasor Trace
+          </h3>
+
+          <div className="h-[220px]">
+            <Plot
+              data={[
+                {
+                  x: (chartData || []).map((d) => d.voltage * Math.cos(0)),
+                  y: (chartData || []).map((d) => 0),
+                  z: (chartData || []).map((_, i) => i),
+                  mode: "lines",
+                  line: { color: ORANGE },
+                  type: "scatter3d",
+                },
+              ]}
+              layout={{
+                autosize: true,
+                margin: { l: 0, r: 0, b: 0, t: 0 },
+                paper_bgcolor: "transparent",
+                plot_bgcolor: "transparent",
+                scene: {
+                  xaxis: { title: "Re", color: "#fff" },
+                  yaxis: { title: "Im", color: "#fff" },
+                  zaxis: { title: "t", color: "#fff" },
+                },
+              }}
+              config={{ displayModeBar: false, responsive: true }}
+              style={{ width: "100%", height: "100%" }}
+            />
+          </div>
+        </Card>
+      </div>
+    </main>
+
+        {/* Right: inspector */}
+    <aside className="w-[360px] flex flex-col gap-4">
+      {/* Inspector Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+      >
+        <Card className="bg-zinc-950/90 border border-zinc-800 shadow-lg hover:shadow-orange-500/10 transition-all">
+          <CardHeader className="pb-2 flex items-center justify-between">
+            <CardTitle className="text-orange-400 flex items-center gap-2">
+              <Settings2 className="w-4 h-4 text-orange-500" />
+              Inspector
+            </CardTitle>
+            <span className="text-xs text-zinc-400 font-light">
+              Edit selected component
+            </span>
+          </CardHeader>
+
+          <CardContent>
+            {!selectedId ? (
+              <div className="text-zinc-500 text-sm">
+                No component selected • Click a node on the board.
+              </div>
+            ) : (
+              node && (
+                <div className="mt-2 space-y-4">
+                  <div>
+                    <div className="font-semibold text-zinc-100">
+                      {node.label}
+                    </div>
+                    <div className="text-xs text-zinc-500">
+                      {node.meta?.type}
+                    </div>
+                  </div>
+
+                  <Separator className="bg-zinc-800" />
+
+                  {/* Dynamic Parameter Controls */}
+                  <div className="space-y-4">
+                    {node.meta?.type === "resistor" && (
+                      <div className="space-y-2">
+                        <label className="text-xs text-zinc-400">
+                          Resistance (Ω)
+                        </label>
+                        <Input
+                          type="number"
+                          value={node.params?.R ?? ""}
+                          onChange={(e) =>
+                            updateNodeParams(node.id, {
+                              R: Number(e.target.value || 0),
+                            })
+                          }
+                          className="bg-zinc-900 border-zinc-800 text-white"
+                        />
+                        <Slider
+                          min={0}
+                          max={1000}
+                          step={1}
+                          value={[node.params?.R ?? 0]}
+                          onValueChange={(v) =>
+                            updateNodeParams(node.id, { R: v[0] })
+                          }
+                          className="text-orange-500"
+                        />
+                      </div>
+                    )}
+
+                    {["inductor", "capacitor", "voltage", "current"].map(
+                      (type) =>
+                        node.meta?.type === type && (
+                          <div
+                            key={type}
+                            className="grid grid-cols-1 gap-3 text-sm"
+                          >
+                            {Object.entries(node.params ?? {}).map(
+                              ([key, val]) => (
+                                <div key={key} className="space-y-1.5">
+                                  <label className="text-xs text-zinc-400 capitalize">
+                                    {key}
+                                  </label>
+                                  <Input
+                                    type="number"
+                                    value={val}
+                                    onChange={(e) =>
+                                      updateNodeParams(node.id, {
+                                        [key]: Number(e.target.value || 0),
+                                      })
+                                    }
+                                    className="bg-zinc-900 border-zinc-800 text-white"
+                                  />
+                                </div>
+                              )
+                            )}
+                          </div>
+                        )
+                    )}
+
+                    {(node.meta?.type === "ammeter" ||
+                      node.meta?.type === "voltmeter") && (
+                      <div className="space-y-2">
+                        <label className="text-xs text-zinc-400">
+                          Input Resistance (Ω)
+                        </label>
+                        <Input
+                          type="number"
+                          value={node.params?.Rin ?? 0}
+                          onChange={(e) =>
+                            updateNodeParams(node.id, {
+                              Rin: Number(e.target.value || 0),
+                            })
+                          }
+                          className="bg-zinc-900 border-zinc-800 text-white"
+                        />
+                      </div>
+                    )}
+
+                    {/* Label Edit */}
+                    <div className="space-y-2">
+                      <label className="text-xs text-zinc-400">Label</label>
+                      <Input
+                        value={node.label}
+                        onChange={(e) =>
+                          setNodes((prev) =>
+                            prev.map((nn) =>
+                              nn.id === node.id
+                                ? { ...nn, label: e.target.value }
+                                : nn
+                            )
+                          )
+                        }
+                        className="bg-zinc-900 border-zinc-800 text-white"
+                      />
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-3 mt-2">
+                      <Button className="bg-orange-500 text-black font-semibold hover:bg-orange-600 transition">
+                        Apply
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => setSelectedId(null)}
+                        className="border-zinc-700 text-zinc-400 hover:bg-zinc-800"
+                      >
+                        Close
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Simulation Details */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2, duration: 0.4 }}
+      >
+        <Card className="bg-zinc-950/90 border border-zinc-800 shadow-lg hover:shadow-orange-500/10 transition-all">
+          <CardHeader>
+            <CardTitle className="text-orange-400 flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-orange-500" />
+              Simulation Details
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-zinc-400 space-y-4">
+            <div className="text-xs">
+              Phasor nodal solver (AC steady-state). Supports ideal AC sources,
+              resistors, inductors, capacitors, and ideal current sources.
+            </div>
+            <div className="text-xs">
+              Note: This is an educational solver for small circuits, limited by
+              numerical stability.
+            </div>
+
+            <Separator className="bg-zinc-800" />
+
+            <div>
+              <div className="font-semibold text-zinc-100 mb-2">
+                Net Voltages (RMS)
+              </div>
+              <div className="grid gap-2">
+                {(solution?.nets || []).map((_, i) => {
+                  const v =
+                    (solution.netVoltages && solution.netVoltages[i]) || C.zero();
+                  return (
+                    <div
+                      key={i}
+                      className="flex justify-between bg-zinc-900/60 px-3 py-2 rounded-md border border-zinc-800"
+                    >
+                      <span className="text-zinc-500 text-xs">Net {i}</span>
+                      <span className="text-orange-400 font-semibold text-xs">
+                        {fmt(C.abs(v), 3)} V
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <div className="font-semibold text-zinc-100 mb-2">
+                Component Currents (RMS)
+              </div>
+              <div className="grid gap-2">
+                {nodes.map((n) => {
+                  const I =
+                    (solution.componentCurrents &&
+                      solution.componentCurrents[n.id]) ||
+                    C.zero();
+                  return (
+                    <div
+                      key={n.id}
+                      className="flex justify-between bg-zinc-900/60 px-3 py-2 rounded-md border border-zinc-800"
+                    >
+                      <span className="text-zinc-500 text-xs">{n.label}</span>
+                      <span className="text-orange-400 font-semibold text-xs">
+                        {fmt(C.abs(I), 4)} A
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+    </aside>
+      </div>
+
+      {/* keyboard shortcuts help */}
+      <div className="fixed bottom-4 left-4 flex items-center gap-2 px-3 py-2
+        bg-black/80 border border-zinc-800 text-zinc-400 rounded-lg
+        backdrop-blur-md shadow-lg shadow-orange-500/10
+        hover:shadow-orange-500/20 hover:text-orange-300 transition-all duration-300">
+        Tip: Drag nodes, click pins to connect. Delete selected with the Delete key.
+      </div>
     </div>
   );
 }

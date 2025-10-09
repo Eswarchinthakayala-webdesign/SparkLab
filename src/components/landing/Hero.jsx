@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles, Zap, GitBranch, Play } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 const container = {
   hidden: { opacity: 0, y: 10 },
@@ -44,6 +45,7 @@ const Counter = ({ value, duration = 2000, className }) => {
 };
 
 export default function Hero() {
+  const navigate=useNavigate()
   return (
     <section className="relative  bg-[#05060a]
                  bg-[radial-gradient(circle,_rgba(255,122,28,0.25)_1px,transparent_1px)]
@@ -95,12 +97,14 @@ export default function Hero() {
             <motion.div variants={fadeUp} className="mt-8 flex flex-col sm:flex-row sm:items-center gap-4">
               <Button
                 className="bg-gradient-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600 text-black rounded-2xl px-6 py-3 text-lg shadow-lg transition-transform hover:scale-105"
+                onClick={()=>navigate("/topics")}
               >
                 <Zap className="w-4 h-4 mr-2" /> Get Started
               </Button>
               <Button
                 variant="outline"
                 className="border-orange-600 text-orange-300 rounded-2xl px-6 py-3 flex items-center gap-2 transition-transform hover:scale-105"
+                 onClick={()=>navigate("/features")}
               >
                 <Play className="w-4 h-4" /> Explore Features
               </Button>
