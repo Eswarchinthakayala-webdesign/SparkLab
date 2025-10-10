@@ -263,7 +263,7 @@ function BEEEHeroCanvas({ className = "w-full h-full rounded-xl", style = {} }) 
   return (
     <div
       ref={mountRef}
-      className={`w-full max-w-full overflow-hidden h-64 sm:h-80 md:h-96 lg:h-[420px] ${className}`}
+      className={`w-full max-w-full overflow-hidden h-[420px] ${className}`}
       style={style}
       aria-hidden="true"
     />
