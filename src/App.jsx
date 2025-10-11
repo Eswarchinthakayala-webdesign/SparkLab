@@ -29,6 +29,8 @@ import InteractiveTransformerPage from "./pages/visualizations/InteractiveTransf
 import RLCVisualizerPage from "./pages/visualizations/RLCVisualizerPage";
 import OscilloscopeSimulatorPage from "./pages/visualizations/OscilloscopeSimulatorPage";
 import TopicsOverviewPage from "./pages/TopicsOverviewPage";
+import LabSupportPage from "./pages/LabSupportPage";
+import ExperimentsPage from "./pages/labs/ExperimentsPage";
 
 // TODO: You can add these later
 // import LoginPage from "./pages/LoginPage";
@@ -66,6 +68,8 @@ export default function App() {
         <Route path="/topics/visualizations/transformer-animation" element={<InteractiveTransformerPage/>} />
         <Route path="/topics/visualizations/rlc-response" element={<RLCVisualizerPage/>} />
         <Route path="/topics/visualizations/oscilloscope-simulator" element={<OscilloscopeSimulatorPage/>} />
+        <Route path="/topics/lab-support" element={<LabSupportPage/>}/>
+        <Route path="/topics/labs/virtual-experiments" element={<ExperimentsPage/>} />
       </Routes>
     </Router>
   );
