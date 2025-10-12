@@ -31,6 +31,7 @@ import OscilloscopeSimulatorPage from "./pages/visualizations/OscilloscopeSimula
 import TopicsOverviewPage from "./pages/TopicsOverviewPage";
 import LabSupportPage from "./pages/LabSupportPage";
 import ExperimentsPage from "./pages/labs/ExperimentsPage";
+import LabReportGeneratorPage from "./pages/labs/LabReportGenerator";
 
 // TODO: You can add these later
 // import LoginPage from "./pages/LoginPage";
@@ -70,6 +71,7 @@ export default function App() {
         <Route path="/topics/visualizations/oscilloscope-simulator" element={<OscilloscopeSimulatorPage/>} />
         <Route path="/topics/lab-support" element={<LabSupportPage/>}/>
         <Route path="/topics/labs/virtual-experiments" element={<ExperimentsPage/>} />
+        <Route path="/topics/labs/lab-report-gen" element={<LabReportGeneratorPage/>} />
       </Routes>
     </Router>
   );
