@@ -167,7 +167,7 @@ export default function LabReportGenerator() {
       conclusion,
     };
 
-    const base = "";
+    const base = "http://localhost:4000";
     try {
       toast.loading("Generating PDF...");
       const resp = await axios.post(`${base}/api/generate-report`, payload, {
