@@ -159,7 +159,7 @@ export default function LabReportGenerator() {
       conclusion,
     };
 
-    const base = "http://localhost:4000"; // ✅ fixed (no trailing slash)
+    const base = "https://sparklab-beee.vercel.app"; // ✅ fixed (no trailing slash)
 
     try {
       toast.loading("Generating PDF...");
