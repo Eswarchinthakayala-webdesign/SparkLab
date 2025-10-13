@@ -4,7 +4,7 @@ import PDFDocument from "pdfkit";
 
 export const config = {
   api: {
-    bodyParser: { sizeLimit: "50mb" },
+    bodyParser: { sizeLimit: "30mb" },
   },
 };
 // Convert base64 → Buffer
@@ -61,7 +61,11 @@ function drawFooter(doc) {
 
 // -----------------------------------------------------
 
-app.post("/api/generate-report", async (req, res) => {
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    res.status(405).json({ error: "Only POST method allowed" });
+    return;
+  }
   try {
     const {
       title = "Lab Report",
@@ -217,11 +221,6 @@ app.post("/api/generate-report", async (req, res) => {
     console.error("PDF generation error:", err);
     res.status(500).json({ error: "Failed to generate PDF" });
   }
-});
+}
 
-// -----------------------------------------------------
 
-const PORT = process.env.PORT || 4000;
-app.listen(PORT, () =>
-  console.log(`✅ LabReport PDF server running at http://localhost:${PORT}`)
-);
