@@ -96,19 +96,14 @@ app.post("/api/generate-report", async (req, res) => {
     doc.fillColor("#ffffff").fontSize(12).text(title, { align: "center" });
     doc.moveDown(0.5);
 
+    
 
+    // Student info
+    doc.font("Helvetica").fontSize(10).fillColor("#bbbbbb");
+    doc.text(`Student: ${author || "-"}`, 60, 140);
+    doc.text(`Roll No: ${roll || "-"}`, 60, 155);
+    doc.text(`Date: ${date || "-"}`, 60, 170);
 
-       // Place metadata text inside box
-    doc.fillColor("#bbbbbb").font("Helvetica").fontSize(10);
-    const col1X = metaX + 12;
-    const col2X = metaX + metaW / 2 + 6;
-    let ty = metaY + 10;
-    doc.text(`Student: ${author || "-"}`, col1X, ty);
-    doc.text(`Roll No: ${roll || "-"}`, col1X, ty + 14);
-    doc.text(`Date: ${date || "-"}`, col1X, ty + 28);
-    doc.text(`Title ID: ${payload.titleID || "-"}`, col2X, ty);
-    doc.text(`Generated: ${new Date().toLocaleString()}`, col2X, ty + 14);
-    doc.moveDown(3.5);
     // OBJECTIVE
     sectionTitle(doc, "Objective");
     doc.text(objective || "No objective provided.", { align: "justify" });
