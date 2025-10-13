@@ -1,13 +1,86 @@
-// src/components/LabReportSections.jsx
-// Improved version: includes live loading, better prompts, and smoother UX.
-
-import React, { useState } from "react";
+import React, { useState, useRef, useCallback } from "react";
+import { motion } from "framer-motion";
+import {
+  Sparkles,
+  Loader2,
+  Square,
+  FileText,
+  ClipboardList,
+  CheckCircle2,
+} from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Loader2, Sparkles } from "lucide-react";
 import useGemini from "../../hooks/useGemini";
 
+// ===============================
+// Memoized Section Component
+// ===============================
+const SectionBlock = React.memo(function SectionBlock({
+  label,
+  field,
+  value,
+  setter,
+  Icon,
+  isActive,
+  loading,
+  generateFor,
+  stopGeneration,
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Icon className="w-4 h-4 text-[#ff9a3c]" />
+          <span className="text-sm text-zinc-300">{label}</span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {isActive && (
+            <motion.div
+              animate={{ opacity: [0.5, 1, 0.5] }}
+              transition={{ duration: 1.2, repeat: Infinity }}
+              className="flex items-center text-xs text-zinc-400"
+            >
+              <Loader2 className="w-3.5 h-3.5 animate-spin mr-1 text-[#ffd24a]" />
+              Generating...
+            </motion.div>
+          )}
+
+          {isActive ? (
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={stopGeneration}
+              className="bg-red-500/20 hover:bg-red-500/40 cursor-pointer text-red-300 border border-red-600/40 transition-all duration-300"
+            >
+              <Square className="w-3.5 h-3.5 mr-1" /> Stop
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={loading || isActive}
+              onClick={() => generateFor(field)}
+              className="border border-[#ff9a3c]/40 hover:border-[#ffd24a]/60 hover:text-[#ffd24a] cursor-pointer hover:bg-[#ff9a3c]/10 text-[#ffd24a] transition-all duration-300"
+            >
+              <Sparkles className="w-4 h-4 mr-1 text-[#ffd24a]" />
+              Auto Generate
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <Textarea
+        value={value}
+        onChange={(e) => setter(e.target.value)}
+        rows={field === "procedure" ? 7 : 5}
+        placeholder={`Write ${label.toLowerCase()} here or click "Auto Generate"...`}
+        className="bg-[#0a0a0a]/95 border border-zinc-800 text-white placeholder:text-zinc-500 focus:border-[#ff9a3c]/70 focus:ring-1 focus:ring-[#ff9a3c]/50 min-h-[120px] rounded-xl shadow-inner shadow-black/40"
+      />
+    </div>
+  );
+});
 
 export default function LabReportSections({
   title,
@@ -20,136 +93,183 @@ export default function LabReportSections({
   observations = [],
 }) {
   const { generateText, loading, error } = useGemini();
-  const [activeField, setActiveField] = useState(null); // "description" | "procedure" | "conclusion" | null
+  const [activeField, setActiveField] = useState(null);
   const [genError, setGenError] = useState(null);
+  const [typing, setTyping] = useState(false);
+  const stopRef = useRef(false);
 
-  const generateFor = async (field) => {
-    setActiveField(field);
-    setGenError(null);
+  // ======================================
+  // Improved Prompt Builder
+  // ======================================
+  const buildPrompt = useCallback(
+    (field) => {
+      const baseContext = observations
+        .map((o, i) => `#${i + 1}: V=${o.V}, I=${o.I}, remark=${o.remark}`)
+        .join("\n");
 
-    // Build a more field-specific prompt
-    const baseContext = observations
-      .map((o) => `t=${o.t}, V=${o.V}, I=${o.I}, remark=${o.remark}`)
-      .join("\n");
+      switch (field) {
+        case "description":
+          return `You are an expert Electrical Lab Instructor. Write a professional *description* for "${title}".
+Include:
+• Purpose of the experiment  
+• Relevant theory and concept  
+• Expected relationships  
+• Real-life significance  
 
-    let prompt = "";
-    if (field === "description") {
-      prompt = `You are a helpful lab assistant. Write a clear, concise *description* for the experiment titled "${title}". 
-Use the following readings as context:
-${baseContext}
+Observation Data:
+${baseContext || "No observations available."}`;
+        case "procedure":
+          return `You are an expert instructor. Write a detailed *procedure* for "${title}" with clear step-by-step  generate only the procedure a
 
-Focus on the purpose of the experiment, relevant theory, and what is being verified.`;
-    } else if (field === "procedure") {
-      prompt = `You are a lab assistant. Write a step-by-step *procedure* for the experiment "${title}" based on the following data:
-${baseContext}
+Observation context:
+${baseContext || "N/A"}`;
+        case "conclusion":
+          return `Write a reflective *conclusion* for "${title}".
+Summarize:
+• What was verified  
+• The relationship between quantities  
+• Key learning outcome  
 
-Keep it short, clear, and in bullet points suitable for an undergraduate lab report.`;
-    } else if (field === "conclusion") {
-      prompt = `You are a lab assistant. Write a brief *conclusion* for the experiment "${title}".
-Base it on these readings:
-${baseContext}
-
-Summarize what was verified, mention relationship or constants found, and state whether the aim was achieved.`;
-    }
-
-    try {
-      const resp = await generateText(prompt, { maxTokens: 400, temperature: 0.3 });
-      const text = resp?.text?.trim?.() ?? "";
-
-      // Simulate streaming text appearance
-      await simulateTyping(field, text);
-    } catch (e) {
-      console.error("Gemini generation failed", e);
-      setGenError(e.message || "Failed to generate text");
-    } finally {
-      setActiveField(null);
-    }
-  };
-
-  // Typing animation for nicer UX
-  const simulateTyping = async (field, text) => {
-    let setter = null;
-    let currentText = "";
-    if (field === "description") setter = setDescription;
-    if (field === "procedure") setter = setProcedure;
-    if (field === "conclusion") setter = setConclusion;
-
-    if (!setter) return;
-    setter("");
-
-    for (let i = 0; i < text.length; i++) {
-      currentText += text[i];
-      setter(currentText);
-      await new Promise((r) => setTimeout(r, 8)); // adjust typing speed
-    }
-  };
-
-  const SectionBlock = ({ label, field, value, setter }) => (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-zinc-400">{label}</div>
-        <div className="flex items-center gap-2">
-          {activeField === field && (
-            <div className="flex items-center text-xs text-zinc-400">
-              <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> Generating...
-            </div>
-          )}
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={loading || activeField !== null}
-            onClick={() => generateFor(field)}
-            className="border border-zinc-800 hover:border-[#ffd24a]/40"
-          >
-            <Sparkles className="w-4 h-4 mr-1 text-[#ffd24a]" />
-            Auto
-          </Button>
-        </div>
-      </div>
-      <Textarea
-        value={value}
-        onChange={(e) => setter(e.target.value)}
-        rows={field === "procedure" ? 5 : 4}
-        placeholder={`Write ${label.toLowerCase()} here... or click Auto`}
-        className="bg-[#0b0b0c] border border-zinc-800 text-white min-h-[100px]"
-      />
-    </div>
+Observation summary:
+${baseContext || "N/A"}`;
+        default:
+          return "";
+      }
+    },
+    [title, observations]
   );
 
+  // ======================================
+  // Generate Function
+  // ======================================
+  const generateFor = useCallback(
+    async (field) => {
+      setActiveField(field);
+      setTyping(true);
+      setGenError(null);
+      stopRef.current = false;
+
+      try {
+        const prompt = buildPrompt(field);
+        const resp = await generateText(prompt, {
+          maxTokens: 500,
+          temperature: 0.35,
+        });
+
+        const text = resp?.text?.trim?.() ?? "";
+        await simulateTyping(field, text);
+      } catch (e) {
+        console.error("Gemini generation failed", e);
+        setGenError(e.message || "Failed to generate text");
+      } finally {
+        setTyping(false);
+        setActiveField(null);
+      }
+    },
+    [buildPrompt, generateText]
+  );
+
+  const stopGeneration = useCallback(() => {
+    stopRef.current = true;
+    setTyping(false);
+    setActiveField(null);
+  }, []);
+
+  // ======================================
+  // Smooth Typing Simulation (No Flicker)
+  // ======================================
+  const simulateTyping = async (field, text) => {
+    const setter =
+      field === "description"
+        ? setDescription
+        : field === "procedure"
+        ? setProcedure
+        : setConclusion;
+
+    setter("");
+    let buffer = "";
+
+    for (let i = 0; i < text.length; i++) {
+      if (stopRef.current) break;
+      buffer += text[i];
+      if (i % 5 === 0 || i === text.length - 1) {
+        setter(buffer);
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    }
+  };
+
+  // ======================================
+  // Render
+  // ======================================
   return (
-    <Card className="bg-[#070707] border border-zinc-800 text-white">
-      <CardHeader>
-        <CardTitle className="text-[#ffd24a] flex items-center gap-2">
-          <Sparkles className="w-5 h-5 text-[#ffd24a]" /> AI-Assisted Report Sections
+    <Card className="bg-gradient-to-b from-[#0a0a0a]/95 to-[#050505]/95 border border-zinc-800/70 shadow-lg shadow-orange-500/10 backdrop-blur-md rounded-2xl p-1">
+      <CardHeader className="border-b border-zinc-800/50 pb-3">
+        <CardTitle className="text-lg flex items-center gap-2 text-[#ffb84a] tracking-wide">
+          <motion.div
+            animate={{ rotate: [0, 15, -15, 0] }}
+            transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+          >
+            <Sparkles className="w-5 h-5 text-[#ffd24a]" />
+          </motion.div>
+          AI Lab Report Assistant
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-5">
-          <SectionBlock
-            label="Description"
-            field="description"
-            value={description}
-            setter={setDescription}
-          />
-          <SectionBlock
-            label="Procedure"
-            field="procedure"
-            value={procedure}
-            setter={setProcedure}
-          />
-          <SectionBlock
-            label="Conclusion"
-            field="conclusion"
-            value={conclusion}
-            setter={setConclusion}
-          />
 
-          {(genError || error) && (
-            <div className="text-red-400 text-sm mt-2">
-              ⚠️ {genError || error}
-            </div>
-          )}
-        </div>
+      <CardContent className="space-y-8 pt-4">
+        <SectionBlock
+          label="Description"
+          field="description"
+          value={description}
+          setter={setDescription}
+          Icon={FileText}
+          isActive={activeField === "description"}
+          loading={loading}
+          generateFor={generateFor}
+          stopGeneration={stopGeneration}
+        />
+        <SectionBlock
+          label="Procedure"
+          field="procedure"
+          value={procedure}
+          setter={setProcedure}
+          Icon={ClipboardList}
+          isActive={activeField === "procedure"}
+          loading={loading}
+          generateFor={generateFor}
+          stopGeneration={stopGeneration}
+        />
+        <SectionBlock
+          label="Conclusion"
+          field="conclusion"
+          value={conclusion}
+          setter={setConclusion}
+          Icon={CheckCircle2}
+          isActive={activeField === "conclusion"}
+          loading={loading}
+          generateFor={generateFor}
+          stopGeneration={stopGeneration}
+        />
+
+        {(genError || error) && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-red-400 text-sm mt-4 border border-red-500/20 bg-red-500/10 p-3 rounded-lg flex items-center gap-2"
+          >
+            ⚠️ {genError || error}
+          </motion.div>
+        )}
+
+        {typing && (
+          <motion.div
+            animate={{ opacity: [0.4, 1, 0.4] }}
+            transition={{ duration: 1.2, repeat: Infinity }}
+            className="text-xs text-zinc-500 text-center pt-2"
+          >
+            ✍️ AI is typing your report...
+          </motion.div>
+        )}
       </CardContent>
     </Card>
   );
