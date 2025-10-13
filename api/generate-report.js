@@ -1,17 +1,43 @@
-// api/generate-report.js
+// /pages/api/generate-report.js
 import PDFDocument from "pdfkit";
 
 export const config = {
   api: {
-    bodyParser: { sizeLimit: "25mb" },
+    bodyParser: { sizeLimit: "40mb" },
   },
 };
 
-function base64ToBuffer(dataURL) {
-  if (!dataURL) return null;
-  const matches = dataURL.match(/^data:(image\/\w+);base64,(.+)$/);
-  if (!matches) return null;
-  return Buffer.from(matches[2], "base64");
+// Draws a full-page black background
+function drawPageBackground(doc) {
+  doc.save();
+  doc.rect(0, 0, doc.page.width, doc.page.height).fill("#000000");
+  doc.restore();
+}
+
+// Draws a thin border on the current page
+function drawPageBorder(doc) {
+  const margin = 24;
+  const width = doc.page.width - margin * 2;
+  const height = doc.page.height - margin * 2;
+  doc
+    .save()
+    .lineWidth(0.8)
+    .strokeColor("#444")
+    .rect(margin, margin, width, height)
+    .stroke()
+    .restore();
+}
+
+// Section title style
+function sectionTitle(doc, title) {
+  doc.moveDown(1);
+  doc
+    .font("Helvetica-Bold")
+    .fontSize(14)
+    .fillColor("#ffb84a")
+    .text(title, { underline: true });
+  doc.moveDown(0.4);
+  doc.font("Helvetica").fontSize(10).fillColor("#ffffff");
 }
 
 export default async function handler(req, res) {
@@ -38,91 +64,177 @@ export default async function handler(req, res) {
     } = req.body || {};
 
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="${title}.pdf"`);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${title.replace(/\s+/g, "-")}.pdf"`
+    );
 
-    const doc = new PDFDocument({ size: "A4", margin: 48 });
+    const doc = new PDFDocument({ size: "A4", margin: 50 });
     const chunks = [];
     doc.on("data", (c) => chunks.push(c));
-    doc.on("end", () => {
-      const pdfBuffer = Buffer.concat(chunks);
-      res.send(pdfBuffer);
-    });
+    doc.on("end", () => res.send(Buffer.concat(chunks)));
 
-    // Header
-    doc.rect(48, 48, doc.page.width - 96, 50).fill("#070707");
-    doc.fillColor("#ffd24a").fontSize(18).text(college || "Your College", 60, 60);
-    doc.fillColor("#fff").fontSize(12).text(title, 60, 80);
+    // PAGE 1 — Cover + Intro
+    drawPageBackground(doc);
+    drawPageBorder(doc);
 
-    // Info
-    doc.moveDown(2);
-    doc.fontSize(10).fillColor("#ff9a4a").text("Student:");
-    doc.fillColor("#fff").text(author || "N/A");
-    doc.fillColor("#ff9a4a").text("Date:");
-    doc.fillColor("#fff").text(date || "N/A");
+    doc.fillColor("#ffb84a").font("Helvetica-Bold").fontSize(22);
+    doc.text(college || "Your College Name", { align: "center" });
+    doc.moveDown(0.4);
+    doc.fillColor("#ffffff").fontSize(14).text(title, { align: "center" });
+    doc.moveDown(1.5);
+
+    // Info block
+    doc.fontSize(10).fillColor("#bbbbbb");
+    const startY = doc.y;
+    const infoX = 70;
+    doc.text(`Student Name : `, infoX, startY);
+    doc.fillColor("#ffffff").text(author || "N/A", infoX + 120, startY);
+    doc.fillColor("#bbbbbb").text(`Date : `, infoX, startY + 18);
+    doc.fillColor("#ffffff").text(date || "N/A", infoX + 120, startY + 18);
 
     // Objective
-    doc.moveDown(1);
-    doc.fillColor("#ff9a4a").fontSize(12).text("Objective", { underline: true });
-    doc.fillColor("#fff").fontSize(10).text(objective || "—");
+    sectionTitle(doc, "Objective");
+    doc.text(objective || "To perform the given experiment and record observations.");
 
     // Apparatus
-    doc.moveDown(1);
-    doc.fillColor("#ff9a4a").text("Apparatus", { underline: true });
-    doc.fillColor("#fff").fontSize(10).text(apparatus || "—");
+    sectionTitle(doc, "Apparatus");
+    doc.text(
+      apparatus ||
+        "Ammeter, Voltmeter, Resistor, Power Supply, Connecting Wires."
+    );
 
     // Procedure
-    doc.moveDown(1);
-    doc.fillColor("#ff9a4a").text("Procedure", { underline: true });
-    doc.fillColor("#fff").fontSize(10).text(procedure || "—");
+    sectionTitle(doc, "Procedure");
+    (procedure || "1. Connect the circuit.\n2. Record readings.\n3. Plot V-I graph.")
+      .split("\n")
+      .forEach((line) => doc.text("• " + line));
 
-    // Observations
-    doc.moveDown(1);
-    doc.fillColor("#ff9a4a").text("Observations", { underline: true });
-    doc.moveDown(0.5);
-    doc.fillColor("#fff").fontSize(9);
-    observations.forEach((r, i) => {
-      doc.text(`${i + 1}. V=${r.V || "-"} I=${r.I || "-"} Remarks=${r.remark || "-"}`);
+    // PAGE 2 — Observations Table
+    doc.addPage();
+    drawPageBackground(doc);
+    drawPageBorder(doc);
+
+    sectionTitle(doc, "Observation Table");
+
+    const startX = 60;
+    const colWidths = [50, 120, 120, 180];
+    const headers = ["t", "Voltage (V)", "Current (A)", "Remarks"];
+    const totalWidth = colWidths.reduce((a, b) => a + b, 0);
+    let y = doc.y;
+
+    // Table header
+    doc.fillColor("#000000").rect(startX, y, totalWidth, 20).fill("#ffb84a");
+    doc.fillColor("#000000").font("Helvetica-Bold").fontSize(10);
+    let x = startX;
+    headers.forEach((h, i) => {
+      doc.text(h, x, y + 5, { width: colWidths[i], align: "center" });
+      x += colWidths[i];
     });
 
-    // Chart Image
+    // Table rows
+    y += 22;
+    observations.forEach((row, i) => {
+      const bg = i % 2 === 0 ? "#0a0a0a" : "#151515";
+      doc.rect(startX, y, totalWidth, 18).fill(bg);
+      doc.fillColor("#ffffff").font("Helvetica").fontSize(9);
+      const cols = [
+        row.t ?? i + 1,
+        row.V ?? "",
+        row.I ?? "",
+        row.remark ?? "",
+      ];
+      let cx = startX;
+      cols.forEach((val, j) => {
+        doc.text(String(val), cx, y + 4, { width: colWidths[j], align: "center" });
+        cx += colWidths[j];
+      });
+      y += 18;
+      if (y > doc.page.height - 80) {
+        doc.addPage();
+        drawPageBackground(doc);
+        drawPageBorder(doc);
+        y = 70;
+      }
+    });
+
+    // PAGE 3 — Graph
     if (chartImageBase64) {
-      const chartBuffer = base64ToBuffer(chartImageBase64);
-      if (chartBuffer) {
+      const chartBuf = base64ToBuffer(chartImageBase64);
+      if (chartBuf) {
         doc.addPage();
-        doc.fillColor("#ff9a4a").fontSize(12).text("Graph (Auto-Plotted)");
-        doc.image(chartBuffer, { fit: [420, 320], align: "center" });
+        drawPageBackground(doc);
+        drawPageBorder(doc);
+        sectionTitle(doc, "Graph (Auto-Plotted)");
+        try {
+          doc.image(chartBuf, {
+            fit: [440, 300],
+            align: "center",
+            valign: "center",
+          });
+        } catch (err) {
+          doc.fillColor("#f55").text("Error embedding chart image.");
+        }
       }
     }
 
-    // Circuit Image
+    // PAGE 4 — Circuit Diagram
     if (circuitImageBase64) {
-      const circuitBuffer = base64ToBuffer(circuitImageBase64);
-      if (circuitBuffer) {
+      const circuitBuf = base64ToBuffer(circuitImageBase64);
+      if (circuitBuf) {
         doc.addPage();
-        doc.fillColor("#ff9a4a").fontSize(12).text("Circuit Diagram");
-        doc.image(circuitBuffer, { fit: [420, 320], align: "center" });
+        drawPageBackground(doc);
+        drawPageBorder(doc);
+        sectionTitle(doc, "Circuit Diagram");
+        try {
+          doc.image(circuitBuf, {
+            fit: [440, 320],
+            align: "center",
+            valign: "center",
+          });
+        } catch (err) {
+          doc.fillColor("#f55").text("Error embedding circuit diagram.");
+        }
       }
     }
 
-    // Calculations
+    // PAGE 5 — Calculations & Conclusion
     doc.addPage();
-    doc.fillColor("#ff9a4a").fontSize(12).text("Calculations", { underline: true });
-    doc.fillColor("#fff").fontSize(10).text(JSON.stringify(calculations, null, 2));
+    drawPageBackground(doc);
+    drawPageBorder(doc);
 
-    // Conclusion
-    doc.moveDown(1);
-    doc.fillColor("#ff9a4a").fontSize(12).text("Conclusion / Remarks", { underline: true });
-    doc.fillColor("#fff").fontSize(10).text(conclusion || "—");
+    sectionTitle(doc, "Calculations");
+    doc.font("Courier").fontSize(10).fillColor("#ffffff");
+    if (typeof calculations === "string") {
+      doc.text(calculations);
+    } else {
+      doc.text(JSON.stringify(calculations, null, 2));
+    }
+
+    sectionTitle(doc, "Conclusion / Remarks");
+    doc.font("Helvetica").fontSize(10).fillColor("#ffffff");
+    doc.text(conclusion || "The experiment was performed successfully.");
+
+    // Signatures
+    doc.moveDown(2);
+    const lineY = doc.y + 30;
+    doc.moveTo(60, lineY).lineTo(220, lineY).stroke("#777");
+    doc.text("Student Signature", 60, lineY + 5);
+    doc.moveTo(340, lineY).lineTo(500, lineY).stroke("#777");
+    doc.text("Instructor Signature", 340, lineY + 5);
 
     // Footer
-    doc.moveDown(4);
-    doc.fontSize(8).fillColor("#888").text("Auto-Generated by BEEE Report Generator", {
-      align: "center",
-    });
+    doc.fontSize(8).fillColor("#777");
+    doc.text(
+      "Auto-generated by BEEE Lab Report Generator",
+      0,
+      doc.page.height - 40,
+      { align: "center" }
+    );
 
     doc.end();
-  } catch (e) {
-    console.error("PDF generation failed", e);
-    res.status(500).json({ error: "PDF generation failed", details: e.message });
+  } catch (err) {
+    console.error("PDF generation failed", err);
+    res.status(500).json({ error: "PDF generation failed", details: err.message });
   }
 }
