@@ -1,258 +1,197 @@
-// server.cjs
+// server.js (corrected)
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const PDFDocument = require("pdfkit");
+const SVGtoPDF = require("svg-to-pdfkit"); // npm i svg-to-pdfkit
+const fs = require("fs");
+const path = require("path");
 
 const app = express();
 app.use(cors());
-app.use(bodyParser.json({ limit: "50mb" }));
+app.use(bodyParser.json({ limit: "50mb" })); // increased limit
 app.use(bodyParser.urlencoded({ extended: true, limit: "50mb" }));
 
-// Convert base64 image → Buffer
+// small helper to decode base64 image
 function base64ToBuffer(dataURL) {
   if (!dataURL) return null;
-  const match = dataURL.match(/^data:(image\/\w+);base64,(.+)$/);
-  if (!match) return null;
-  return Buffer.from(match[2], "base64");
+  const matches = dataURL.match(/^data:(image\/\w+);base64,(.+)$/);
+  if (!matches) return null;
+  const mime = matches[1];
+  const base64 = matches[2];
+  const buf = Buffer.from(base64, "base64");
+  return { buf, mime };
 }
 
-// Helper for orange section titles
-function sectionTitle(doc, title) {
-  doc.moveDown(1);
-  doc
-    .font("Helvetica-Bold")
-    .fontSize(14)
-    .fillColor("#ffb84a")
-    .text(title, { underline: true });
-  doc.moveDown(0.4);
-  doc.font("Helvetica").fontSize(10).fillColor("#ffffff");
-}
-
-// Draw black page background
-function drawPageBackground(doc) {
-  doc.save();
-  doc.rect(0, 0, doc.page.width, doc.page.height).fill("#000000");
-  doc.restore();
-}
-function drawFooter(doc) {
-  try {
-    const footerY = doc.page.height - 36;
-    doc.save();
-    doc.fontSize(8).fillColor("#777");
-    const pageText = `Page ${doc.page.number}`;
-    doc.text(pageText, 50, footerY, {
-      align: "right",
-      width: doc.page.width - 100,
-    });
-    doc.restore();
-  } catch (e) {
-    // ignore footer errors
-  }
-}
 app.post("/api/generate-report", async (req, res) => {
   try {
     const payload = req.body || {};
     const {
       title = "Lab Report",
       author = "",
-      college = "Your College Name",
+      college = "",
       roll = "",
       date = "",
+      template = "",
       observations = [],
-      chartImageBase64 = null,
+      procedure = "",
       circuitImageBase64 = null,
+      chartSVG = null,
       calculations = "",
-      result = "Auto Result Placeholder",
-      objective = "To verify the given experiment.",
-      apparatus = "Ammeter, Voltmeter, Resistor, Power Supply, Connecting Wires.",
-      description = "Description not provided.",
-      procedure = "Connect the circuit as shown.\nIncrease the voltage gradually.\nMeasure current for each voltage.\nPlot V-I graph and calculate resistance.",
-      conclusion = "Conclusion not provided.",
+      conclusion = "",
+      result = "",
     } = payload;
 
-    const doc = new PDFDocument({ size: "A4", margin: 50 });
+    // Build PDF
+    const doc = new PDFDocument({ size: "A4", margin: 48 });
+    const filenameSafe = (title || "lab-report").replace(/\s+/g, "-").toLowerCase();
 
-    // ✅ FIX: automatically reapply dark background for every new page
-    doc.on("pageAdded", () => {
-      drawPageBackground(doc);
-      doc.fillColor("#ffffff");
-       drawFooter(doc);
-    });
-
-    const fileSafe = title.replace(/\s+/g, "-").toLowerCase();
-    res.setHeader("Content-Disposition", `attachment; filename=${fileSafe}.pdf`);
-    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-disposition", `attachment; filename=${filenameSafe}.pdf`);
+    res.setHeader("Content-type", "application/pdf");
     doc.pipe(res);
 
-    // PAGE 1: HEADER + DETAILS
-    drawPageBackground(doc);
+    // --- Header (professional) ---
+    const headerHeight = 72;
+    doc.rect(doc.x, doc.y, doc.page.width - doc.page.margins.left - doc.page.margins.right, headerHeight).fill("#070707").stroke();
 
-    doc.fillColor("#ffb84a")
-      .font("Helvetica-Bold")
-      .fontSize(20)
-      .text(college, { align: "center" });
+    // college title and report title
+    doc.fillColor("#ffd24a").fontSize(18).text(college || "Your College Name", { align: "left" });
+    doc.moveUp();
+    doc.fillColor("#fff").fontSize(10).text(title || "Lab Report", { align: "left" });
+
+    // author & date on the right (FIXED mismatched quotes)
+    doc.fontSize(10).fillColor("#ddd");
+    const metaX = doc.page.width - doc.page.margins.right - 200;
+    doc.text(`Student: ${author}`, metaX, doc.y - 24, { width: 200 });
+    doc.text(`Roll: ${roll}`, metaX, doc.y, { width: 200 });
+    doc.text(`Date: ${date}`, metaX, doc.y, { width: 200 });
+
+    doc.moveDown(2);
+    doc.fillColor("#fff");
+
+    // Info block
+    doc.fontSize(12).fillColor("#ff9a4a").text("Objective", { underline: true });
+    doc.moveDown(0.4);
+    doc.fontSize(10).fillColor("#fff").text(payload.objective || `Objective for ${title}`, { continued: false });
+
+    doc.moveDown(0.8);
+    doc.fillColor("#ff9a4a").fontSize(12).text("Apparatus");
+    doc.moveDown(0.2);
+    doc.fontSize(10).fillColor("#fff").text((payload.apparatus || "Ammeter, Voltmeter, Resistor, Supply, Wires"), {});
+
+    doc.moveDown(0.8);
+    doc.fillColor("#ff9a4a").fontSize(12).text("Procedure");
+    doc.moveDown(0.2);
+    doc.fontSize(10).fillColor("#fff");
+    (procedure || "Follow the standard experiment procedure.").split("\n").forEach((line) => {
+      doc.text("• " + line);
+    });
+
+    doc.moveDown(0.6);
+    // --- Observations table ---
+    doc.fillColor("#ff9a4a").fontSize(12).text("Observation Table");
     doc.moveDown(0.3);
-    doc.fillColor("#ffffff").fontSize(12).text(title, { align: "center" });
-    doc.moveDown(0.5);
+    doc.fontSize(9).fillColor("#fff");
 
-    
-
-    // Student info
-    doc.font("Helvetica").fontSize(10).fillColor("#bbbbbb");
-    doc.text(`Student: ${author || "-"}`, 60, 140);
-    doc.text(`Roll No: ${roll || "-"}`, 60, 155);
-    doc.text(`Date: ${date || "-"}`, 60, 170);
-
-    // OBJECTIVE
-    sectionTitle(doc, "Objective");
-    doc.text(objective || "No objective provided.", { align: "justify" });
-
-    // DESCRIPTION
-    sectionTitle(doc, "Description");
-    doc.text(description || "No description provided.", {
-      align: "justify",
-      lineGap: 3,
-    });
-
-    // APPARATUS
-    sectionTitle(doc, "Apparatus");
-    doc.text(apparatus || "No apparatus provided.", { align: "left" });
-
-    // PROCEDURE
-    sectionTitle(doc, "Procedure");
-    const steps = procedure.split("\n").filter(Boolean);
-    if (steps.length > 0) {
-      steps.forEach((line) => doc.text("• " + line.trim(), { lineGap: 2 }));
-    } else {
-      doc.text("Procedure not provided.");
-    }
-
-    // PAGE 2: OBSERVATION TABLE
-    doc.addPage();
-    sectionTitle(doc, "Observation Table");
-
-    const startX = 55;
-    const colWidths = [50, 120, 120, 180];
+    const tableTop = doc.y;
+    const startX = doc.x;
+    const colWidths = [80, 80, 80, 80];
     const headers = ["t", "Voltage (V)", "Current (A)", "Remarks"];
-    const totalWidth = colWidths.reduce((a, b) => a + b, 0);
-    let y = doc.y;
 
-    // Table header
-    doc.rect(startX, y, totalWidth, 20).fill("#ffb84a");
-    doc.fillColor("#000").font("Helvetica-Bold").fontSize(10);
-    let x = startX;
+    let curX = startX;
+    doc.fillColor("#111").rect(curX - 4, tableTop - 6, colWidths.reduce((a,b)=>a+b,0) + 8, 20).fill("#ffb86b").stroke();
+    doc.fillColor("#000").fontSize(10);
     headers.forEach((h, i) => {
-      doc.text(h, x, y + 5, { width: colWidths[i], align: "center" });
-      x += colWidths[i];
+      doc.text(h, curX, tableTop - 4, { width: colWidths[i], align: "center" });
+      curX += colWidths[i];
     });
 
-    // Table rows
-    y += 22;
+    doc.moveDown(1.6);
+    doc.fontSize(9).fillColor("#fff");
     observations.forEach((row, i) => {
-      const bg = i % 2 === 0 ? "#0a0a0a" : "#131313";
-      doc.rect(startX, y, totalWidth, 18).fill(bg);
-      doc.fillColor("#ffffff").font("Helvetica").fontSize(9);
-      const cols = [
-        row.t ?? i + 1,
-        row.V ?? "",
-        row.I ?? "",
-        row.remark ?? "",
-      ];
-      let cellX = startX;
-      cols.forEach((val, j) => {
-        doc.text(String(val), cellX, y + 4, {
-          width: colWidths[j],
-          align: "center",
-        });
-        cellX += colWidths[j];
+      const y = doc.y;
+      let x = startX;
+      const cols = [row.t ?? i, row.V ?? "", row.I ?? "", row.remark ?? ""];
+      cols.forEach((c, j) => {
+        doc.text(String(c), x, y, { width: colWidths[j], align: "center" });
+        x += colWidths[j];
       });
-      y += 18;
-      if (y > doc.page.height - 80) {
-        doc.addPage();
-        y = 60;
-      }
+      doc.moveDown(1.2);
     });
 
-    // PAGE 3: CHART
     doc.addPage();
-    sectionTitle(doc, "Graph (Auto-Plotted)");
-    if (chartImageBase64) {
+
+    // --- Chart embedding if SVG provided
+    if (chartSVG) {
       try {
-        const imageBuffer = Buffer.from(chartImageBase64.split(",")[1], "base64");
-        doc.image(imageBuffer, {
-          fit: [440, 300],
-          align: "center",
-          valign: "center",
-        });
+        doc.fontSize(12).fillColor("#ff9a4a").text("Auto-plotted Graph", { underline: true });
+        doc.moveDown(0.4);
+        const svgWidth = 500;
+        const svgHeight = 300;
+        SVGtoPDF(doc, chartSVG, doc.x, doc.y, { assumePt: true, width: svgWidth, height: svgHeight });
+        doc.moveDown(16);
       } catch (err) {
-        console.error("Chart image embed failed:", err);
-        doc.fillColor("#f55").text("Error rendering chart image.");
+        console.error("SVG embed failed", err);
+        doc.fillColor("#fff").text("Failed to embed chart (server error).");
       }
     } else {
-      doc.fillColor("#bbb").text("No chart image provided.");
+      doc.fontSize(10).fillColor("#fff").text("No chart provided.");
     }
 
-    // PAGE 4: CIRCUIT IMAGE
+    // Circuit image
     if (circuitImageBase64) {
-      const imgBuf = base64ToBuffer(circuitImageBase64);
-      if (imgBuf) {
-        doc.addPage();
-        sectionTitle(doc, "Circuit Diagram");
+      const img = base64ToBuffer(circuitImageBase64);
+      if (img) {
         try {
-          doc.image(imgBuf, { fit: [440, 300], align: "center", valign: "center" });
-        } catch (err) {
-          console.error("Image embed failed:", err);
-          doc.fillColor("#f55").text("Error displaying circuit image.");
+          doc.addPage();
+          doc.fontSize(12).fillColor("#ff9a4a").text("Circuit Diagram", { underline: true });
+          doc.moveDown(0.3);
+          doc.image(img.buf, { fit: [420, 320], align: "center" });
+          doc.moveDown(1);
+        } catch (e) {
+          console.error("circuit embed error", e);
+          doc.fillColor("#fff").text("Failed to embed circuit image.");
         }
       }
     }
 
-    // PAGE 5: CALCULATIONS / RESULT / CONCLUSION
+    // calculations & result
     doc.addPage();
+    doc.fontSize(12).fillColor("#ff9a4a").text("Calculation", { underline: true });
+    doc.moveDown(0.4);
+    doc.fontSize(10).fillColor("#fff");
+    doc.text(calculations || "No calculations provided.").moveDown(1);
 
-    sectionTitle(doc, "Calculations");
-    doc.text(calculations || "No calculations provided.", {
-      align: "justify",
-      lineGap: 3,
-    });
+    doc.fontSize(12).fillColor("#ff9a4a").text("Result");
+    doc.moveDown(0.2);
+    doc.fontSize(10).fillColor("#fff").text(result || "Result placeholder");
 
-    sectionTitle(doc, "Result");
-    doc.text(result || "No result provided.", {
-      align: "justify",
-      lineGap: 3,
-    });
+    doc.moveDown(0.8);
+    doc.fontSize(12).fillColor("#ff9a4a").text("Conclusion / Remarks");
+    doc.moveDown(0.2);
+    doc.fontSize(10).fillColor("#fff").text(conclusion || "");
 
-    sectionTitle(doc, "Conclusion");
-    doc.text(conclusion || "No conclusion provided.", {
-      align: "justify",
-      lineGap: 3,
-    });
-
-    // Signatures
+    // signature area
     doc.moveDown(2);
-    const signY = doc.y + 30;
-    doc.moveTo(60, signY).lineTo(220, signY).stroke("#777");
-    doc.text("Student Signature", 60, signY + 5);
-    doc.moveTo(340, signY).lineTo(500, signY).stroke("#777");
-    doc.text("Instructor Signature", 340, signY + 5);
+    const signY = doc.y;
+    doc.moveTo(doc.x, signY + 30).lineTo(doc.x + 180, signY + 30).stroke("#888");
+    doc.text("Student signature", doc.x, signY + 36);
+    doc.moveTo(doc.x + 220, signY + 30).lineTo(doc.x + 400, signY + 30).stroke("#888");
+    doc.text("Instructor signature", doc.x + 220, signY + 36);
 
-    // Footer
-    doc
-      .fontSize(8)
-      .fillColor("#777")
-      .text("Auto-generated by BEEE Lab Report Generator", 0, doc.page.height - 40, {
-        align: "center",
-      });
+    // footer
+    const footerText = "Auto-Generated by BEEE Report Generator";
+    doc.fontSize(8).fillColor("#888");
+    doc.text(footerText, doc.page.margins.left, doc.page.height - doc.page.margins.bottom - 20, { align: "center", width: doc.page.width - doc.page.margins.left - doc.page.margins.right });
 
     doc.end();
   } catch (err) {
-    console.error("PDF generation error:", err);
+    console.error(err);
     res.status(500).json({ error: "Failed to generate PDF" });
   }
 });
 
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () =>
-  console.log(`✅ LabReport PDF server running at http://localhost:${PORT}`)
-);
+app.listen(PORT, () => {
+  console.log(`LabReport PDF server running on http://localhost:${PORT}`);
+});
