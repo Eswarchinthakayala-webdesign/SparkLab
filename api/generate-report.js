@@ -3,9 +3,16 @@ import PDFDocument from "pdfkit";
 
 export const config = {
   api: {
-    bodyParser: { sizeLimit: "40mb" },
+    bodyParser: { sizeLimit: "30mb" },
   },
 };
+
+function base64ToBuffer(dataURL) {
+  if (!dataURL) return null;
+  const matches = dataURL.match(/^data:(image\/\w+);base64,(.+)$/);
+  if (!matches) return null;
+  return Buffer.from(matches[2], "base64");
+}
 
 // Draws a full-page black background
 function drawPageBackground(doc) {
