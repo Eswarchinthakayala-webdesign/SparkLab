@@ -53,29 +53,24 @@ export default function LabReportGenerator() {
   const [experiments] = useState(DEFAULT_EXPERIMENTS);
   const [selectedTitleID, setSelectedTitleID] = useState(experiments[0]?.titleID ?? null);
 
-  // Metadata
   const [title, setTitle] = useState(experiments[0]?.title ?? "Experiment");
   const [author, setAuthor] = useState("");
   const [college, setCollege] = useState("Your College Name");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
 
-  // Text sections
   const [objective, setObjective] = useState(experiments[0]?.defaultData?.objective ?? "");
   const [apparatus, setApparatus] = useState(experiments[0]?.defaultData?.apparatus ?? "");
   const [description, setDescription] = useState("");
   const [procedure, setProcedure] = useState("");
   const [conclusion, setConclusion] = useState("");
 
-  // Observations
   const [observations, setObservations] = useState(
-    experiments[0]?.defaultData?.observations ??
-      Array.from({ length: 6 }).map((_, i) => defaultRow(i))
+    experiments[0]?.defaultData?.observations ?? Array.from({ length: 6 }).map((_, i) => defaultRow(i))
   );
 
   const [circuitImageBase64, setCircuitImageBase64] = useState(null);
   const chartId = "lab-chart";
 
-  // Load experiment defaults on change
   useEffect(() => {
     const exp = experiments.find((e) => e.titleID === selectedTitleID);
     if (exp) {
@@ -91,7 +86,6 @@ export default function LabReportGenerator() {
     }
   }, [selectedTitleID, experiments]);
 
-  // Calculate slope & intercept (Ohm’s Law)
   const calculations = useMemo(() => {
     const pts = observations
       .map((r) => ({ V: parseFloat(r.V), I: parseFloat(r.I) }))
@@ -117,7 +111,6 @@ export default function LabReportGenerator() {
     I: parseFloat(r.I) || 0,
   }));
 
-  // Capture chart as image
   const captureChartAsImage = async (id = chartId) => {
     const chartNode = document.getElementById(id);
     if (!chartNode) {
@@ -139,7 +132,6 @@ export default function LabReportGenerator() {
     }
   };
 
-  // Generate PDF via backend
   const generatePDF = async () => {
     if (!author || !college) {
       toast.error("Please enter student name and college");
@@ -157,7 +149,7 @@ export default function LabReportGenerator() {
       college,
       date,
       observations,
-      chartImageBase64,
+      chartImageBase64, // PNG base64
       circuitImageBase64,
       calculations,
       objective,
@@ -167,7 +159,8 @@ export default function LabReportGenerator() {
       conclusion,
     };
 
-    const base = "https://sparklab-beee.vercel.app/";
+    const base = "https://sparklab-beee.vercel.app"; // ✅ fixed (no trailing slash)
+
     try {
       toast.loading("Generating PDF...");
       const resp = await axios.post(`${base}/api/generate-report`, payload, {
@@ -196,7 +189,7 @@ export default function LabReportGenerator() {
           <div>
             <h1 className="text-lg font-semibold">Lab Report Generator</h1>
             <p className="text-zinc-400 text-xs">
-              Export charts, tables & Gemini AI text to PDF
+              Export charts, tables & auto text to PDF
             </p>
           </div>
         </div>
@@ -212,7 +205,6 @@ export default function LabReportGenerator() {
       </header>
 
       <main className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left column */}
         <section className="lg:col-span-4 space-y-4">
           <LabReportData
             experiments={experiments}
@@ -234,7 +226,6 @@ export default function LabReportGenerator() {
           />
         </section>
 
-        {/* Right column */}
         <section className="lg:col-span-8 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <LabReportTable
