@@ -110,7 +110,6 @@ export default async function handler(req, res) {
     // Student info
     doc.font("Helvetica").fontSize(10).fillColor("#bbbbbb");
     doc.text(`Student: ${author || "-"}`, 60, 140);
-    doc.text(`Roll No: ${roll || "-"}`, 60, 160);
     doc.text(`Date: ${date || "-"}`, 60, 180);
 
     // ---------------- THEORY / DETAILS ----------------
@@ -212,8 +211,7 @@ export default async function handler(req, res) {
     doc.moveTo(340, signY).lineTo(500, signY).stroke("#777");
     doc.text("Instructor Signature", 340, signY + 5);
 
-    // Final footer
-    drawFooter(doc);
+
 
     // End PDF
     doc.end();
