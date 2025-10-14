@@ -132,41 +132,44 @@ export default function FormulaSheetPage() {
   };
 
   // 🔹 PDF Generation
-  const downloadPdf = async () => {
-    const payload = {
-      title: "Formula Report - SparkLab",
-      generatedAt: new Date().toISOString(),
-      formula: currentFormula.title,
-      category: currentFormula.category,
-      inputs: inputsState[currentFormula.id],
-      computed,
-      aiSummary,
-      aiDetail,
-      visualImage,
-    };
-
-   const base = "https://sparklab-beee.vercel.app"; // ✅ fixed (no trailing slash)
-
-    try {
-      toast.loading("Generating PDF...");
-      const resp = await axios.post(`${base}/api/generate-pdf`, payload, {
-        headers: { "Content-Type": "application/json" },
-        responseType: "blob",
-        timeout: 60000,
-      });
-
-      const blob = new Blob([resp.data], { type: "application/pdf" });
-      saveAs(blob, "FormulaSheet.pdf");
-      toast.dismiss();
-      toast.success("PDF downloaded!");
-    } catch (err) {
-      toast.dismiss();
-      toast.error("Failed to generate PDF");
-      console.error(err);
-    } finally {
-      setLoadingPdf(false);
-    }
+const downloadPdf = async () => {
+  const payload = {
+    title: "Formula Report - SparkLab",
+    generatedAt: new Date().toISOString(),
+    formula: currentFormula.title,
+    category: currentFormula.category,
+    inputs: inputsState[currentFormula.id],
+    computed,
+    aiSummary: aiSummary || "",
+    aiDetail: aiDetail || "",
+    visualImage: visualImage || null,
   };
+
+  try {
+    setLoadingPdf(true);
+    toast.loading("Generating PDF...");
+
+   
+
+    const resp = await axios.post(`/api/generate-pdf`, payload, {
+      headers: { "Content-Type": "application/json" },
+      responseType: "blob",
+    });
+
+    const blob = new Blob([resp.data], { type: "application/pdf" });
+    saveAs(blob, "FormulaSheet.pdf");
+
+    toast.dismiss();
+    toast.success("PDF downloaded!");
+  } catch (err) {
+    toast.dismiss();
+    toast.error("Failed to generate PDF");
+    console.error("PDF generation error:", err.response?.data || err.message);
+  } finally {
+    setLoadingPdf(false);
+  }
+};
+
 
   // 🔹 Responsive Header Menu
   const toggleMenu = () => setMenuOpen((v) => !v);
