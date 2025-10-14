@@ -32,6 +32,14 @@ import TopicsOverviewPage from "./pages/TopicsOverviewPage";
 import LabSupportPage from "./pages/LabSupportPage";
 import ExperimentsPage from "./pages/labs/ExperimentsPage";
 import LabReportGeneratorPage from "./pages/labs/LabReportGenerator";
+import ErrorCalculatorPage from "./pages/labs/ErrorCalculatorPage";
+import UnitMeasurementPage from "./pages/labs/UnitMeasurementPage";
+import ColorCodeIdentifierPage from "./pages/labs/ColorCodeIdentifierPage";
+import CodeReaderPage from "./pages/labs/CodeReaderPage";
+import TesterPage from "./pages/labs/TesterPage";
+import SimulatorPage from "./pages/labs/SimulatorPage";
+import VirtualLabPage from "./pages/labs/VirtualLabPage";
+import CalibrationSimPage from "./pages/labs/CalibrationSimPage";
 
 // TODO: You can add these later
 // import LoginPage from "./pages/LoginPage";
@@ -72,6 +80,15 @@ export default function App() {
         <Route path="/topics/lab-support" element={<LabSupportPage/>}/>
         <Route path="/topics/labs/virtual-experiments" element={<ExperimentsPage/>} />
         <Route path="/topics/labs/lab-report-gen" element={<LabReportGeneratorPage/>} />
+        <Route path="/topics/labs/error-calculator" element={<ErrorCalculatorPage/>} />
+        <Route path="/topics/labs/unit-converter" element={<UnitMeasurementPage/>} />
+        <Route path="/topics/labs/resistor-identifier" element={<ColorCodeIdentifierPage/>} />
+
+        <Route path="/topics/labs/cap-ind-code" element={<CodeReaderPage/>} />
+        <Route path="/topics/labs/diode-transistor-tester" element={<TesterPage/>} />
+        <Route path="/topics/labs/dmm-simulator" element={<SimulatorPage/>} />
+        <Route path="/topics/labs/oscilloscope-lab" element={<VirtualLabPage/>} />
+        <Route path="/topics/labs/calibration-sim" element={<CalibrationSimPage/>} />
       </Routes>
     </Router>
   );
