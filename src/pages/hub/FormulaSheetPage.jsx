@@ -142,63 +142,28 @@ export default function FormulaSheetPage() {
       visualImage,
     };
 
-    try {
+   try {
       setLoadingPdf(true);
       toast.loading("Generating PDF...");
 
-      const doc = new jsPDF("p", "pt", "a4");
-      doc.setFontSize(18);
-      doc.text("SparkLab Formula Report", 40, 40);
+      const resp = await axios.post(
+        `/api/generate-pdf`, // ✅ local relative path works on Vercel
+        payload,
+        { responseType: "blob" }
+      );
 
-      doc.setFontSize(12);
-      doc.text(`Title: ${payload.formula}`, 40, 80);
-      doc.text(`Category: ${payload.category}`, 40, 100);
-      doc.text(`Generated: ${new Date().toLocaleString()}`, 40, 120);
-
-      // Inputs
-      doc.text("Inputs:", 40, 150);
-      Object.entries(payload.inputs).forEach(([k, v], i) => {
-        doc.text(`${k}: ${v}`, 80, 170 + i * 18);
-      });
-
-      // Computed
-      let y = 170 + Object.keys(payload.inputs).length * 18 + 20;
-      doc.text("Computed Values:", 40, y);
-      Object.entries(payload.computed).forEach(([k, v], i) => {
-        if (!k.endsWith("_unit"))
-          doc.text(`${k}: ${round(v, 9)} ${payload.computed[k + "_unit"] || ""}`, 80, y + 20 + i * 18);
-      });
-
-      // AI Text
-      let textY = y + 60 + Object.keys(payload.computed).length * 18;
-      doc.setFontSize(12);
-      doc.text("AI Summary:", 40, textY);
-      doc.setFontSize(10);
-      doc.text(doc.splitTextToSize(payload.aiSummary || "No summary generated.", 500), 80, textY + 20);
-
-      textY += 80;
-      doc.setFontSize(12);
-      doc.text("AI Detailed Explanation:", 40, textY);
-      doc.setFontSize(10);
-      doc.text(doc.splitTextToSize(payload.aiDetail || "No detail generated.", 500), 80, textY + 20);
-
-      // Visual image
-      if (visualImage) {
-        const imgY = textY + 180;
-        doc.addImage(visualImage, "PNG", 80, imgY, 400, 200);
-      }
-
-      const pdfBlob = doc.output("blob");
-      saveAs(pdfBlob, `${currentFormula.title}_Report.pdf`);
       toast.dismiss();
-      toast.success("PDF downloaded!");
+      const blob = new Blob([resp.data], { type: "application/pdf" });
+      saveAs(blob, "FormulaSheet.pdf");
+      toast.success("PDF downloaded successfully!");
     } catch (err) {
       toast.dismiss();
-      toast.error("PDF generation failed");
+      toast.error("Failed to generate PDF");
       console.error(err);
     } finally {
       setLoadingPdf(false);
     }
+
   };
 
   return (
