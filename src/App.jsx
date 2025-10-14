@@ -40,6 +40,8 @@ import TesterPage from "./pages/labs/TesterPage";
 import SimulatorPage from "./pages/labs/SimulatorPage";
 import VirtualLabPage from "./pages/labs/VirtualLabPage";
 import CalibrationSimPage from "./pages/labs/CalibrationSimPage";
+import LearningHubToolsPage from "./pages/LearningHubToolsPage";
+import FormulaSheetPage from "./pages/hub/FormulaSheetPage";
 
 // TODO: You can add these later
 // import LoginPage from "./pages/LoginPage";
@@ -89,6 +91,9 @@ export default function App() {
         <Route path="/topics/labs/dmm-simulator" element={<SimulatorPage/>} />
         <Route path="/topics/labs/oscilloscope-lab" element={<VirtualLabPage/>} />
         <Route path="/topics/labs/calibration-sim" element={<CalibrationSimPage/>} />
+
+        <Route path="/topics/learning-hub" element={<LearningHubToolsPage/>} />
+        <Route path="/hub/formula-sheet" element={<FormulaSheetPage/>} />
       </Routes>
     </Router>
   );
