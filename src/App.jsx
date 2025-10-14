@@ -42,6 +42,9 @@ import VirtualLabPage from "./pages/labs/VirtualLabPage";
 import CalibrationSimPage from "./pages/labs/CalibrationSimPage";
 import LearningHubToolsPage from "./pages/LearningHubToolsPage";
 import FormulaSheetPage from "./pages/hub/FormulaSheetPage";
+import TheoremTutorialPage from "./pages/hub/TheoremTutorialPage";
+import NotesPage from "./pages/hub/NotesPage";
+import ExplainerPage from "./pages/hub/ExplainerPage";
 
 // TODO: You can add these later
 // import LoginPage from "./pages/LoginPage";
@@ -94,6 +97,9 @@ export default function App() {
 
         <Route path="/topics/learning-hub" element={<LearningHubToolsPage/>} />
         <Route path="/learning/formula-sheet" element={<FormulaSheetPage/>} />
+        <Route path="/learning/theorem-tutorials" element={<TheoremTutorialPage/>} />
+        <Route path="/learning/short-notes" element={<NotesPage/>} />
+        <Route path="/learning/animated-explainers" element={<ExplainerPage/>} />
       </Routes>
     </Router>
   );

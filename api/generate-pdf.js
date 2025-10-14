@@ -28,7 +28,7 @@ function drawPageLayout(doc) {
 // Header
 function drawHeader(doc, title, generatedAt) {
   doc.font("Helvetica-Bold").fontSize(20).fillColor("#ffb84a");
-  doc.text("⚡ SparkLab — Formula Report", { align: "center" });
+  doc.text("SparkLab — Formula Report", { align: "center" });
   doc.moveDown(0.2);
 
   doc.font("Helvetica").fontSize(10).fillColor("#aaa");
@@ -52,9 +52,9 @@ function sectionTitle(doc, text) {
   doc.moveDown(0.3);
 }
 
-// Handler
+// ✅ Main handler
 export default async function handler(req, res) {
-  // CORS support
+  // Handle CORS
   if (req.method === "OPTIONS") {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -63,7 +63,6 @@ export default async function handler(req, res) {
     return;
   }
 
-  // Only allow POST
   if (req.method !== "POST") {
     res.status(405).json({ error: "Only POST method allowed" });
     return;
@@ -85,9 +84,9 @@ export default async function handler(req, res) {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Content-Type", "application/pdf");
 
-    // Create PDF
     const doc = new PDFDocument({ size: "A4", margin: 40 });
     const chunks = [];
+
     doc.on("data", (c) => chunks.push(c));
     doc.on("end", () => {
       const pdf = Buffer.concat(chunks);
@@ -95,11 +94,17 @@ export default async function handler(req, res) {
       res.send(pdf);
     });
 
-    // Layout
+    // ✅ Redraw dark theme for each page
+    doc.on("pageAdded", () => {
+      drawPageLayout(doc);
+      drawFooter(doc);
+    });
+
+    // First page layout
     drawPageLayout(doc);
     drawHeader(doc, title, generatedAt);
 
-    // Formula Title & Info
+    // Formula info
     doc.font("Helvetica-Bold").fontSize(14).fillColor("#ffb84a").text(formula, { align: "left" });
     doc.moveDown(0.3);
     doc.font("Helvetica").fontSize(10).fillColor("#ccc").text(`Category: ${category}`);
@@ -116,7 +121,7 @@ export default async function handler(req, res) {
       doc.moveDown(0.6);
     }
 
-    // Computed
+    // Computed Values
     if (Object.keys(computed).length > 0) {
       sectionTitle(doc, "Computed Values");
       Object.entries(computed)
@@ -148,7 +153,7 @@ export default async function handler(req, res) {
       doc.moveDown(0.6);
     }
 
-    // Visual image
+    // Visual image (optional)
     if (visualImage) {
       try {
         const buf = base64ToBuffer(visualImage);
@@ -165,13 +170,12 @@ export default async function handler(req, res) {
       }
     }
 
-    // Divider
+    // Divider and footer
     doc.moveDown(1);
     doc.strokeColor("#333").lineWidth(0.5).moveTo(40, doc.y).lineTo(doc.page.width - 40, doc.y).stroke();
     doc.moveDown(1);
-
-    // Footer
     drawFooter(doc);
+
     doc.end();
   } catch (err) {
     console.error("PDF generation error:", err);
