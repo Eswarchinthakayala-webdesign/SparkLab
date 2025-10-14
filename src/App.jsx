@@ -93,7 +93,7 @@ export default function App() {
         <Route path="/topics/labs/calibration-sim" element={<CalibrationSimPage/>} />
 
         <Route path="/topics/learning-hub" element={<LearningHubToolsPage/>} />
-        <Route path="/hub/formula-sheet" element={<FormulaSheetPage/>} />
+        <Route path="/learning/formula-sheet" element={<FormulaSheetPage/>} />
       </Routes>
     </Router>
   );
