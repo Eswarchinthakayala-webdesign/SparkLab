@@ -1,126 +1,200 @@
-// src/pages/FormulaSheetPage.jsx
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
 import {
-  BookOpen, Search, Download, Layers, Zap, Play, Pause, Edit3, FileText,
+  BookOpen,
+  Layers,
+  FileText,
+  Play,
+  Pause,
+  Download,
+  Cpu,
+  Brain,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
-
-import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectTrigger,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 
 import jsPDF from "jspdf";
 import { saveAs } from "file-saver";
+import FormulaVisualizer from "../../components/FormulaVisualizer";
+import { FORMULAS } from "../../data/formulas";
+import { generateTextWithGemini } from "../../../hooks/aiUtils";
 
-/* ============================
-   Formula Dataset (sample)
-   ============================ */
-const FORMULAS = [
-  {
-    id: "ohm",
-    category: "Resistor",
-    title: "Ohm's Law",
-    formula: "V = I × R",
-    inputs: [
-      { key: "I", label: "Current", unit: "A", default: 2 },
-      { key: "R", label: "Resistance", unit: "Ω", default: 100 },
-    ],
-    compute: ({ I, R }) => ({ V: Number(I) * Number(R), V_unit: "V" }),
-    description: "Basic voltage–current–resistance relation.",
-  },
-  {
-    id: "energy_cap",
-    category: "Capacitor",
-    title: "Energy in Capacitor",
-    formula: "E = ½ C V²",
-    inputs: [
-      { key: "C", label: "Capacitance", unit: "μF", default: 10 },
-      { key: "V", label: "Voltage", unit: "V", default: 12 },
-    ],
-    compute: ({ C, V }) => {
-      const c = Number(C) * 1e-6;
-      const e = 0.5 * c * Number(V) * Number(V);
-      return { E: e, E_unit: "J" };
-    },
-    description: "Energy stored in capacitor (in Joules).",
-  },
-];
+const round = (v, p = 6) =>
+  Number.isFinite(v) ? Math.round(v * 10 ** p) / 10 ** p : v;
 
-const round = (v, p = 6) => (Number.isFinite(v) ? Math.round(v * 10 ** p) / 10 ** p : v);
-
-/* ============================
-   Main Page Component
-   ============================ */
 export default function FormulaSheetPage() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
   const [selected, setSelected] = useState(FORMULAS[0].id);
   const [inputsState, setInputsState] = useState(() => {
     const base = {};
-    FORMULAS.forEach(f => {
+    FORMULAS.forEach((f) => {
       base[f.id] = {};
-      f.inputs.forEach(inp => (base[f.id][inp.key] = inp.default));
+      f.inputs.forEach((inp) => (base[f.id][inp.key] = inp.default));
     });
     return base;
   });
-  const [loadingPdf, setLoadingPdf] = useState(false);
 
-  const categories = useMemo(() => ["All", ...new Set(FORMULAS.map(f => f.category))], []);
+  const [visualImage, setVisualImage] = useState(null);
+  const [aiSummary, setAiSummary] = useState("");
+  const [aiDetail, setAiDetail] = useState("");
+  const [loadingPdf, setLoadingPdf] = useState(false);
+  const [loadingAI, setLoadingAI] = useState(false);
+
+  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+
+  // Filter logic
+  const categories = useMemo(
+    () => ["All", ...Array.from(new Set(FORMULAS.map((f) => f.category)))],
+    []
+  );
+
   const visible = useMemo(() => {
-    return FORMULAS.filter(f => {
-      const matchCategory = category === "All" || f.category === category;
+    return FORMULAS.filter((f) => {
+      const matchesCategory = category === "All" || f.category === category;
       const q = query.trim().toLowerCase();
-      const matchQuery = !q || f.title.toLowerCase().includes(q);
-      return matchCategory && matchQuery;
+      const matchesQuery =
+        !q || f.title.toLowerCase().includes(q) || f.formula.toLowerCase().includes(q);
+      return matchesCategory && matchesQuery;
     });
   }, [category, query]);
 
-  const currentFormula = FORMULAS.find(f => f.id === selected);
-  const computed = currentFormula.compute(inputsState[currentFormula.id]);
+  const currentFormula = FORMULAS.find((f) => f.id === selected) || FORMULAS[0];
+
+  const computed = useMemo(() => {
+    try {
+      const inputs = inputsState[currentFormula.id] || {};
+      return currentFormula.compute(inputs);
+    } catch (e) {
+      return {};
+    }
+  }, [inputsState, currentFormula]);
 
   const updateInput = (fid, key, val) => {
-    setInputsState(s => ({ ...s, [fid]: { ...s[fid], [key]: val } }));
+    setInputsState((s) => ({ ...s, [fid]: { ...s[fid], [key]: val } }));
   };
 
-  /* ✅ Fixed PDF Generation */
+  // 🔹 AI Text Generation (Summary + Detailed Explanation)
+  const generateAIText = async () => {
+    if (!GEMINI_API_KEY) {
+      toast.error("Missing Gemini API Key");
+      return;
+    }
+    try {
+      setLoadingAI(true);
+      toast.loading("Generating AI insights...");
+
+      const inputs = inputsState[currentFormula.id];
+      const inputText = Object.entries(inputs)
+        .map(([k, v]) => `${k} = ${v}`)
+        .join(", ");
+      const prompt = `Explain the following electrical formula in a detailed yet concise way: 
+        Title: ${currentFormula.title}
+        Formula: ${currentFormula.formula}
+        Inputs: ${inputText}
+        Computed: ${JSON.stringify(computed, null, 2)}.`;
+
+      const summaryPrompt = `Give a short 2-line summary about the concept of ${currentFormula.title}.`;
+
+      const [detail, summary] = await Promise.all([
+        generateTextWithGemini(prompt, GEMINI_API_KEY),
+        generateTextWithGemini(summaryPrompt, GEMINI_API_KEY),
+      ]);
+
+      setAiSummary(summary);
+      setAiDetail(detail);
+      toast.dismiss();
+      toast.success("AI text generated successfully!");
+    } catch (err) {
+      toast.dismiss();
+      toast.error("Failed to fetch AI text");
+      console.error(err);
+    } finally {
+      setLoadingAI(false);
+    }
+  };
+
+  // 🔹 PDF Generation with AI text + image
   const downloadPdf = async () => {
     const payload = {
-      title: "Formula Sheet - SparkLab",
+      title: "Formula Report - SparkLab",
       generatedAt: new Date().toISOString(),
-      formulas: visible.map(f => ({
-        id: f.id,
-        title: f.title,
-        category: f.category,
-        formula: f.formula,
-        inputs: inputsState[f.id],
-        computed: f.compute(inputsState[f.id]),
-      })),
+      formula: currentFormula.title,
+      category: currentFormula.category,
+      inputs: inputsState[currentFormula.id],
+      computed,
+      aiSummary,
+      aiDetail,
+      visualImage,
     };
 
     try {
       setLoadingPdf(true);
       toast.loading("Generating PDF...");
 
-      const resp = await axios.post(
-        `/api/generate-pdf`, // ✅ local relative path works on Vercel
-        payload,
-        { responseType: "blob" }
-      );
+      const doc = new jsPDF("p", "pt", "a4");
+      doc.setFontSize(18);
+      doc.text("SparkLab Formula Report", 40, 40);
 
+      doc.setFontSize(12);
+      doc.text(`Title: ${payload.formula}`, 40, 80);
+      doc.text(`Category: ${payload.category}`, 40, 100);
+      doc.text(`Generated: ${new Date().toLocaleString()}`, 40, 120);
+
+      // Inputs
+      doc.text("Inputs:", 40, 150);
+      Object.entries(payload.inputs).forEach(([k, v], i) => {
+        doc.text(`${k}: ${v}`, 80, 170 + i * 18);
+      });
+
+      // Computed
+      let y = 170 + Object.keys(payload.inputs).length * 18 + 20;
+      doc.text("Computed Values:", 40, y);
+      Object.entries(payload.computed).forEach(([k, v], i) => {
+        if (!k.endsWith("_unit"))
+          doc.text(`${k}: ${round(v, 9)} ${payload.computed[k + "_unit"] || ""}`, 80, y + 20 + i * 18);
+      });
+
+      // AI Text
+      let textY = y + 60 + Object.keys(payload.computed).length * 18;
+      doc.setFontSize(12);
+      doc.text("AI Summary:", 40, textY);
+      doc.setFontSize(10);
+      doc.text(doc.splitTextToSize(payload.aiSummary || "No summary generated.", 500), 80, textY + 20);
+
+      textY += 80;
+      doc.setFontSize(12);
+      doc.text("AI Detailed Explanation:", 40, textY);
+      doc.setFontSize(10);
+      doc.text(doc.splitTextToSize(payload.aiDetail || "No detail generated.", 500), 80, textY + 20);
+
+      // Visual image
+      if (visualImage) {
+        const imgY = textY + 180;
+        doc.addImage(visualImage, "PNG", 80, imgY, 400, 200);
+      }
+
+      const pdfBlob = doc.output("blob");
+      saveAs(pdfBlob, `${currentFormula.title}_Report.pdf`);
       toast.dismiss();
-      const blob = new Blob([resp.data], { type: "application/pdf" });
-      saveAs(blob, "FormulaSheet.pdf");
-      toast.success("PDF downloaded successfully!");
+      toast.success("PDF downloaded!");
     } catch (err) {
       toast.dismiss();
-      toast.error("Failed to generate PDF");
+      toast.error("PDF generation failed");
       console.error(err);
     } finally {
       setLoadingPdf(false);
@@ -130,29 +204,48 @@ export default function FormulaSheetPage() {
   return (
     <div className="min-h-screen bg-[#05060a] text-white">
       <Toaster position="top-center" richColors />
-      <header className="fixed top-0 w-full z-50 backdrop-blur-lg bg-black/70 border-b border-zinc-800 py-2">
-        <div className="max-w-7xl mx-auto px-4 flex justify-between items-center">
-          <motion.div initial={{ y: -6, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center">
-              <BookOpen className="text-black w-5 h-5" />
+
+      {/* HEADER */}
+      <header className="fixed w-full top-0 z-50 backdrop-blur-lg bg-black/70 border-b border-zinc-800 py-2">
+        <div className="max-w-7xl mx-auto px-4 flex items-center justify-between gap-4">
+          <motion.div
+            initial={{ y: -6, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="flex items-center gap-3"
+          >
+            <div className="w-12 h-12 rounded-lg bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center shadow">
+              <BookOpen className="w-6 h-6 text-black" />
             </div>
             <div>
               <div className="text-sm font-semibold text-zinc-200">SparkLab</div>
-              <div className="text-xs text-zinc-400">Formula Sheet</div>
+              <div className="text-xs text-zinc-400">Formula Sheet • AI Enhanced</div>
             </div>
           </motion.div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <Select value={category} onValueChange={(v) => setCategory(v)}>
+              <SelectTrigger className="w-40 bg-black/80 border border-zinc-800 text-white text-sm">
+                <SelectValue placeholder="Category" />
+              </SelectTrigger>
+              <SelectContent className="bg-zinc-900 border border-zinc-800">
+                {categories.map((c) => (
+                  <SelectItem key={c} value={c} className="text-white">
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             <Input
-              placeholder="Search formulas..."
+              placeholder="Search..."
               value={query}
-              onChange={e => setQuery(e.target.value)}
-              className="bg-zinc-900/70 border border-zinc-800 text-white w-56"
+              onChange={(e) => setQuery(e.target.value)}
+              className="bg-zinc-900/60 border border-zinc-800 text-white w-64"
             />
             <Button
-              disabled={loadingPdf}
-              onClick={downloadPdf}
               className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black"
+              onClick={downloadPdf}
+              disabled={loadingPdf}
             >
               <Download className="w-4 h-4 mr-2" /> Export PDF
             </Button>
@@ -162,74 +255,154 @@ export default function FormulaSheetPage() {
 
       <div className="h-16" />
 
+      {/* MAIN CONTENT */}
       <main className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Formula list */}
+        {/* LEFT SIDE */}
         <div className="lg:col-span-4 space-y-4">
-          <Card className="bg-black/70 border border-zinc-800 p-3 rounded-2xl">
+          <Card className="bg-black/70 border border-zinc-800 rounded-2xl p-3">
             <CardHeader>
-              <CardTitle className="text-[#ffd24a] flex items-center gap-2">
-                <Layers className="w-4 h-4 text-[#ffd24a]" /> Formulas
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center">
+                    <Layers className="w-4 h-4 text-black" />
+                  </div>
+                  <div className="text-sm font-semibold text-[#ffd24a]">
+                    Formulas
+                  </div>
+                </div>
+                <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300">
+                  {visible.length}
+                </Badge>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 max-h-[65vh] overflow-y-auto">
-              {visible.map(f => (
+
+            <CardContent className="space-y-3 max-h-[60vh] overflow-y-auto">
+              {visible.map((f) => (
                 <motion.button
                   key={f.id}
                   onClick={() => setSelected(f.id)}
-                  whileHover={{ scale: 1.02 }}
-                  className={`w-full text-left p-3 rounded-lg border transition-all ${
-                    selected === f.id ? "border-orange-500 bg-zinc-900/40" : "border-zinc-800"
-                  }`}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`w-full text-left p-3 rounded-md border ${
+                    selected === f.id
+                      ? "border-orange-500 bg-zinc-900/40"
+                      : "border-zinc-800"
+                  } flex items-center justify-between`}
                 >
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <div className="text-sm font-medium">{f.title}</div>
-                      <div className="text-xs text-zinc-400">{f.formula}</div>
-                    </div>
-                    <Badge className="bg-black/70 border border-zinc-700 text-orange-300">{f.category}</Badge>
+                  <div>
+                    <div className="text-sm font-medium">{f.title}</div>
+                    <div className="text-xs text-zinc-400">{f.formula}</div>
                   </div>
+                  <Badge className="bg-black/80 border border-zinc-700 text-orange-300">
+                    {f.category}
+                  </Badge>
                 </motion.button>
               ))}
             </CardContent>
           </Card>
-        </div>
 
-        {/* Formula details */}
-        <div className="lg:col-span-8">
-          <Card className="bg-black/70 border border-zinc-800 rounded-2xl p-4">
+          {/* INPUT CONTROLS */}
+          <Card className="bg-black/70 border border-zinc-800 rounded-2xl p-3">
             <CardHeader>
-              <CardTitle className="text-[#ffd24a] flex items-center gap-3">
-                <Zap className="w-5 h-5 text-[#ffd24a]" /> {currentFormula.title}
+              <CardTitle className="text-sm text-[#ffd24a]">
+                Selected Formula Controls
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {currentFormula.inputs.map(inp => (
-                  <div key={inp.key} className="flex items-center gap-2">
-                    <label className="w-28 text-xs text-zinc-400">{inp.label}</label>
-                    <Input
-                      value={inputsState[currentFormula.id][inp.key]}
-                      onChange={e => updateInput(currentFormula.id, inp.key, e.target.value)}
-                      type="number"
-                      className="bg-zinc-900/60 border border-zinc-800 text-white"
-                    />
-                    <div className="text-xs text-zinc-400">{inp.unit}</div>
+            <CardContent className="space-y-3">
+              {currentFormula.inputs.map((inp) => (
+                <div key={inp.key} className="flex items-center gap-2">
+                  <label className="text-xs w-28 text-zinc-400">
+                    {inp.label}
+                  </label>
+                  <Input
+                    value={inputsState[currentFormula.id][inp.key]}
+                    onChange={(e) =>
+                      updateInput(currentFormula.id, inp.key, e.target.value)
+                    }
+                    type="number"
+                    className="bg-zinc-900/60 border border-zinc-800 text-white"
+                  />
+                  <div className="text-xs text-zinc-400 w-14 text-right">
+                    {inp.unit}
                   </div>
-                ))}
+                </div>
+              ))}
+              <div className="flex gap-2">
+                <Button
+                  className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]"
+                  onClick={() => toast.success("Snapshot saved")}
+                >
+                  <Play className="w-4 h-4 mr-2" /> Snapshot
+                </Button>
+                <Button
+                  className="flex-1 border border-zinc-800"
+                  variant="ghost"
+                  onClick={() => {
+                    const base = {};
+                    currentFormula.inputs.forEach((i) => (base[i.key] = i.default));
+                    setInputsState((s) => ({
+                      ...s,
+                      [currentFormula.id]: base,
+                    }));
+                    toast("Reset inputs");
+                  }}
+                >
+                  <Pause className="w-4 h-4 mr-2" /> Reset
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* RIGHT SIDE */}
+        <div className="lg:col-span-8 space-y-4">
+          <Card className="bg-black/70 border border-zinc-800 rounded-2xl p-4">
+            <CardHeader className="flex items-center justify-between pb-2">
+              <CardTitle className="text-lg text-[#ffd24a] flex items-center gap-3">
+                <Cpu className="w-5 h-5 text-[#ffd24a]" /> {currentFormula.title}
+              </CardTitle>
+            </CardHeader>
+
+            <CardContent className="space-y-6">
+              {/* Visualizer */}
+              <FormulaVisualizer
+                formula={currentFormula}
+                computed={computed}
+                onImageReady={setVisualImage}
+              />
+
+              <Separator />
+
+              {/* AI Actions */}
+              <div className="flex gap-3">
+                <Button
+                  onClick={generateAIText}
+                  className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]"
+                  disabled={loadingAI}
+                >
+                  <Brain className="w-4 h-4 mr-2" /> Generate AI Insights
+                </Button>
+                <Button
+                  onClick={downloadPdf}
+                  disabled={loadingPdf}
+                  className="border border-zinc-800"
+                  variant="ghost"
+                >
+                  <FileText className="w-4 h-4 mr-2" /> Export Full Report
+                </Button>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                {Object.keys(computed)
-                  .filter(k => !k.endsWith("_unit"))
-                  .map(k => (
-                    <div key={k} className="bg-zinc-900/40 p-3 rounded-md border border-zinc-800">
-                      <div className="text-xs text-zinc-400">{k}</div>
-                      <div className="text-lg font-semibold text-[#ffd24a]">
-                        {round(computed[k], 9)} {computed[k + "_unit"]}
-                      </div>
-                    </div>
-                  ))}
-              </div>
+              {/* AI Output */}
+              {(aiSummary || aiDetail) && (
+                <div className="mt-4 p-4 bg-zinc-900/30 border border-zinc-800 rounded-lg">
+                  <div className="text-xs text-zinc-400 mb-2">AI Insights</div>
+                  <div className="text-sm text-zinc-300 whitespace-pre-wrap">
+                    <strong>Summary:</strong> {aiSummary}
+                    <br />
+                    <strong>Details:</strong> {aiDetail}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
