@@ -261,19 +261,16 @@ export default function FormulaSheetPage() {
 
     try {
       // call serverless endpoint
-      const res = await axios.post(`${base}/api/generate-pdf`, payload, {
-        responseType: "blob",
+      toast.loading("Generating PDF...");
+      const resp = await axios.post(`${base}/api/generate-pdf`, payload, {
         headers: { "Content-Type": "application/json" },
-        timeout: 30000,
+        responseType: "blob",
+        timeout: 60000,
       });
-      const blob = new Blob([res.data], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `formulasheet-${Date.now()}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success("PDF downloaded");
+       toast.dismiss();
+      const blob = new Blob([resp.data], { type: "application/pdf" });
+      saveAs(blob, `${title.replace(/\s+/g, "-")}.pdf`);
+      toast.success("PDF downloaded successfully!");
     } catch (err) {
       console.warn("Server PDF failed, falling back to client-side", err);
       // fallback to client-side jsPDF generation
