@@ -145,11 +145,14 @@ export default function FormulaSheetPage() {
       visualImage,
     };
 
+   const base = "https://sparklab-beee.vercel.app"; // ✅ fixed (no trailing slash)
+
     try {
-      setLoadingPdf(true);
       toast.loading("Generating PDF...");
-      const resp = await axios.post(`/api/generate-pdf`, payload, {
+      const resp = await axios.post(`${base}/api/generate-pdf`, payload, {
+        headers: { "Content-Type": "application/json" },
         responseType: "blob",
+        timeout: 60000,
       });
 
       const blob = new Blob([resp.data], { type: "application/pdf" });
