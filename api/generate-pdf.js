@@ -7,7 +7,7 @@ import PDFDocument from "pdfkit";
 export const config = {
 
   api: {
-    bodyParser: { sizeLimit: "50mb" },
+    bodyParser: { sizeLimit: "100mb" },
   },
 };
 
