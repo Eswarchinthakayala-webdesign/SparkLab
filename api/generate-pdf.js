@@ -124,7 +124,10 @@ export default async function handler(req, res) {
     // 🧱 Initial Layout
     drawPageLayout(doc);
     drawHeader(doc, title, generatedAt);
-
+      doc.on("pageAdded", () => {
+      drawPageLayout(doc);
+      doc.fillColor("#ddd");
+    });
     // Formula Header
     doc.font("Helvetica-Bold").fontSize(14).fillColor("#ffb84a");
     writeText(doc, formula);
@@ -233,16 +236,11 @@ export default async function handler(req, res) {
     doc.moveDown(1);
     doc.strokeColor("#333").lineWidth(0.5).moveTo(40, doc.y).lineTo(doc.page.width - 40, doc.y).stroke();
     doc.moveDown(1);
-    drawFooter(doc);
+   
 
     // -------------------------------------------------------------
     // Handle new pages automatically
-    doc.on("pageAdded", () => {
-      drawPageLayout(doc);
-      drawHeader(doc, title, generatedAt);
-      drawFooter(doc);
-      doc.fillColor("#ddd");
-    });
+  
 
     doc.end();
   } catch (err) {

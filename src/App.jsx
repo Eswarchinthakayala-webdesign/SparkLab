@@ -45,6 +45,7 @@ import FormulaSheetPage from "./pages/hub/FormulaSheetPage";
 import TheoremTutorialPage from "./pages/hub/TheoremTutorialPage";
 import NotesPage from "./pages/hub/NotesPage";
 import ExplainerPage from "./pages/hub/ExplainerPage";
+import CheatCodesPage from "./pages/hub/CheatCodesPage";
 
 // TODO: You can add these later
 // import LoginPage from "./pages/LoginPage";
@@ -100,6 +101,7 @@ export default function App() {
         <Route path="/learning/theorem-tutorials" element={<TheoremTutorialPage/>} />
         <Route path="/learning/short-notes" element={<NotesPage/>} />
         <Route path="/learning/animated-explainers" element={<ExplainerPage/>} />
+        <Route path="/learning/cheat-codes" element={<CheatCodesPage/>} />
       </Routes>
     </Router>
   );
