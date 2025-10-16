@@ -46,6 +46,19 @@ import TheoremTutorialPage from "./pages/hub/TheoremTutorialPage";
 import NotesPage from "./pages/hub/NotesPage";
 import ExplainerPage from "./pages/hub/ExplainerPage";
 import CheatCodesPage from "./pages/hub/CheatCodesPage";
+import GlossaryCard from "./components/GlossaryCard";
+import RealLifeApplicationsSection from "./components/landing/RealLifeApplicationsSection";
+import RealWorldApplicationPage from "./pages/RealWorldApplicationPage";
+import ApplianceEnergyAnalyzer from "./pages/real-world/ApplianceEnergyAnalyzer";
+import ElectricBillEstimatorPage from "./pages/real-world/ElectricBillEstimator";
+import EnergySimulatorPage from "./pages/real-world/EnergySimulator";
+import EstimatorPage from "./pages/real-world/EstimatorPage";
+import BatteryUPSDesignerPage from "./pages/real-world/BatteryUPSDesignerPage";
+import InverterSizingPage from "./pages/real-world/InverterSizingPage";
+import LoadBalancePage from "./pages/real-world/LoadBalancePage";
+import FootPrintCalculatorPage from "./pages/real-world/FootPrintCalculatorPage";
+import EnergyEnginePage from "./pages/real-world/EnergyEnginePage";
+import ComparePage from "./pages/real-world/ComparePage";
 
 // TODO: You can add these later
 // import LoginPage from "./pages/LoginPage";
@@ -102,6 +115,19 @@ export default function App() {
         <Route path="/learning/short-notes" element={<NotesPage/>} />
         <Route path="/learning/animated-explainers" element={<ExplainerPage/>} />
         <Route path="/learning/cheat-codes" element={<CheatCodesPage/>} />
+        <Route path="/learning/glossary" element={<GlossaryCard/>} />
+
+        <Route path="/topics/real-life" element={<RealWorldApplicationPage/>} />
+        <Route path="/tools/real-world/appliance-analyzer" element={<ApplianceEnergyAnalyzer/>} />
+        <Route path="/tools/real-world/bill-estimator" element={<ElectricBillEstimatorPage/>} />
+        <Route path="/tools/real-world/renewable-sim" element={<EnergySimulatorPage/>} />
+        <Route path="/tools/real-world/solar-estimator" element={<EstimatorPage/>} />
+        <Route path="/tools/real-world/battery-designer" element={<BatteryUPSDesignerPage/>}/>
+        <Route path="/tools/real-world/inverter-sizing" element={<InverterSizingPage/>} />
+        <Route path="/tools/real-world/load-balancer" element={<LoadBalancePage/>} />
+        <Route path='/tools/real-world/carbon-footprint' element={<FootPrintCalculatorPage/>} />
+        <Route path="/tools/real-world/energy-tips" element={<EnergyEnginePage/>} />
+        <Route path="/tools/real-world/compare-appliances" element={<ComparePage/>} />
       </Routes>
     </Router>
   );
