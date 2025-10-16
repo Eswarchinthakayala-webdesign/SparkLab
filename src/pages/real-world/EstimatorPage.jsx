@@ -155,136 +155,328 @@ function useSolarSim({
    - Draws array of panels, animated dots (current flow), inverter, battery gauge
    - Drives visuals from computed values (panels, produced watt, battery fraction)
    ============================ */
-function SolarVisualizerSVG({ panelCount, panelWatt, producedW, batteryFrac, sunFactor, running }) {
-  // responsive sizing
+ function SolarVisualizerSVG({
+  panelCount = 8,
+  panelWatt = 400,
+  producedW = 2500,
+  batteryFrac = 0.65,
+  sunFactor = 0.9,
+  running = true,
+}) {
   const cols = Math.min(6, Math.max(1, Math.ceil(Math.sqrt(panelCount))));
   const rows = Math.ceil(panelCount / cols);
   const panelW = 86;
-  const panelH = 52;
-  const spacingX = 18;
-  const spacingY = 14;
-  const width = Math.max(680, cols * (panelW + spacingX) + 240);
-  const height = Math.max(320, rows * (panelH + spacingY) + 160);
+  const panelH = 54;
+  const spacingX = 22;
+  const spacingY = 18;
+  const width = Math.max(960, cols * (panelW + spacingX) + 260);
+  const height = Math.max(460, rows * (panelH + spacingY) + 240);
 
-  // animated dot count proportional to producedW
-  const dotCount = clamp(Math.round(3 + producedW / 200), 3, 36);
-  const dotSpeed = clamp(3 / (sunFactor + 0.05), 0.6, 6); // seconds per cycle
+  const dotCount = clamp(Math.round(6 + producedW / 180), 6, 40);
+  const dotSpeed = clamp(3 / (sunFactor + 0.05), 0.6, 6);
 
   return (
-    <div className="w-full rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden">
-      <div className="flex items-start justify-between gap-3">
+    <motion.div
+      className="w-full rounded-2xl p-5 bg-gradient-to-b from-[#0a0a0a] via-[#121212] to-[#1a0e00] border border-[#2e1800] shadow-[0_0_45px_rgba(255,150,50,0.15)] backdrop-blur-xl overflow-hidden"
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.8 }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-2">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
-            <Sun className="w-5 h-5" />
-          </div>
+          <motion.div
+            className="w-12 h-12 rounded-lg bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center shadow-lg"
+            animate={{
+              boxShadow: [
+                "0 0 12px #ffb84a",
+                "0 0 24px #ff7a2d",
+                "0 0 12px #ffb84a",
+              ],
+            }}
+            transition={{ duration: 2, repeat: Infinity, repeatType: "mirror" }}
+          >
+            <Sun className="w-6 h-6 text-black" />
+          </motion.div>
           <div>
-            <div className="text-lg font-semibold text-[#ffd24a]">Solar Estimator Visualizer</div>
-            <div className="text-xs text-zinc-400">Live energy flow • panels • battery • inverter</div>
+            <div className="text-lg font-semibold text-[#ffb84a]">
+              Solar Energy Control Center
+            </div>
+            <div className="text-xs text-zinc-400">
+              Holographic Smart Grid • Energy Flow Simulation
+            </div>
           </div>
         </div>
-
-        <div className="flex gap-3 items-center flex-wrap">
-          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">Panels: <span className="text-[#ffd24a] ml-1">{panelCount}</span></Badge>
-          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">P: <span className="text-[#ff9a4a] ml-1">{round(producedW, 1)} W</span></Badge>
-          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">Batt: <span className="text-[#00ffbf] ml-1">{Math.round(batteryFrac * 100)}%</span></Badge>
+        <div className="flex gap-2 items-center flex-wrap text-xs text-zinc-300">
+          <span className="px-3 py-1 border border-[#332208] rounded-full bg-black/40">
+            Panels: <span className="text-[#ffb84a]">{panelCount}</span>
+          </span>
+          <span className="px-3 py-1 border border-[#332208] rounded-full bg-black/40">
+            Output: <span className="text-[#ff9a3d]">{round(producedW, 1)} W</span>
+          </span>
+          <span className="px-3 py-1 border border-[#332208] rounded-full bg-black/40">
+            Battery:{" "}
+            <span className="text-[#ffaa00]">{Math.round(batteryFrac * 100)}%</span>
+          </span>
         </div>
       </div>
 
-      <div className="mt-3 w-full overflow-x-auto">
-        <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet" className="w-full h-64">
-          {/* sun icon */}
-          <g transform={`translate(60,60)`}>
-            <circle cx="0" cy="0" r="28" fill="#ffd24a" stroke="#ffb86b" strokeWidth="2" />
-            <g transform="translate(-6,-6)" opacity={0.95}>
-              <CloudSun className="w-6 h-6" />
-            </g>
+      {/* SVG Scene */}
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="xMidYMid meet"
+        className="w-full h-[26rem]"
+      >
+        {/* ===== DEFINITIONS ===== */}
+        <defs>
+          <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#1a0e00" />
+            <stop offset="70%" stopColor="#000000" />
+          </linearGradient>
+
+          <radialGradient id="sunGlow" cx="50%" cy="50%" r="65%">
+            <stop offset="0%" stopColor="#ffdd55" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="#ff7a2d00" />
+          </radialGradient>
+
+          <linearGradient id="energyFlow" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#ffb84a" />
+            <stop offset="100%" stopColor="#ffaa00" />
+          </linearGradient>
+
+          <linearGradient id="panelGlass" x1="0" x2="1">
+            <stop offset="0%" stopColor="#111" />
+            <stop offset="100%" stopColor="#222" />
+          </linearGradient>
+
+          <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="5" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+
+          <linearGradient id="beamGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#ffb84a40" />
+            <stop offset="100%" stopColor="#00000000" />
+          </linearGradient>
+        </defs>
+
+        {/* ===== BACKGROUND ===== */}
+        <rect x="0" y="0" width={width} height={height} fill="url(#skyGrad)" />
+
+        {/* subtle parallax particles */}
+        {Array.from({ length: 25 }).map((_, i) => (
+          <motion.circle
+            key={i}
+            cx={Math.random() * width}
+            cy={Math.random() * height}
+            r={Math.random() * 1.4 + 0.6}
+            fill="#ffb84a"
+            fillOpacity={Math.random() * 0.25}
+            animate={{ y: [0, -15, 0], opacity: [0.3, 0.7, 0.3] }}
+            transition={{
+              duration: 4 + Math.random() * 6,
+              repeat: Infinity,
+              delay: Math.random() * 3,
+            }}
+          />
+        ))}
+
+        {/* ===== SUN & BEAMS ===== */}
+        <motion.circle
+          cx={useMemo(() => 180 + sunFactor * 480, [sunFactor])}
+          cy={useMemo(() => 100 + (1 - sunFactor) * 70, [sunFactor])}
+          r="40"
+          fill="url(#sunGlow)"
+          style={{ filter: "url(#softGlow)" }}
+          animate={{ scale: [1, 1.05, 1], opacity: [0.8, 1, 0.8] }}
+          transition={{ duration: 3, repeat: Infinity }}
+        />
+        {/* sunlight beams */}
+        {Array.from({ length: 6 }).map((_, i) => (
+          <motion.rect
+            key={i}
+            x={180 + i * 60}
+            y="0"
+            width="120"
+            height={height / 2}
+            fill="url(#beamGrad)"
+            opacity={0.08 + i * 0.03}
+            animate={{
+              opacity: [0.1, 0.25, 0.1],
+              x: [180 + i * 60, 170 + i * 60, 180 + i * 60],
+            }}
+            transition={{ duration: 8 + i, repeat: Infinity }}
+          />
+        ))}
+
+        {/* ===== SOLAR PANEL GRID ===== */}
+        <g transform="translate(160,240)">
+          {Array.from({ length: panelCount }).map((_, i) => {
+            const col = i % cols;
+            const row = Math.floor(i / cols);
+            const x = col * (panelW + spacingX);
+            const y = row * (panelH + spacingY);
+            const glow = 0.1 + sunFactor * 0.8;
+
+            const pathStr = `M ${x + panelW / 2} ${y + panelH} C ${
+              x + 100
+            } ${y + 40}, ${width - 200} ${height - 160}, ${width - 140} ${
+              height - 160
+            }`;
+
+            return (
+              <g key={i} transform={`translate(${x},${y})`}>
+                <rect
+                  x="0"
+                  y="0"
+                  width={panelW}
+                  height={panelH}
+                  rx="6"
+                  fill="url(#panelGlass)"
+                  stroke="#332208"
+                  strokeWidth="1.5"
+                  style={{
+                    filter: "drop-shadow(0 0 8px rgba(255,150,50,0.15))",
+                  }}
+                />
+                {/* reflection shimmer */}
+                <motion.rect
+                  x="-20"
+                  y="0"
+                  width={panelW / 2}
+                  height={panelH}
+                  fill="#ffffff15"
+                  animate={{ x: [0, panelW + 10] }}
+                  transition={{
+                    duration: 3 + Math.random() * 2,
+                    repeat: Infinity,
+                    delay: i * 0.25,
+                  }}
+                />
+                <rect
+                  x="0"
+                  y="0"
+                  width={panelW}
+                  height={panelH}
+                  fill="#ffb84a10"
+                  opacity={glow * 0.5}
+                />
+
+                <text
+                  x={panelW / 2 - 14}
+                  y={panelH + 12}
+                  fontSize="10"
+                  fill="#ffaa00"
+                >
+                  {panelWatt} W
+                </text>
+
+                {/* energy flow dots */}
+                {Array.from({
+                  length: Math.min(5, Math.ceil(dotCount / panelCount) + 1),
+                }).map((__, d) => {
+                  const delay = (i + d) * 0.12;
+                  return (
+                    <circle
+                      key={`${i}-${d}`}
+                      r="3.4"
+                      fill="url(#energyFlow)"
+                      style={{
+                        offsetPath: `path('${pathStr}')`,
+                        animation: `flow ${dotSpeed}s linear ${-delay}s infinite`,
+                        animationPlayState: running ? "running" : "paused",
+                      }}
+                    />
+                  );
+                })}
+              </g>
+            );
+          })}
+        </g>
+
+        {/* ===== CONTROL HUB ===== */}
+        <g transform={`translate(${width - 180}, ${height - 160})`}>
+          <rect
+            x="-40"
+            y="-20"
+            width="200"
+            height="120"
+            rx="16"
+            fill="#1a0e00cc"
+            stroke="#ff7a2d"
+            style={{
+              backdropFilter: "blur(8px)",
+              filter: "drop-shadow(0 0 10px rgba(255,150,50,0.3))",
+            }}
+          />
+          <text x="10" y="10" fontSize="12" fill="#ffb84a">
+            Power Console
+          </text>
+
+          {/* battery */}
+          <g transform="translate(20,30)">
+            <Battery className="w-5 h-5 text-[#ffaa00]" />
+            <rect
+              x="40"
+              y="0"
+              width="120"
+              height="12"
+              rx="6"
+              fill="#0b0b0b"
+              stroke="#332208"
+            />
+            <rect
+              x="40"
+              y="0"
+              width={Math.max(8, 120 * batteryFrac)}
+              height="12"
+              rx="6"
+              fill="#ffaa00"
+              style={{ filter: "drop-shadow(0 0 6px #ffb84a)" }}
+            />
+            <text x="170" y="10" fontSize="10" fill="#ffb84a">
+              {Math.round(batteryFrac * 100)}%
+            </text>
           </g>
 
-          {/* panel grid */}
-          <g transform={`translate(140,40)`}>
-            {Array.from({ length: panelCount }).map((_, i) => {
-              const col = i % cols;
-              const row = Math.floor(i / cols);
-              const x = col * (panelW + spacingX);
-              const y = row * (panelH + spacingY);
-              const tilt = (Math.sin((i + (performance.now() % 1000) / 1000) * 2) * 4) || 0;
-              const panelFill = `url(#panelGrad)`;
-              const glow = clamp(sunFactor, 0, 1);
-              // path for animated dot on panel to bus
-              const pathStr = `M ${x + panelW / 2} ${y + panelH} L ${width - 220} ${height - 120}`;
-              return (
-                <g key={`p-${i}`} transform={`translate(${x},${y}) rotate(${tilt})`} className="panel">
-                  <rect x="0" y="0" rx="6" ry="6" width={panelW} height={panelH} fill="#071023" stroke="#112" strokeWidth="2" />
-                  {/* cells */}
-                  <g transform="translate(8,8)">
-                    {Array.from({ length: 3 }).map((__, r) => (
-                      <rect key={r} x="0" y={r * 12} width={panelW - 16} height="8" rx="2" fill={`rgba(8,20,48,${0.2 + glow * 0.7})`} stroke="#021" />
-                    ))}
-                  </g>
-                  {/* panel label */}
-                  <text x={8} y={panelH - 6} fontSize="10" fill="#ffd24a">{panelWatt} W</text>
-
-                  {/* animated dots traveling from panel to bus */}
-                  {Array.from({ length: Math.min(6, Math.round(dotCount / (cols * rows) + 1)) }).map((__, di) => {
-                    const delay = ((i + di) % 7) * 0.12;
-                    const style = {
-                      offsetPath: `path('${pathStr}')`,
-                      animationName: "flowToBus",
-                      animationDuration: `${dotSpeed}s`,
-                      animationTimingFunction: "linear",
-                      animationDelay: `${-delay}s`,
-                      animationIterationCount: "infinite",
-                      animationPlayState: running ? "running" : "paused",
-                      transformOrigin: "0 0",
-                    };
-                    return <circle key={`dot-${i}-${di}`} r="3.2" fill="#ffd24a" style={style} />;
-                  })}
-                </g>
-              );
-            })}
+          {/* home icon */}
+          <g transform="translate(20,70)">
+            <Home className="w-5 h-5 text-[#ff9a3d]" />
+            <text x="36" y="10" fontSize="11" fill="#ff9a3d">
+              Smart Home
+            </text>
           </g>
+        </g>
 
-          {/* bus / inverter / load cluster */}
-          <g transform={`translate(${width - 240}, ${height - 160})`}>
-            <rect x="-20" y="-10" width="200" height="120" rx="12" fill="#060606" stroke="#222" />
-            <text x="8" y="6" fontSize="12" fill="#ff9a4a">Inverter</text>
-            <text x="8" y="28" fontSize="11" fill="#fff">AC Out: <tspan fill="#ffd24a">{round(producedW, 1)} W</tspan></text>
-            <g transform="translate(10,48)">
-              <rect x="0" y="0" width="36" height="36" rx="6" fill="#0b0b0b" stroke="#222" />
-              <LightningCharge className="w-5 h-5" />
-              <text x="44" y="22" fontSize="11" fill="#00ffbf">Load</text>
-            </g>
+        {/* ===== OVERLAY TEXT ===== */}
+        <text
+          x="40"
+          y={height - 30}
+          fontSize="14"
+          fill="#ffb84a"
+          opacity="0.75"
+          style={{ letterSpacing: "1px" }}
+        >
+          System Active • Real-Time Solar Energy Flow
+        </text>
 
-            <g transform="translate(10,90)">
-              <rect x="0" y="0" width="160" height="18" rx="8" fill="#0b0b0b" stroke="#222" />
-              <rect x="4" y="4" width={Math.max(4, 152 * batteryFrac)} height="10" rx="6" fill="#00ffbf" />
-              <text x="6" y="14" fontSize="10" fill="#000">Battery {Math.round(batteryFrac * 100)}%</text>
-            </g>
-          </g>
-
-          <defs>
-            <linearGradient id="panelGrad" x1="0" x2="1">
-              <stop offset="0%" stopColor="#07162b" />
-              <stop offset="100%" stopColor="#02122a" />
-            </linearGradient>
-          </defs>
-
-          <style>{`
-            @keyframes flowToBus {
-              0% { offset-distance: 0%; opacity: 0.9; transform: translate(-2px,-2px) scale(0.95); }
-              45% { opacity: 0.95; transform: translate(0,0) scale(1.05); }
-              100% { offset-distance: 100%; opacity: 0; transform: translate(6px,6px) scale(0.8); }
-            }
-            circle[style] { will-change: offset-distance, transform, opacity; }
-            @media (max-width: 640px) {
-              text { font-size: 9px; }
-            }
-          `}</style>
-        </svg>
-      </div>
-    </div>
+        <style>{`
+          @keyframes flow {
+            0% { offset-distance: 0%; opacity: 1; transform: scale(0.9); }
+            50% { opacity: 0.95; transform: scale(1.05); }
+            100% { offset-distance: 100%; opacity: 0; transform: scale(0.9); }
+          }
+          circle[style] { will-change: offset-distance, opacity, transform; }
+        `}</style>
+      </svg>
+    </motion.div>
   );
 }
+
+
 
 /* ============================
    Oscilloscope for Power traces
@@ -751,11 +943,11 @@ export default function EstimatorPage() {
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-60 w-[92%] sm:w-auto sm:left-auto sm:translate-x-0 sm:bottom-6 sm:right-6 lg:hidden" role="region" aria-label="Mobile controls">
         <div className="flex items-center justify-between gap-3 bg-black/80 border border-zinc-800 p-3 rounded-full shadow-lg">
           <div className="flex items-center gap-2">
-            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-zinc-300 text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
+            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-black cursor-pointer text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" className="border border-zinc-800 text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
+            <Button variant="ghost" className="border border-zinc-800 cursor-pointer text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
           </div>
         </div>
       </div>

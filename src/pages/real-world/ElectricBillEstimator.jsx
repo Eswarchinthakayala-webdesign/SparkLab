@@ -20,6 +20,8 @@ import {
   Trash2,
   Plus,
   Layers,
+  CircleX,
+  SquarePen
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
@@ -61,8 +63,8 @@ const currency = (v) => `₹${Number.isFinite(v) ? round(v, 2).toLocaleString() 
 
 /* ============================
    Default tariff slabs (example)
-   - You should replace these with your local tariff structure or allow user to edit them.
-   - Each slab: { upto: number|null, rate: number } where upto is cumulative kWh boundary; null means rest.
+   - Replace or persist as you wish
+   - Each slab: { upto: number|null, rate: number }
    ============================ */
 const TARIFFS = {
   residential: {
@@ -96,19 +98,17 @@ const TARIFFS = {
 };
 
 /* ============================
-   Tariff calculation helpers
-   - computeBillFromSlabs(consumption, slabs)
-   - returns breakdown: array of { slabFrom, slabTo, kWh, rate, cost } and subtotal
+   computeBillFromSlabs(consumption, slabs)
+   returns { breakdown, subtotal }
+   where breakdown: [{ slabFrom, slabTo, kWh, rate, cost }]
    ============================ */
 function computeBillFromSlabs(consumption, slabs) {
-  // slabs is array of { upto: number|null, rate }
   const breakdown = [];
   let remaining = Math.max(0, Number(consumption) || 0);
   let lower = 0;
   for (const s of slabs) {
     const upto = s.upto;
     if (upto === null) {
-      // everything remaining goes here
       const kWh = remaining;
       const cost = kWh * s.rate;
       breakdown.push({ slabFrom: lower + 1, slabTo: null, kWh, rate: s.rate, cost });
@@ -129,48 +129,108 @@ function computeBillFromSlabs(consumption, slabs) {
 }
 
 /* ============================
-   Visualization components
-   - Animated SVG meter + house
-   - Use instantaneous power to set dot density & color
+   misc utils
    ============================ */
-function ElectricVisualizerSVG({ consumptionDaily = 0, instantaneousKW = 0, running = true }) {
-  // consumptionDaily in kWh/day (for indicator)
-  // instantaneousKW is current power draw in kW (for dot speed/density)
+function mixHex(a, b, t) {
+  const ha = parseInt(a.slice(1), 16);
+  const hb = parseInt(b.slice(1), 16);
+  const ra = (ha >> 16) & 0xff, ga = (ha >> 8) & 0xff, ba = ha & 0xff;
+  const rb = (hb >> 16) & 0xff, gb = (hb >> 8) & 0xff, bb = hb & 0xff;
+  const r = Math.round(ra + (rb - ra) * t).toString(16).padStart(2, "0");
+  const g = Math.round(ga + (gb - ga) * t).toString(16).padStart(2, "0");
+  const b2 = Math.round(ba + (bb - ba) * t).toString(16).padStart(2, "0");
+  return `#${r}${g}${b2}`;
+}
+
+/* ============================
+   ElectricVisualizerSVG
+   - Now uses the same slabs/sum/fixed/meter/tax passed from parent
+   - Displays identical "Est. Monthly Bill" number as the main calculation
+   ============================ */
+function ElectricVisualizerSVG({
+  consumptionDaily = 0,
+  instantaneousKW = 0,
+  running = true,
+  monthlyConsumption = 0, // kWh/month (for tariff level)
+  slabs = [], // tariff slabs (same shape as baseTariff.slabs)
+  subtotal = 0, // energy subtotal (used for intermediate display)
+  fixed = 0,
+  meter = 0,
+  tax = 0,
+  total = 0,
+}) {
+  // local animated display for total (smooth rolling)
+  const [displayBill, setDisplayBill] = useState(total);
+
+  useEffect(() => {
+    let raf = null;
+    let start = null;
+    const from = displayBill;
+    const to = total;
+    const duration = 700;
+    function step(ts) {
+      if (!start) start = ts;
+      const t = clamp((ts - start) / duration, 0, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      const val = from + (to - from) * eased;
+      setDisplayBill(val);
+      if (t < 1) raf = requestAnimationFrame(step);
+    }
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [total]);
+
+  // Visual params
   const abs = Math.max(0, instantaneousKW);
-  const dotCount = clamp(Math.round(4 + abs * 6), 3, 30);
+  const dotCount = clamp(Math.round(6 + abs * 8), 6, 40);
   const speed = clamp(1.2 / (abs + 0.01), 0.25, 3.0);
 
-  // color gradient: low (warm orange) -> high (hot pink)
-  const colorLow = "#ffd24a";
-  const colorHigh = "#ff6a9a";
+  // determine slab index for monthlyConsumption
+  const slabIndex = useMemo(() => {
+    let rem = Math.max(0, Number(monthlyConsumption) || 0);
+    let lower = 0;
+    for (let i = 0; i < slabs.length; i++) {
+      const s = slabs[i];
+      if (s.upto === null) {
+        return i;
+      }
+      const cap = Math.max(0, s.upto - lower);
+      if (rem <= s.upto) {
+        return i;
+      }
+      lower = s.upto;
+    }
+    return Math.max(0, slabs.length - 1);
+  }, [monthlyConsumption, slabs]);
 
-  const mix = (a, b, t) => {
-    // simple hex mix
-    const ha = parseInt(a.slice(1), 16);
-    const hb = parseInt(b.slice(1), 16);
-    const ra = (ha >> 16) & 0xff, ga = (ha >> 8) & 0xff, ba = ha & 0xff;
-    const rb = (hb >> 16) & 0xff, gb = (hb >> 8) & 0xff, bb = hb & 0xff;
-    const r = Math.round(ra + (rb - ra) * t).toString(16).padStart(2, "0");
-    const g = Math.round(ga + (gb - ga) * t).toString(16).padStart(2, "0");
-    const b2 = Math.round(ba + (bb - ba) * t).toString(16).padStart(2, "0");
-    return `#${r}${g}${b2}`;
+  // palette for visualizer, try to map to slabs length
+  const defaultPalette = ["#00d2ff", "#7aff8c", "#ffd24a", "#ff6a9a", "#ff3366"];
+  const color = slabs && slabs[slabIndex] && slabs[slabIndex].color ? slabs[slabIndex].color : defaultPalette[slabIndex] || defaultPalette[defaultPalette.length - 1];
+  const glowColor = `${color}99`;
+
+  const svgWidth = 980;
+  const svgHeight = 300;
+
+  const glowStyle = {
+    filter: `drop-shadow(0 0 8px ${glowColor}) drop-shadow(0 0 16px ${glowColor})`,
   };
 
-  const color = mix(colorLow, colorHigh, clamp(abs / 5, 0, 1)); // normalize at 5kW
-
-  const svgWidth = 920;
-  const svgHeight = 260;
-
   return (
-    <div className="w-full rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
+    <motion.div
+      className="w-full rounded-2xl p-4 bg-gradient-to-b from-black/60 to-zinc-900/10 border border-zinc-800 shadow-[0_8px_30px_rgba(0,0,0,0.6)] overflow-hidden"
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.34 }}
+    >
+      <div className="flex items-start flex-col md:flex-row justify-between gap-3">
+        <div className="flex items-center  gap-3">
           <div className="w-11 h-11 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
             <Home className="w-5 h-5" />
           </div>
           <div>
             <div className="text-lg font-semibold text-[#ffd24a]">Consumption Visualizer</div>
-            <div className="text-xs text-zinc-400">Realtime meter • flow • daily estimate</div>
+            <div className="text-xs text-zinc-400">Realtime meter • flow • monthly estimate</div>
           </div>
         </div>
 
@@ -182,82 +242,167 @@ function ElectricVisualizerSVG({ consumptionDaily = 0, instantaneousKW = 0, runn
 
       <div className="mt-3 w-full overflow-x-auto">
         <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full h-56" preserveAspectRatio="xMidYMid meet">
-          {/* house silhouette */}
           <defs>
             <linearGradient id="glass" x1="0" x2="1" y1="0" y2="1">
               <stop offset="0%" stopColor="#0b0b0b" />
               <stop offset="100%" stopColor="#131313" />
             </linearGradient>
             <linearGradient id="glow" x1="0" x2="1">
-              <stop offset="0%" stopColor="#ff7a2d" stopOpacity="0.8" />
-              <stop offset="100%" stopColor="#ffd24a" stopOpacity="0.2" />
+              <stop offset="0%" stopColor={color} stopOpacity="0.85" />
+              <stop offset="100%" stopColor={mixHex(color, "#ffffff", 0.35)} stopOpacity="0.2" />
             </linearGradient>
+            <radialGradient id="cityGlow" cx="50%" cy="40%" r="60%">
+              <stop offset="0%" stopColor={color} stopOpacity="0.40" />
+              <stop offset="60%" stopColor={color} stopOpacity="0.08" />
+              <stop offset="100%" stopColor="#000000" stopOpacity="0" />
+            </radialGradient>
+            <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="6" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+            <filter id="spark" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2" result="b" />
+              <feColorMatrix type="matrix" values="1 0 0 0 0   0 0.9 0 0 0   0 0 0.9 0 0  0 0 0 1 0" />
+            </filter>
           </defs>
 
-          <g transform={`translate(40,20)`}>
-            <rect x="0" y="80" width="160" height="100" rx="8" fill="url(#glass)" stroke="#222" />
-            <polygon points="0,80 80,20 160,80" fill="#080808" stroke="#222" />
-            <rect x="18" y="110" width="36" height="36" rx="4" fill="#0a0a0a" stroke="#222" />
-            <rect x="106" y="110" width="36" height="36" rx="4" fill="#0a0a0a" stroke="#222" />
-            <text x="6" y="205" fontSize="11" fill="#888">Smart Home</text>
-
-            {/* small meter */}
-            <g transform="translate(190,90)">
-              <rect x="0" y="0" width="120" height="56" rx="8" fill="#060606" stroke="#222" />
-              <text x="8" y="18" fontSize="12" fill="#ffd24a">Meter</text>
-              <text x="8" y="36" fontSize="12" fill="#fff">{round(instantaneousKW, 3)} kW</text>
-            </g>
-          </g>
-
-          {/* path for flowing dots */}
-          <g transform="translate(40,20)">
-            {/* path from meter to house */}
-            <path id="flowPath" d="M 210 118 C 250 100, 300 100, 350 120" fill="none" stroke="transparent" strokeWidth="2" />
-            {/* animated dots */}
-            {Array.from({ length: dotCount }).map((_, i) => {
-              const delay = (i / dotCount) * speed;
-              const style = {
-                offsetPath: `path('M 210 118 C 250 100, 300 100, 350 120')`,
-                animationName: "flowDots",
-                animationDuration: `${speed}s`,
-                animationTimingFunction: "linear",
-                animationDelay: `${-delay}s`,
-                animationIterationCount: "infinite",
-                animationPlayState: running ? "running" : "paused",
-              };
-              return <circle key={`dot-${i}`} r={4} fill={color} style={style} />;
+          {/* subtle background grid lines */}
+          <g opacity="0.04">
+            {Array.from({length:20}).map((_,i)=>{
+              const y = 20 + i*22;
+              return <line key={i} x1="0" y1={y} x2="1000" y2={y} stroke="#7efcff" strokeWidth="0.3" strokeOpacity={0.04} />;
             })}
           </g>
 
-          {/* mini gauge that pulses with power */}
-          <g transform={`translate(${svgWidth - 210},28)`}> 
-            <rect x="0" y="0" width="180" height="84" rx="8" fill="#060606" stroke="#222" />
-            <text x="12" y="18" fontSize="12" fill="#ffb57a">Instant Power</text>
-            <text x="12" y="40" fontSize="18" fill="#fff">{round(instantaneousKW, 4)} kW</text>
-            <rect x="12" y="52" width={clamp(instantaneousKW * 20, 4, 156)} height="8" rx="4" fill={color} />
+          {/* City silhouette (background) */}
+          <g transform="translate(20,220)" style={{mixBlendMode:"screen"}}>
+            <rect x="0" y="-100" width="960" height="220" fill="url(#cityGlow)" opacity={0.9} />
+            <g transform="translate(40,30)" style={{transition:"opacity 600ms ease"}}>
+              <rect x="0" y="10" width="70" height="70" rx="6" fill="#091018" stroke="#0f1720"/>
+              <rect x="85" y="-10" width="48" height="90" rx="4" fill="#081017" stroke="#0f1720"/>
+              <rect x="150" y="0" width="100" height="80" rx="4" fill="#071018" stroke="#0f1720"/>
+              <rect x="260" y="-20" width="56" height="100" rx="4" fill="#061018" stroke="#0f1720"/>
+              <rect x="330" y="8" width="90" height="72" rx="4" fill="#081218" stroke="#0f1720"/>
+              <rect x="430" y="-16" width="140" height="110" rx="4" fill="#071018" stroke="#0f1720"/>
+              <rect x="590" y="6" width="60" height="74" rx="4" fill="#081218" stroke="#0f1720"/>
+              <rect x="670" y="-8" width="120" height="88" rx="6" fill="#061018" stroke="#0f1720"/>
+              <rect x="820" y="10" width="90" height="70" rx="6" fill="#071018" stroke="#0f1720"/>
+              <g opacity={clamp(instantaneousKW/5, 0.08, 1)}>
+                {Array.from({length:16}).map((_,i) => {
+                  const x = 8 + (i * 58) % 740;
+                  const y = Math.floor(i/6)*20;
+                  return <rect key={i} x={x} y={y} width="18" height="8" rx="1" fill={mixHex("#02121a", color, 0.9)} opacity={0.9} />;
+                })}
+              </g>
+            </g>
+          </g>
+
+          {/* left: house + meter + flow */}
+          <g transform="translate(40,60)">
+            {/* House */}
+            <g className="house" transform="translate(0,40)">
+              <rect x="0" y="50" width="170" height="90" rx="10" fill="#071018" stroke="#122128" />
+              <polygon points="0,50 85,10 170,50" fill="#061017" stroke="#122128" />
+              <rect x="22" y="83" width="40" height="44" rx="6" fill="#07121a" stroke="#0e1a22" />
+              <rect x="110" y="83" width="40" height="44" rx="6" fill="#07121a" stroke="#0e1a22" />
+              <text x="6" y="160" fill="#98c7de" fontSize="11">Home</text>
+              <ellipse cx="85" cy="36" rx={30 + clamp(instantaneousKW*2, 0, 40)} ry={8 + clamp(instantaneousKW*1.5, 0, 16)} fill={color} opacity="0.06" />
+            </g>
+
+            {/* Smart meter box */}
+            <g transform="translate(210,85)">
+              <rect x="0" y="0" width="140" height="72" rx="10" fill="#071021" stroke="#12313a" />
+              <text x="10" y="18" fill="#ffd24a" fontSize="12">Smart Meter</text>
+              <text x="10" y="36" fill="#e6fbff" fontSize="18">{round(instantaneousKW,3)} kW</text>
+              <g transform="translate(10,44)">
+                <rect x="0" y="6" width={clamp(instantaneousKW*22, 4, 120)} height="8" rx="4" fill={color} />
+              </g>
+            </g>
+
+            {/* flow path (animated dots using SMIL animateMotion fallback) */}
+            <g transform="translate(150,40)">
+              <path id="flowPath-vis" d="M 120 60 C 180 30, 270 30, 360 60 C 420 82, 500 82, 580 60" fill="none" stroke="transparent" />
+              {Array.from({length: dotCount}).map((_, i) => {
+                const dur = clamp(3.2 - abs*0.3, 0.9, 4.0);
+                const delay = (i / dotCount) * (dur / 2);
+                const r = 5;
+                return (
+                  <g key={i} opacity={running ? 1 : 0}>
+                    <circle cx="0" cy="0" r={r} fill={`url(#glow)`} filter="url(#spark)" />
+                    <animateMotion
+                      dur={`${dur}s`}
+                      begin={`${-delay}s`}
+                      repeatCount="indefinite"
+                      rotate="auto"
+                      keyTimes="0;1"
+                    >
+                      <mpath href="#flowPath-vis" />
+                    </animateMotion>
+                  </g>
+                );
+              })}
+              <g>
+                <circle cx="120" cy="60" r={2.2} fill="#fff7" opacity={0.9}>
+                  <animate attributeName="opacity" values="0.6;0.12;0.6" dur="1400ms" repeatCount="indefinite" />
+                </circle>
+              </g>
+            </g>
+          </g>
+
+          {/* right: radial gauge and cards */}
+          <g transform="translate(680,28)">
+            <rect x="0" y="0" width="300" height="200" rx="12" fill="#07121a" stroke="#122b36" />
+            <text x="18" y="20" fontSize="12" fill="#bfeeff">Instant Load</text>
+
+            <g transform="translate(150,120)">
+              <circle cx="0" cy="0" r="74" fill="#061217" stroke="#0c2b34" strokeWidth="1" />
+              <circle cx="0" cy="0" r="64" fill="none" stroke={`url(#glow)`} strokeWidth="12" strokeLinecap="round" strokeDasharray={`${(clamp((instantaneousKW/5)*402/100,0,402))} 402`} transform="rotate(-220)" opacity="0.95" filter="url(#softGlow)" />
+
+              <g className="needle" transform={`rotate(${clamp((instantaneousKW/5)*260,0,260) - 130})`}>
+                <rect x="-3" y="-6" width="6" height="80" rx="3" fill="#ffd24a" />
+                <circle cx="0" cy="76" r="6" fill="#ffd24a" stroke="#000" strokeWidth="1" />
+              </g>
+
+              <text x="0" y="0" fill="#e6fbff" fontSize="14" textAnchor="middle" dy="-6">{round(instantaneousKW,2)} kW</text>
+              <text x="0" y="20" fill="#9fb4c9" fontSize="12" textAnchor="middle">Load • {Math.round(clamp((instantaneousKW/5)*100,0,100))}%</text>
+            </g>
+
+            <g transform="translate(-260,-30)" className="coins">
+              <rect x="0" y="0" width="240" height="110" rx="8" fill="#07121a" />
+              <text x="12" y="12" fill="#9fe8ff" fontSize="12">Estimated Monthly Bill</text>
+              <text x="12" y="42" fill="#fff" fontSize="28" fontWeight="700">₹{round(displayBill,2).toLocaleString()}</text>
+              <foreignObject x="156" y="36" width="60" height="36">
+                <div style={{display:"flex", gap:8}}>
+                  <div className="coin" style={{width:22,height:22,borderRadius:11,background:"linear-gradient(180deg,#ffd24a,#ffb057)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 6px 18px rgba(255,166,38,0.12)"}}>₹</div>
+                  <div className="coin" style={{width:16,height:16,borderRadius:8,background:"linear-gradient(180deg,#ffd24a,#ffb057)",display:"flex",alignItems:"center",justifyContent:"center"}}>₹</div>
+                </div>
+              </foreignObject>
+              <text x="12" y="84" fontSize="12" fill="#9fb4c9">Monthly: {round(monthlyConsumption, 2)} kWh • Today: {round(consumptionDaily,3)} kWh</text>
+            </g>
           </g>
 
           <style>{`
             @keyframes flowDots {
-              0% { offset-distance: 0%; opacity: 1; transform: translate(-2px,-2px) scale(0.95); }
-              50% { opacity: 0.9; transform: translate(0,0) scale(1.06); }
-              100% { offset-distance: 100%; opacity: 0; transform: translate(6px,6px) scale(0.82); }
+              0% { offset-distance: 0%; opacity: 1; transform: scale(0.95); }
+              50% { opacity: 0.9; transform: scale(1.06); }
+              100% { offset-distance: 100%; opacity: 0; transform: scale(0.82); }
             }
             circle[style] { will-change: offset-distance, transform, opacity; }
             @media (max-width: 640px) { text { font-size: 10px; } }
           `}</style>
         </svg>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 /* ============================
-   Oscilloscope / charts for consumption
-   - Accepts simulated history (array of { t, kWh, dailyCost })
+   ConsumptionOscilloscope (unchanged)
    ============================ */
 function ConsumptionOscilloscope({ history = [], running }) {
-  // map history to chart-friendly format
   const data = history.slice(-360).map((d, idx) => ({ t: idx, kWh: round(d.kWh, 4), cost: round(d.cost, 2) }));
 
   return (
@@ -310,12 +455,11 @@ export default function ElectricBillEstimatorPage() {
   // build current tariff (from defaults or custom)
   const baseTariff = useMemo(() => {
     const def = TARIFFS[userType] || TARIFFS.residential;
-    // allow fixedCharge override if set
     const fixed = fixedCharge === "" ? def.fixedCharge : Number(fixedCharge || 0);
     return { ...def, fixedCharge: fixed };
   }, [userType, fixedCharge]);
 
-  // compute monthly bill breakdown
+  // compute monthly bill breakdown (uses computeBillFromSlabs -> progressive)
   const consumption = useMemo(() => (Number.isFinite(Number(monthlyConsumption)) ? Number(monthlyConsumption) : 0), [monthlyConsumption]);
   const { breakdown, subtotal } = useMemo(() => computeBillFromSlabs(consumption, baseTariff.slabs), [consumption, baseTariff.slabs]);
   const fixed = baseTariff.fixedCharge || 0;
@@ -325,11 +469,9 @@ export default function ElectricBillEstimatorPage() {
 
   // instantaneous power estimate (kW)
   const instantaneousKW = useMemo(() => {
-    // crude estimate: monthlyConsumption / (30*dailyHours)
     const h = Math.max(0.1, Number(dailyHours) || 1);
     const daily = consumption / 30;
     const avgKW = daily / h; // kW average
-    // bias with peakKW
     const peak = Math.max(0, Number(peakKW) || 0);
     return Math.max(avgKW, peak * 0.6); // show larger of average or a fraction of peak
   }, [consumption, dailyHours, peakKW]);
@@ -352,12 +494,10 @@ export default function ElectricBillEstimatorPage() {
       if (dt < 600) return; // step approx every 600ms (~real-time feel)
       last = ts;
       tRef.current++;
-      // simulate next data point by jittering daily consumption and computing per-day cost via same slab logic
       const dailyKWh = consumption / 30;
       const jitter = 0.9 + Math.random() * 0.2;
       const kWh = round(Math.max(0.01, dailyKWh * jitter), 4);
       const { subtotal: subDaily } = computeBillFromSlabs(kWh, baseTariff.slabs);
-      // we compute cost per day simply as slab cost (this is approximate; slabs normally apply monthly but this gives a running visualization)
       const dailyCost = round(subDaily + fixed / 30 + meter / 30 + ((taxPercent ? Number(taxPercent) : 0) / 100) * (subDaily + fixed / 30 + meter / 30), 2);
 
       setHistory((h) => {
@@ -435,7 +575,7 @@ export default function ElectricBillEstimatorPage() {
      UI rendering
      -------------------------- */
   return (
-    <div className="min-h-screen bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.25)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
+    <div className="min-h-screen pb-20 bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.25)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
       <Toaster position="top-center" richColors />
 
       {/* Header */}
@@ -459,9 +599,15 @@ export default function ElectricBillEstimatorPage() {
                     <SelectValue placeholder="User Type" />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                    <SelectItem value="residential" className="text-white">Residential</SelectItem>
-                    <SelectItem value="commercial" className="text-white">Commercial</SelectItem>
-                    <SelectItem value="industrial" className="text-white">Industrial</SelectItem>
+                    <SelectItem value="residential"       className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Residential</SelectItem>
+                    <SelectItem value="commercial"       className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Commercial</SelectItem>
+                    <SelectItem value="industrial"       className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Industrial</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -489,9 +635,15 @@ export default function ElectricBillEstimatorPage() {
                     <SelectValue placeholder="User Type" />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                    <SelectItem value="residential" className="text-white">Residential</SelectItem>
-                    <SelectItem value="commercial" className="text-white">Commercial</SelectItem>
-                    <SelectItem value="industrial" className="text-white">Industrial</SelectItem>
+                    <SelectItem value="residential"       className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Residential</SelectItem>
+                    <SelectItem value="commercial"       className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Commercial</SelectItem>
+                    <SelectItem value="industrial"       className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Industrial</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2 rounded-md" onClick={() => toast.success("Saved (demo)")}>Save</Button>
@@ -566,7 +718,7 @@ export default function ElectricBillEstimatorPage() {
                         </div>
 
                         <div className="flex gap-2">
-                          <Button variant="ghost" className="border border-zinc-800 text-zinc-300 p-2" onClick={() => setCustomTariffOpen((s) => !s)}>{customTariffOpen ? "Close" : "Edit"}</Button>
+                          <Button variant="ghost" className="border  border-zinc-800 text-orange-400 cursor-pointer hover:bg-black/10 hover:text-orange-500 p-2" onClick={() => setCustomTariffOpen((s) => !s)}>{customTariffOpen ? <CircleX/> :<SquarePen/> }</Button>
                         </div>
                       </div>
 
@@ -590,7 +742,7 @@ export default function ElectricBillEstimatorPage() {
 
                     <div className="flex gap-2">
                       <Button className="flex-1 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] cursor-pointer" onClick={() => toast.success("Saved tariff (demo)")}><Layers className="w-4 h-4 mr-2" /> Save Tariff</Button>
-                      <Button variant="ghost" className="border border-zinc-800 text-zinc-300" onClick={() => { setHistory(Array.from({ length: 30 }, (_, i) => ({ t: i + 1, kWh: round((Number(monthlyConsumption || 0) / 30) * (0.9 + Math.random() * 0.2), 3), cost: 0 }))); toast("Re-seeded history"); }}>Reseed</Button>
+                      <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-zinc-300" onClick={() => { setHistory(Array.from({ length: 30 }, (_, i) => ({ t: i + 1, kWh: round((Number(monthlyConsumption || 0) / 30) * (0.9 + Math.random() * 0.2), 3), cost: 0 }))); toast("Re-seeded history"); }}>Reseed</Button>
                     </div>
                   </div>
 
@@ -645,7 +797,18 @@ export default function ElectricBillEstimatorPage() {
                 </CardHeader>
 
                 <CardContent className="w-full max-w-full overflow-hidden">
-                  <ElectricVisualizerSVG consumptionDaily={consumptionDaily} instantaneousKW={instantaneousKW} running={running} />
+                  <ElectricVisualizerSVG
+                    consumptionDaily={consumptionDaily}
+                    instantaneousKW={instantaneousKW}
+                    running={running}
+                    monthlyConsumption={consumption}
+                    slabs={baseTariff.slabs}
+                    subtotal={subtotal}
+                    fixed={fixed}
+                    meter={meter}
+                    tax={tax}
+                    total={total}
+                  />
                 </CardContent>
               </Card>
             </motion.div>
@@ -703,8 +866,8 @@ export default function ElectricBillEstimatorPage() {
                   </div>
 
                   <div className="mt-3 flex gap-2">
-                    <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]" onClick={exportBillCSV}><Download className="w-4 h-4 mr-2" /> Export Bill</Button>
-                    <Button variant="ghost" className="border border-zinc-800 text-zinc-300" onClick={() => { navigator.clipboard?.writeText(`Estimated total: ${currency(total)} for ${consumption} kWh/month`); toast.success("Copied summary"); }}>Copy</Button>
+                    <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]" onClick={exportBillCSV}><Download className="w-4 h-4 mr-2" /> Export Bill</Button>
+                    <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-zinc-300" onClick={() => { navigator.clipboard?.writeText(`Estimated total: ${currency(total)} for ${consumption} kWh/month`); toast.success("Copied summary"); }}>Copy</Button>
                   </div>
 
                   <div className="mt-4">
@@ -729,11 +892,11 @@ export default function ElectricBillEstimatorPage() {
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-60 w-[92%] sm:w-auto sm:left-auto sm:translate-x-0 sm:bottom-6 sm:right-6 lg:hidden" role="region" aria-label="Mobile controls">
         <div className="flex items-center justify-between gap-3 bg-black/80 border border-zinc-800 p-3 rounded-full shadow-lg">
           <div className="flex items-center gap-2">
-            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-zinc-300 text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
+            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-black cursor-pointer text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" className="border border-zinc-800 text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
+            <Button variant="ghost" className="border border-zinc-800 cursor-pointer text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
           </div>
         </div>
       </div>

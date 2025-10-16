@@ -251,13 +251,24 @@ function useEnergySim({
   return { history, latest, socRef };
 }
 
-/* ============================
-   Visualizer SVG for Energy System
-   - Animated flows for PV array, wind turbine, battery, load and grid
-   - Counts/speeds derived from power magnitudes (so it's not static)
-   ============================ */
-function EnergyVisualizerSVG({ simType, history = [], running, selectedAsset = "system" }) {
-  const latest = history.length ? history[history.length - 1] : { P_gen: 0, P_load: 0, P_batt: 0, soc: 0, env: { irradiance: 0, windSpeed: 0 }, P_grid: 0 };
+
+ function EnergyVisualizerSVG({
+  simType,
+  history = [],
+  running,
+  selectedAsset = "system",
+}) {
+  const latest = history.length
+    ? history[history.length - 1]
+    : {
+        P_gen: 0,
+        P_load: 0,
+        P_batt: 0,
+        soc: 0,
+        env: { irradiance: 0, windSpeed: 0 },
+        P_grid: 0,
+      };
+
   const P_gen = latest.P_gen || 0;
   const P_load = latest.P_load || 0;
   const P_batt = latest.P_batt || 0;
@@ -266,176 +277,318 @@ function EnergyVisualizerSVG({ simType, history = [], running, selectedAsset = "
   const irradiance = latest.env?.irradiance ?? 0;
   const windSpeed = latest.env?.windSpeed ?? 0;
 
-  // scale flows into visual metrics
-  const norm = (x, cap = 5000) => clamp(Math.abs(x) / cap, 0, 1); // maps W to 0..1 relative
+  const norm = (x, cap = 5000) => clamp(Math.abs(x) / cap, 0, 1);
   const genIntensity = norm(P_gen, 4000);
   const loadIntensity = norm(P_load, 2000);
   const battIntensity = norm(P_batt, 2000);
-  const gridIntensity = norm(P_grid, 4000);
 
-  const dotCountGen = clamp(Math.round(4 + genIntensity * 18), 4, 28);
-  const dotCountLoad = clamp(Math.round(4 + loadIntensity * 14), 4, 20);
-  const dotCountBatt = clamp(Math.round(2 + battIntensity * 12), 2, 16);
-  const dotCountGrid = clamp(Math.round(2 + gridIntensity * 12), 2, 16);
+  const dotCountGen = clamp(Math.round(6 + genIntensity * 18), 4, 28);
+  const dotCountLoad = clamp(Math.round(4 + loadIntensity * 16), 4, 22);
+  const dotCountBatt = clamp(Math.round(2 + battIntensity * 14), 2, 16);
 
   const speedGen = clamp(1.8 / (genIntensity + 0.05), 0.3, 3.2);
-  const speedLoad = clamp(1.6 / (loadIntensity + 0.05), 0.3, 3.2);
+  const speedLoad = clamp(1.4 / (loadIntensity + 0.05), 0.3, 3.2);
 
-  // responsive layout
-  const width = Math.max(980, 1100);
-  const height = 360;
+  const width = 1100;
+  const height = 400;
+
+  // orange theme tones
+  const solarColor = "#ffb84a";
+  const windColor = "#ff8c33";
+  const batteryColor = "#ffaa33";
+  const gridColor = "#ff6a00";
 
   return (
-    <div className="w-full rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden">
-      <div className="flex items-start flex-col md:flex-row justify-between gap-3">
+    <motion.div
+      className="w-full rounded-2xl p-4 bg-gradient-to-b from-[#0a0a0a] via-[#141414] to-[#000000] border border-[#1a1a1a] shadow-[0_0_35px_rgba(255,153,51,0.08)] backdrop-blur-lg overflow-hidden"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.8 }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
-            <Activity className="w-5 h-5" />
-          </div>
+          <motion.div
+            className="w-12 h-12 rounded-lg bg-gradient-to-tr from-[#ff8a00] to-[#ffcc33] flex items-center justify-center shadow-lg"
+            animate={{
+              boxShadow: [
+                "0 0 10px #ffb84a",
+                "0 0 18px #ff9933",
+                "0 0 10px #ffb84a",
+              ],
+            }}
+            transition={{ duration: 2, repeat: Infinity, repeatType: "mirror" }}
+          >
+            <Activity className="w-6 h-6 text-black" />
+          </motion.div>
           <div>
-            <div className="text-lg font-semibold text-[#ffd24a]">Energy Visualizer</div>
-            <div className="text-xs text-zinc-400">Real-time • PV / Wind • Battery • Grid</div>
+            <div className="text-lg font-semibold text-[#ffcc66]">
+              Renewable Energy Simulator
+            </div>
+            <div className="text-xs text-zinc-400">
+              Solar • Wind • Battery • Grid
+            </div>
           </div>
         </div>
 
-        <div className="flex gap-3 items-center flex-wrap">
-          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">Generation: <span className="text-[#ffd24a] ml-1">{round(P_gen, 2)} W</span></Badge>
-          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">Load: <span className="text-[#00ffbf] ml-1">{round(P_load, 0)} W</span></Badge>
-          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">Battery SOC: <span className="text-[#ff9a4a] ml-1">{Math.round(soc * 100)}%</span></Badge>
+        <div className="flex gap-2 items-center flex-wrap">
+          <Badge className="bg-black/40 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">
+            Gen:{" "}
+            <span className="text-[#ffcc33] ml-1">{round(P_gen, 2)} W</span>
+          </Badge>
+          <Badge className="bg-black/40 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">
+            Load:{" "}
+            <span className="text-[#ff9933] ml-1">{round(P_load, 0)} W</span>
+          </Badge>
+          <Badge className="bg-black/40 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">
+            SOC:{" "}
+            <span className="text-[#ffaa33] ml-1">
+              {Math.round(soc * 100)}%
+            </span>
+          </Badge>
         </div>
       </div>
 
+      {/* SVG */}
       <div className="mt-3 w-full overflow-x-auto">
-        <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet" className="w-full h-64">
-          {/* left: PV & wind cluster */}
-          <g transform="translate(60,60)">
-            {/* PV box */}
-            <g transform="translate(0,0)">
-              <rect x="-10" y="-10" width="120" height="60" rx="10" fill="#060606" stroke="#222" />
-              <text x="6" y="8" fontSize="12" fill="#ffd24a">PV Array</text>
-              <text x="6" y="24" fontSize="11" fill="#fff">{`Irr: ${irradiance} W/m²`}</text>
-              <rect x="6" y="32" width="108" height="8" rx="4" fill="#ffb86b" opacity={0.9} />
-            </g>
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          preserveAspectRatio="xMidYMid meet"
+          className="w-full h-72"
+        >
+          {/* background */}
+          <defs>
+            <linearGradient id="duskSky" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#2b1b00" />
+              <stop offset="70%" stopColor="#0a0500" />
+              <stop offset="100%" stopColor="#000000" />
+            </linearGradient>
+            <radialGradient id="sunGlow" cx="50%" cy="50%" r="60%">
+              <stop offset="0%" stopColor="#ffcc33" stopOpacity="0.9" />
+              <stop offset="100%" stopColor="#ff6600" stopOpacity="0" />
+            </radialGradient>
+          </defs>
 
-            {/* Wind box */}
-            <g transform="translate(0,90)">
-              <rect x="-10" y="-10" width="120" height="60" rx="10" fill="#060606" stroke="#222" />
-              <text x="6" y="8" fontSize="12" fill="#ff9a4a">Wind Turbine</text>
-              <text x="6" y="24" fontSize="11" fill="#fff">{`Speed: ${windSpeed} m/s`}</text>
-              <rect x="6" y="32" width="108" height="8" rx="4" fill="#ff6a9a" opacity={0.95} />
-            </g>
+          <rect x="0" y="0" width={width} height={height} fill="url(#duskSky)" />
+
+          {/* Sun */}
+          <motion.circle
+            cx={useMemo(() => 160 + genIntensity * 180, [genIntensity])}
+            cy={useMemo(() => 70 + (1 - genIntensity) * 60, [genIntensity])}
+            r="28"
+            fill="url(#sunGlow)"
+            animate={{ opacity: [0.8, 1, 0.8], scale: [1, 1.06, 1] }}
+            transition={{ duration: 3, repeat: Infinity }}
+          />
+
+          {/* Solar Panels */}
+          <g transform="translate(100,260)">
+            {[0, 1, 2].map((i) => (
+              <g key={i} transform={`translate(${i * 60},0)`}>
+                <rect
+                  x="0"
+                  y="0"
+                  width="50"
+                  height="25"
+                  rx="4"
+                  fill="#0c0c0c"
+                  stroke="#332200"
+                />
+                <motion.rect
+                  x="0"
+                  y="0"
+                  width="50"
+                  height="25"
+                  rx="4"
+                  fill={solarColor}
+                  fillOpacity={0.1 + genIntensity * 0.4}
+                  animate={{ opacity: [0.2, 0.7, 0.2] }}
+                  transition={{ duration: 2 + i, repeat: Infinity }}
+                />
+              </g>
+            ))}
+            <text
+              x="20"
+              y="45"
+              fontSize="11"
+              fill="#ffcc66"
+              opacity="0.8"
+            >{`Irr: ${irradiance} W/m²`}</text>
           </g>
 
-          {/* pipe to central inverter / bus */}
-          <path d={`M 180 80 H 320`} stroke="#111" strokeWidth="8" strokeLinecap="round" />
-          <text x="240" y="72" fontSize="11" fill="#ffd24a">AC Bus</text>
-
-          {/* battery block */}
-          <g transform="translate(720,40)">
-            <rect x="-70" y="-30" width="140" height="80" rx="12" fill="#060606" stroke="#222" />
-            <text x="-30" y="-8" fontSize="12" fill="#ffd24a">Battery</text>
-            <text x="-30" y="10" fontSize="11" fill="#fff">{`SOC: ${Math.round(soc * 100)}%`}</text>
-            <rect x="-50" y="18" width={Math.max(8, Math.min(100, Math.round(soc * 100)))} height="8" rx="4" fill="#00ffbf" />
+          {/* Wind Turbine */}
+          <g transform="translate(340,180)">
+            <line
+              x1="0"
+              y1="0"
+              x2="0"
+              y2="80"
+              stroke="#3a2a1a"
+              strokeWidth="3"
+            />
+            <motion.g
+              animate={{ rotate: 360 }}
+              transition={{
+                repeat: Infinity,
+                ease: "linear",
+                duration: clamp(8 / (windSpeed + 0.5), 1, 10),
+              }}
+            >
+              {[0, 120, 240].map((a, i) => (
+                <polygon
+                  key={i}
+                  points="0,-8 80,0 0,8"
+                  fill={windColor}
+                  fillOpacity="0.75"
+                  transform={`rotate(${a})`}
+                  style={{
+                    filter: `drop-shadow(0 0 6px ${windColor})`,
+                  }}
+                />
+              ))}
+            </motion.g>
+            <text x="-25" y="100" fontSize="11" fill="#ffb84a">{`Wind: ${round(
+              windSpeed,
+              1
+            )} m/s`}</text>
           </g>
 
-          {/* load block */}
-          <g transform="translate(480,200)">
-            <rect x="-60" y="-30" width="160" height="60" rx="10" fill="#060606" stroke="#222" />
-            <text x="-46" y="-6" fontSize="12" fill="#ffd24a">Load</text>
-            <text x="-46" y="10" fontSize="11" fill="#fff">{`Demand: ${round(P_load, 0)} W`}</text>
+          {/* Battery */}
+          <g transform="translate(780,200)">
+            <rect
+              x="-50"
+              y="-40"
+              width="100"
+              height="80"
+              rx="10"
+              fill="#090909"
+              stroke="#332200"
+            />
+            <rect
+              x="-40"
+              y="10"
+              width={Math.max(5, Math.min(80, soc * 80))}
+              height="10"
+              rx="4"
+              fill={batteryColor}
+              style={{
+                filter: `drop-shadow(0 0 6px ${batteryColor})`,
+              }}
+            />
+            <text x="-28" y="-10" fontSize="11" fill="#ffcc66">
+              Battery
+            </text>
+            <text x="-28" y="0" fontSize="10" fill={batteryColor}>
+              {Math.round(soc * 100)}%
+            </text>
           </g>
 
-          {/* grid connection */}
-          <g transform="translate(480,20)">
-            <rect x="-48" y="-18" width="96" height="36" rx="8" fill="#060606" stroke="#222" />
-            <text x="-36" y="-2" fontSize="11" fill="#ff9a4a">Grid</text>
-            <text x="-36" y="12" fontSize="11" fill="#fff">{`Net: ${round(P_grid, 0)} W`}</text>
-          </g>
+          {/* Flow paths */}
+          <path
+            id="solarFlow"
+            d="M 250 260 C 280 240, 360 200, 500 220"
+            stroke={solarColor}
+            strokeWidth="2"
+            strokeOpacity="0.2"
+            fill="none"
+          />
+          <path
+            id="windFlow"
+            d="M 360 180 C 400 180, 460 200, 500 220"
+            stroke={windColor}
+            strokeWidth="2"
+            strokeOpacity="0.25"
+            fill="none"
+          />
+          <path
+            id="battFlow"
+            d="M 500 220 C 600 220, 720 200, 780 200"
+            stroke={batteryColor}
+            strokeWidth="2"
+            strokeOpacity="0.25"
+            fill="none"
+          />
 
-          {/* animated dots for generation→bus */}
-          {Array.from({ length: dotCountGen }).map((_, i) => {
-            const pathStr = `M 180 80 H 320`; // generation→bus
+          {/* Animated dots */}
+          {[...Array(dotCountGen)].map((_, i) => {
             const delay = (i / dotCountGen) * speedGen;
-            const style = {
-              offsetPath: `path('${pathStr}')`,
-              animationName: "flowGen",
-              animationDuration: `${speedGen}s`,
-              animationTimingFunction: "linear",
-              animationDelay: `${-delay}s`,
-              animationIterationCount: "infinite",
-              animationPlayState: running ? "running" : "paused",
-              transformOrigin: "0 0",
-            };
-            return <circle key={`gdot-${i}`} r="4" fill="#ffd24a" style={style} />;
+            return (
+              <circle
+                key={`s${i}`}
+                r="4"
+                fill={solarColor}
+                style={{
+                  offsetPath:
+                    "path('M 250 260 C 280 240, 360 200, 500 220')",
+                  animation: `flow ${speedGen}s linear ${-delay}s infinite`,
+                }}
+              />
+            );
           })}
-
-          {/* bus→load animated */}
-          {Array.from({ length: dotCountLoad }).map((_, i) => {
-            const pathStr = `M 320 80 H 480 V 200`; // bus to load
+          {[...Array(dotCountLoad)].map((_, i) => {
             const delay = (i / dotCountLoad) * speedLoad;
-            const style = {
-              offsetPath: `path('${pathStr}')`,
-              animationName: "flowLoad",
-              animationDuration: `${speedLoad}s`,
-              animationTimingFunction: "linear",
-              animationDelay: `${-delay}s`,
-              animationIterationCount: "infinite",
-              animationPlayState: running ? "running" : "paused",
-              transformOrigin: "0 0",
-            };
-            return <circle key={`ldot-${i}`} r="4" fill="#00ffbf" style={style} />;
+            return (
+              <circle
+                key={`w${i}`}
+                r="3.5"
+                fill={windColor}
+                style={{
+                  offsetPath:
+                    "path('M 360 180 C 400 180, 460 200, 500 220')",
+                  animation: `flow ${speedLoad}s linear ${-delay}s infinite`,
+                }}
+              />
+            );
+          })}
+          {[...Array(dotCountBatt)].map((_, i) => {
+            const delay = (i / dotCountBatt) * 1.5;
+            return (
+              <circle
+                key={`b${i}`}
+                r="3.5"
+                fill={batteryColor}
+                style={{
+                  offsetPath:
+                    "path('M 500 220 C 600 220, 720 200, 780 200')",
+                  animation: `flow 1.5s linear ${-delay}s infinite`,
+                }}
+              />
+            );
           })}
 
-          {/* battery animated dots (charge/discharge) */}
-          {Array.from({ length: dotCountBatt }).map((_, i) => {
-            const charging = P_batt < 0;
-            const pathStr = charging ? `M 320 80 H 720` : `M 720 80 H 480 V 200`; // direction changes
-            const delay = (i / dotCountBatt) * 1.6;
-            const style = {
-              offsetPath: `path('${pathStr}')`,
-              animationName: charging ? "flowCharge" : "flowDischarge",
-              animationDuration: `${1.6}s`,
-              animationTimingFunction: "linear",
-              animationDelay: `${-delay}s`,
-              animationIterationCount: "infinite",
-              animationPlayState: running ? "running" : "paused",
-              transformOrigin: "0 0",
-            };
-            const color = charging ? "#ff9a4a" : "#ffd24a";
-            return <circle key={`bdot-${i}`} r="3.6" fill={color} style={style} />;
-          })}
-
-          {/* small readout box */}
-          <g transform={`translate(${width - 160},40)`}>
-            <rect x="-80" y="-36" width="160" height="140" rx="10" fill="#060606" stroke="#222" />
-            <text x="-70" y="-12" fontSize="12" fill="#ffb57a">Readouts</text>
-
-            <text x="-70" y="8" fontSize="12" fill="#fff">Gen: <tspan fill="#ffd24a">{round(P_gen, 2)} W</tspan></text>
-            <text x="-70" y="30" fontSize="12" fill="#fff">Load: <tspan fill="#00ffbf">{round(P_load, 0)} W</tspan></text>
-            <text x="-70" y="52" fontSize="12" fill="#fff">Battery: <tspan fill="#ff9a4a">{round(P_batt, 2)} W</tspan></text>
-            <text x="-70" y="74" fontSize="12" fill="#fff">Grid: <tspan fill="#9ee6ff">{round(P_grid, 2)} W</tspan></text>
+          {/* Info Panel */}
+          <g transform={`translate(${width - 240},80)`}>
+            <rect
+              x="0"
+              y="0"
+              width="200"
+              height="140"
+              rx="10"
+              fill="#1a0f00aa"
+              stroke="#332200"
+            />
+            <text x="20" y="26" fontSize="12" fill="#ffcc66">
+              Solar: {round(irradiance, 1)} W/m²
+            </text>
+            <text x="20" y="50" fontSize="12" fill="#ffb84a">
+              Wind: {round(windSpeed, 1)} m/s
+            </text>
+            <text x="20" y="74" fontSize="12" fill="#ffaa33">
+              Gen: {round(P_gen, 2)} W
+            </text>
+            <text x="20" y="98" fontSize="12" fill="#ff9933">
+              Load: {round(P_load, 0)} W
+            </text>
+            <text x="20" y="122" fontSize="12" fill="#ffcc66">
+              Grid: {round(P_grid, 2)} W
+            </text>
           </g>
 
           <style>{`
-            @keyframes flowGen {
-              0% { offset-distance: 0%; opacity: 0.95; transform: translate(-2px,-2px) scale(0.95); }
-              45% { opacity: 0.9; transform: translate(0,0) scale(1.05); }
-              100% { offset-distance: 100%; opacity: 0; transform: translate(6px,6px) scale(0.8); }
-            }
-            @keyframes flowLoad {
-              0% { offset-distance: 0%; opacity: 0.95; transform: translate(2px,-2px) scale(0.95); }
-              45% { opacity: 0.9; transform: translate(0,0) scale(1.06); }
-              100% { offset-distance: 100%; opacity: 0; transform: translate(-6px,6px) scale(0.82); }
-            }
-            @keyframes flowCharge {
-              0% { offset-distance: 0%; opacity: 0.95; transform: translate(-2px,-2px) scale(0.9); }
-              50% { opacity: 1; transform: translate(0,0) scale(1.02); }
-              100% { offset-distance: 100%; opacity: 0; }
-            }
-            @keyframes flowDischarge {
-              0% { offset-distance: 0%; opacity: 0.95; transform: translate(2px,-2px) scale(0.95); }
-              50% { opacity: 1; transform: translate(0,0) scale(1.02); }
-              100% { offset-distance: 100%; opacity: 0; }
+            @keyframes flow {
+              0% { offset-distance: 0%; opacity: 1; transform: scale(0.9); }
+              50% { opacity: 0.9; transform: scale(1.05); }
+              100% { offset-distance: 100%; opacity: 0; transform: scale(0.9); }
             }
             circle[style] { will-change: offset-distance, transform, opacity; }
             @media (max-width: 640px) {
@@ -444,9 +597,10 @@ function EnergyVisualizerSVG({ simType, history = [], running, selectedAsset = "
           `}</style>
         </svg>
       </div>
-    </div>
+    </motion.div>
   );
 }
+
 
 /* ============================
    Oscilloscope (Generation, Load, Battery)
@@ -572,7 +726,7 @@ export default function EnergySimulatorPage() {
      UI render
      --------------------------- */
   return (
-    <div className="min-h-screen bg-[#05060a]
+    <div className="min-h-screen pb-20 bg-[#05060a]
                  bg-[radial-gradient(circle,_rgba(255,122,28,0.22)_1px,transparent_1px)]
                  bg-[length:20px_20px] text-white overflow-x-hidden">
       <Toaster position="top-center" richColors />
@@ -658,105 +812,236 @@ export default function EnergySimulatorPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Controls */}
-          <div className="lg:col-span-4 space-y-4">
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden w-full max-w-full">
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
-                        <Activity className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="text-lg font-semibold text-[#ffd24a]">Simulator</div>
-                        <div className="text-xs text-zinc-400">Solar • Wind • Hybrid • Battery</div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-black/80 border border-orange-500 text-orange-300 px-3 py-1 rounded-full shadow-sm">Mode</Badge>
-                    </div>
-                  </CardTitle>
-                </CardHeader>
-
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 gap-2">
-                    {/* Solar config */}
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between">
-                        <div className="text-xs text-zinc-400">Solar Panel (Wp)</div>
-                        <div className="text-xs text-zinc-400">Tilt & Efficiency</div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Input value={solarConfig.panelWp} onChange={(e) => setSolarConfig((s) => ({ ...s, panelWp: Number(e.target.value) }))} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                        <Input value={solarConfig.tiltFactor} onChange={(e) => setSolarConfig((s) => ({ ...s, tiltFactor: Number(e.target.value) }))} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                        <Input value={solarConfig.efficiency} onChange={(e) => setSolarConfig((s) => ({ ...s, efficiency: Number(e.target.value) }))} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                      </div>
-                      <div className="text-xs text-zinc-500">PanelWp × irradiance fraction × tilt × eff → gross DC output</div>
-                    </div>
-
-                    {/* Wind config */}
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between">
-                        <div className="text-xs text-zinc-400">Wind Rated Power (W)</div>
-                        <div className="text-xs text-zinc-400">Rotor area (m²)</div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Input value={windConfig.ratedPower} onChange={(e) => setWindConfig((s) => ({ ...s, ratedPower: Number(e.target.value) }))} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                        <Input value={windConfig.rotorArea} onChange={(e) => setWindConfig((s) => ({ ...s, rotorArea: Number(e.target.value) }))} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                      </div>
-                      <div className="text-xs text-zinc-500">Simple cubic wind power model applied; rated values cap output</div>
-                    </div>
-
-                    {/* Battery config */}
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between">
-                        <div className="text-xs text-zinc-400">Battery (kWh)</div>
-                        <div className="text-xs text-zinc-400">SOC / Eff</div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Input value={batteryConfig.capacity_kWh} onChange={(e) => setBatteryConfig((s) => ({ ...s, capacity_kWh: Number(e.target.value) }))} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                        <Input value={batteryConfig.soc} onChange={(e) => setBatteryConfig((s) => ({ ...s, soc: Number(e.target.value) }))} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                        <Input value={batteryConfig.chargeEff} onChange={(e) => setBatteryConfig((s) => ({ ...s, chargeEff: Number(e.target.value) }))} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                      </div>
-                      <div className="text-xs text-zinc-500">Battery will absorb surplus and discharge for deficits (simple logic)</div>
-                    </div>
-
-                    {/* load and grid */}
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1">
-                        <label className="text-xs text-zinc-400">Load (W)</label>
-                        <Input value={loadWatts} onChange={(e) => setLoadWatts(Number(e.target.value))} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                      </div>
-                      <div className="w-36">
-                        <label className="text-xs text-zinc-400">Grid Allowed</label>
-                        <Select value={gridAllowed ? "yes" : "no"} onValueChange={(v) => setGridAllowed(v === "yes")}>
-                          <SelectTrigger className="w-full bg-black/80 border cursor-pointer border-zinc-800 text-white text-sm rounded-md shadow-sm">
-                            <SelectValue placeholder="Grid" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                            <SelectItem value="yes" className="text-white">Yes</SelectItem>
-                            <SelectItem value="no" className="text-white">No</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
+    <div className="lg:col-span-4 space-y-4">
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.28 }}
+      >
+        <Card className="bg-gradient-to-br from-zinc-950/90 to-black/80 border border-zinc-800/70 rounded-2xl shadow-xl overflow-hidden w-full max-w-full">
+          <CardHeader className="border-b border-zinc-800/60 bg-black/30">
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center shadow-lg shadow-orange-500/20">
+                  <Activity className="w-5 h-5 text-black" />
+                </div>
+                <div>
+                  <div className="text-lg font-semibold text-[#ffd24a]">
+                    Energy Simulator
                   </div>
-
-                  <div className="mt-2 flex items-center gap-2 justify-between">
-                    <div className="flex gap-2">
-                      <Button className="px-3 py-2 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-                      <Button variant="outline" className="px-3 py-2 border-zinc-700 text-black cursor-pointer" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
-                    </div>
+                  <div className="text-xs text-zinc-400">
+                    Solar • Wind • Hybrid • Battery
                   </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </div>
+                </div>
+              </div>
+
+              <Badge className="bg-black/80 border border-orange-500 text-orange-300 px-3 py-1 rounded-full shadow-sm">
+                Live Mode
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent className="space-y-6 p-5">
+            {/* Solar Config */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm text-zinc-300">
+                <Sun className="w-4 h-4 text-[#ffb84a]" /> <span>Solar Configuration</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <Input
+                  value={solarConfig.panelWp}
+                  onChange={(e) =>
+                    setSolarConfig((s) => ({
+                      ...s,
+                      panelWp: Number(e.target.value),
+                    }))
+                  }
+                  type="number"
+                  placeholder="Panel Wp"
+                  className="bg-zinc-900/70 border-zinc-800 text-orange-100 placeholder:text-zinc-500"
+                />
+                <Input
+                  value={solarConfig.tiltFactor}
+                  onChange={(e) =>
+                    setSolarConfig((s) => ({
+                      ...s,
+                      tiltFactor: Number(e.target.value),
+                    }))
+                  }
+                  type="number"
+                  placeholder="Tilt Factor"
+                  className="bg-zinc-900/70 border-zinc-800 text-orange-100 placeholder:text-zinc-500"
+                />
+                <Input
+                  value={solarConfig.efficiency}
+                  onChange={(e) =>
+                    setSolarConfig((s) => ({
+                      ...s,
+                      efficiency: Number(e.target.value),
+                    }))
+                  }
+                  type="number"
+                  placeholder="Efficiency"
+                  className="bg-zinc-900/70 border-zinc-800 text-orange-100 placeholder:text-zinc-500"
+                />
+              </div>
+              <p className="text-xs text-zinc-500">
+                Calculates: <span className="text-zinc-400">Panel Wp × irradiance × tilt × eff → DC output</span>
+              </p>
+            </div>
+
+            {/* Wind Config */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm text-zinc-300">
+                <Wind className="w-4 h-4 text-[#ff7a2d]" /> <span>Wind Configuration</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <Input
+                  value={windConfig.ratedPower}
+                  onChange={(e) =>
+                    setWindConfig((s) => ({
+                      ...s,
+                      ratedPower: Number(e.target.value),
+                    }))
+                  }
+                  type="number"
+                  placeholder="Rated Power (W)"
+                  className="bg-zinc-900/70 border-zinc-800 text-orange-100 placeholder:text-zinc-500"
+                />
+                <Input
+                  value={windConfig.rotorArea}
+                  onChange={(e) =>
+                    setWindConfig((s) => ({
+                      ...s,
+                      rotorArea: Number(e.target.value),
+                    }))
+                  }
+                  type="number"
+                  placeholder="Rotor Area (m²)"
+                  className="bg-zinc-900/70 border-zinc-800 text-orange-100 placeholder:text-zinc-500"
+                />
+              </div>
+              <p className="text-xs text-zinc-500">
+                Wind power model uses cubic velocity relation; rated values cap output.
+              </p>
+            </div>
+
+            {/* Battery Config */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm text-zinc-300">
+                <Battery className="w-4 h-4 text-[#ffd24a]" /> <span>Battery Configuration</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <Input
+                  value={batteryConfig.capacity_kWh}
+                  onChange={(e) =>
+                    setBatteryConfig((s) => ({
+                      ...s,
+                      capacity_kWh: Number(e.target.value),
+                    }))
+                  }
+                  type="number"
+                  placeholder="Capacity (kWh)"
+                  className="bg-zinc-900/70 border-zinc-800 text-orange-100 placeholder:text-zinc-500"
+                />
+                <Input
+                  value={batteryConfig.soc}
+                  onChange={(e) =>
+                    setBatteryConfig((s) => ({
+                      ...s,
+                      soc: Number(e.target.value),
+                    }))
+                  }
+                  type="number"
+                  placeholder="SOC (%)"
+                  className="bg-zinc-900/70 border-zinc-800 text-orange-100 placeholder:text-zinc-500"
+                />
+                <Input
+                  value={batteryConfig.chargeEff}
+                  onChange={(e) =>
+                    setBatteryConfig((s) => ({
+                      ...s,
+                      chargeEff: Number(e.target.value),
+                    }))
+                  }
+                  type="number"
+                  placeholder="Charge Eff (%)"
+                  className="bg-zinc-900/70 border-zinc-800 text-orange-100 placeholder:text-zinc-500"
+                />
+              </div>
+              <p className="text-xs text-zinc-500">
+                Battery auto-balances energy — stores surplus, discharges during deficit.
+              </p>
+            </div>
+
+            {/* Load + Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="flex items-center gap-2 text-xs text-zinc-400 mb-1">
+                  <PlugZap className="w-4 h-4 text-[#ff7a2d]" /> Load (W)
+                </label>
+                <Input
+                  value={loadWatts}
+                  onChange={(e) => setLoadWatts(Number(e.target.value))}
+                  type="number"
+                  placeholder="Load watts"
+                  className="bg-zinc-900/70 border-zinc-800 text-orange-100 placeholder:text-zinc-500"
+                />
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 text-xs text-zinc-400 mb-1">
+                  <PlugZap className="w-4 h-4 text-[#ffd24a]" /> Grid Allowed
+                </label>
+                <Select
+                  value={gridAllowed ? "yes" : "no"}
+                  onValueChange={(v) => setGridAllowed(v === "yes")}
+                >
+                  <SelectTrigger className="w-full bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm cursor-pointer focus:ring-1 focus:ring-[#ff7a2d]">
+                    <SelectValue placeholder="Grid" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
+                    <SelectItem value="yes" className="text-white">
+                      Yes
+                    </SelectItem>
+                    <SelectItem value="no" className="text-white">
+                      No
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Controls */}
+            <div className="flex flex-col sm:flex-row justify-between gap-3 pt-4 border-t border-zinc-800/70">
+              <div className="flex gap-2">
+                <Button
+                  className="flex items-center gap-2 cursor-pointer px-4 py-2 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] hover:scale-[1.02] transition-transform"
+                  onClick={() => setRunning(true)}
+                >
+                  <Play className="w-4 h-4" /> Run
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex items-center gap-2 px-4 py-2 border-zinc-700 text-orange-300 hover:text-orange-400 cursor-pointer hover:bg-zinc-800/50"
+                  onClick={() => setRunning(false)}
+                >
+                  <Pause className="w-4 h-4" /> Pause
+                </Button>
+              </div>
+
+              <Button
+                variant="ghost"
+                className="flex items-center gap-2 border cursor-pointer border-zinc-800 text-zinc-300 p-2 hover:text-orange-500"
+                onClick={exportCSV}
+              >
+                <Download className="w-4 h-4" /> Export CSV
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+    </div>
 
           {/* Visual + Oscilloscope */}
           <div className="lg:col-span-8 space-y-4">
