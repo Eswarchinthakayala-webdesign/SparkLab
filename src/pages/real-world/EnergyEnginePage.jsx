@@ -7,6 +7,14 @@ import EnergyControls from "@/components/EnergyControls";
 import EnergyVisualizer from "@/components/EnergyVisualizer";
 import Oscilloscope from "@/components/Oscilloscope";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 import { Toaster, toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,8 +22,10 @@ import { motion } from "framer-motion";
 import useGemini from "../../../hooks/useGeminii";
 import useEnergySim from "../../../hooks/useEnergySim";
 import { exportElementToPdf } from "../../../utils/exportPdf";
-import { Bug, ChevronDown, Lightbulb } from "lucide-react";
-
+import { Bug, ChevronDown, Lightbulb, Sparkles  } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import EnergyTipCardFromJson from "../../components/EnergyTipCardFromJson";
 export default function EnergyEnginePage() {
   // default appliances (household)
   const defaultAppliances = [
@@ -57,7 +67,7 @@ export default function EnergyEnginePage() {
       toast.error(String(err));
     }
   };
-
+  console.log(recommendations)
   const onExportPDF = async () => {
     try {
       await exportElementToPdf(containerRef.current, `energy-report-${Date.now()}.pdf`);
@@ -119,7 +129,7 @@ export default function EnergyEnginePage() {
         <div className="flex items-center gap-2">
           <Lightbulb className="w-5 h-5 text-[#ff7a2d]" />
           <CardTitle className="text-[#ffd24a] text-lg font-semibold tracking-wide">
-            Gemini Insights
+            SparkLab Insights
           </CardTitle>
         </div>
        
@@ -127,20 +137,24 @@ export default function EnergyEnginePage() {
 
       <CardContent className="space-y-5 text-sm">
         {/* --- Recommendations Section --- */}
-        <motion.div
-          className="space-y-2"
-          initial={{ opacity: 0, y: 5 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-        >
-          <div className="flex items-center gap-2 text-xs text-zinc-400">
-            <Lightbulb className="w-4 h-4 text-[#ffb84a]" />
-            Gemini-generated tips (dynamic & prioritized):
-          </div>
-          <pre className="bg-gradient-to-br from-zinc-900/50 to-black/50 border border-zinc-800/70 text-orange-100 p-3 rounded-lg text-sm whitespace-pre-wrap shadow-inner">
-            {recommendations || "No recommendations yet. Click 'Generate Tips'."}
-          </pre>
-        </motion.div>
+       
+<motion.div
+      className="space-y-2"
+      initial={{ opacity: 0, y: 5 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-xs text-zinc-400">
+          <Lightbulb className="w-4 h-4 text-[#ffb84a]" />
+          SparkLab-generated tips (dynamic & prioritized):
+        </div>
+        
+      </div>
+          
+       <EnergyTipCardFromJson recommendations={recommendations} />;
+    </motion.div>
 
         {/* --- Debug Section --- */}
         <motion.div

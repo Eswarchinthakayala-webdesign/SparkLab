@@ -465,7 +465,7 @@ export default function InverterSizingPage() {
   const recStr = `Recommend ≥ ${recommendations.recommendationVA} VA (surge ≥ ${recommendations.suggestedSurge} W), autonomy ≈ ${round(autonomyHours, 2)} h`;
 
   return (
-    <div className="min-h-screen bg-[#05060a]
+    <div className="min-h-screen pb-20 bg-[#05060a]
                  bg-[radial-gradient(circle,_rgba(255,122,28,0.22)_1px,transparent_1px)]
                  bg-[length:20px_20px] text-white overflow-x-hidden">
       <Toaster position="top-center" richColors />
@@ -746,7 +746,7 @@ export default function InverterSizingPage() {
 
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                       <div className="text-xs text-zinc-400">PV Power (now)</div>
-                      <div className="text-lg font-semibold text-[#ffd24a]">{round(latest?.Ppv || 0, 1)} W</div>
+                      <div className="text-lg font-semibold text-[#ffd24a] truncate">{round(latest?.Ppv || 0, 1)} W</div>
                       <div className="text-xs text-zinc-400 mt-1">Simulated irradiance curve</div>
                     </div>
 
@@ -774,11 +774,11 @@ export default function InverterSizingPage() {
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-60 w-[92%] sm:w-auto sm:left-auto sm:translate-x-0 sm:bottom-6 sm:right-6 lg:hidden" role="region" aria-label="Mobile controls">
         <div className="flex items-center justify-between gap-3 bg-black/80 border border-zinc-800 p-3 rounded-full shadow-lg">
           <div className="flex items-center gap-2">
-            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-zinc-300 text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
+            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-black cursor-pointer text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" className="border border-zinc-800 text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
+            <Button variant="ghost" className="border border-zinc-800 cursor-pointer text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
           </div>
         </div>
       </div>

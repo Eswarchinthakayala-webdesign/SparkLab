@@ -26,6 +26,8 @@ import {
   ZapOff,
   Eye,
   EyeOff,
+  BrushCleaning,
+  BadgePlus,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
@@ -534,7 +536,7 @@ export default function LoadBalancePage() {
   };
 
   return (
-    <div className="min-h-screen  bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.18)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
+    <div className="min-h-screen pb-20  bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.18)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
       <Toaster position="top-center" richColors />
 
       {/* Header */}
@@ -575,14 +577,14 @@ export default function LoadBalancePage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-2" onClick={snapshot}>Snapshot</Button>
-                <Button variant="ghost" className="border border-zinc-700 text-zinc-300 p-2" onClick={() => setRunning((r) => !r)}>{running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}</Button>
-                <Button variant="ghost" className="border border-zinc-700 text-zinc-300 p-2" onClick={() => { setIncomingRPS(40); setBurst(false); toast("Defaults restored"); }}><Settings className="w-5 h-5" /></Button>
+                <Button className="cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-2" onClick={snapshot}>Snapshot</Button>
+                <Button variant="ghost" className="border cursor-pointer hover:bg-black hover:text-orange-400 border-zinc-700 text-zinc-300 p-2" onClick={() => setRunning((r) => !r)}>{running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}</Button>
+                <Button variant="ghost" className="border cursor-pointer hover:bg-black hover:text-orange-400 border-zinc-700 text-zinc-300 p-2" onClick={() => { setIncomingRPS(40); setBurst(false); toast("Defaults restored"); }}><Settings className="w-5 h-5" /></Button>
               </div>
             </div>
 
             <div className="md:hidden">
-              <Button variant="ghost" className="border border-zinc-800 p-2 rounded-lg" onClick={() => setMobileOpen((m) => !m)}>{mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}</Button>
+              <Button variant="ghost" className="border cursor-pointer hover:bg-black hover:text-orange-400 border-zinc-800 p-2 rounded-lg" onClick={() => setMobileOpen((m) => !m)}>{mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}</Button>
             </div>
           </div>
 
@@ -610,8 +612,8 @@ export default function LoadBalancePage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={snapshot}>Snapshot</Button>
-                <Button variant="ghost" className="flex-1 border border-zinc-800" onClick={() => setRunning((r) => !r)}>{running ? "Pause" : "Run"}</Button>
+                <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={snapshot}>Snapshot</Button>
+                <Button variant="ghost" className="flex-1 cursor-pointer border border-zinc-800" onClick={() => setRunning((r) => !r)}>{running ? "Pause" : "Run"}</Button>
               </div>
             </div>
           </div>
@@ -644,9 +646,9 @@ export default function LoadBalancePage() {
                     <label className="text-xs text-zinc-400">Incoming Requests / sec</label>
                     <div className="flex items-center gap-2">
                       <Input value={incomingRPS} onChange={(e) => setIncomingRPS(Number(e.target.value || 0))} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                      <Button variant="outline" onClick={() => setIncomingRPS((s) => Math.max(1, s - 5))}>-5</Button>
-                      <Button variant="outline" onClick={() => setIncomingRPS((s) => s + 5)}>+5</Button>
-                      <Button variant="ghost" onClick={() => setBurst((b) => !b)} className={`border ${burst ? "border-orange-500 text-orange-300" : "border-zinc-800 text-zinc-300"}`}>{burst ? <Lightning className="w-4 h-4" /> : <Lightning className="w-4 h-4" />}</Button>
+                      <Button className="hover:bg-black hover:text-orange-400 cursor-pointer bg-black text-white border border-zinc-500/60" variant="outline" onClick={() => setIncomingRPS((s) => Math.max(1, s - 5))}>-5</Button>
+                      <Button variant="outline" className="hover:bg-black hover:text-orange-400 cursor-pointer bg-black text-white border border-zinc-500/60" onClick={() => setIncomingRPS((s) => s + 5)}>+5</Button>
+                      <Button variant="ghost"  onClick={() => setBurst((b) => !b)} className={`border cursor-pointer hover:bg-black hover:text-orange-500 ${burst ? "border-orange-500 text-orange-300" : "border-zinc-800 text-zinc-300"}`}>{burst ? <Lightning className="w-4 h-4" /> : <Lightning className="w-4 h-4" />}</Button>
                     </div>
                     <div className="text-xs text-zinc-400 mt-1">Burst toggles occasional traffic spikes to test balancing under stress.</div>
                   </div>
@@ -672,7 +674,7 @@ export default function LoadBalancePage() {
                           </SelectContent>
                         </Select>
                       </div>
-                      <Button variant="outline" onClick={() => setManualServerSelect(null)}>Clear</Button>
+                      <Button variant="outline" className="hover:bg-black hover:text-orange-400 cursor-pointer bg-black text-white border border-zinc-500/60" onClick={() => setManualServerSelect(null)}><BrushCleaning/></Button>
                     </div>
                   </div>
 
@@ -688,13 +690,13 @@ export default function LoadBalancePage() {
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
                               <div className="text-sm font-semibold text-[#ffd24a]">{sv.id}</div>
-                              <Badge className={`px-2 py-0.5 rounded-full ${sv.healthy ? "bg-zinc-900 border border-zinc-800 text-[#9ee6ff]" : "bg-zinc-900 border border-zinc-800 text-[#ffd2d2]"}`}>{sv.healthy ? "UP" : "DOWN"}</Badge>
+                              <Badge className={`px-2 py-0.5 rounded-full ${sv.healthy ? " border  bg-sky-600/40 border-sky-500/50 text-[#9ee6ff]" : "bg-red-600/50 border-red-500/50 text-[#ffd2d2]"}`}>{sv.healthy ? "UP" : "DOWN"}</Badge>
                             </div>
                             <div className="flex items-center gap-2 mt-1">
                               <Input value={sv.weight} onChange={(e) => updateServer(sv.id, { weight: Math.max(1, Number(e.target.value || 1)) })} type="number" className="w-20 bg-zinc-900/60 border border-zinc-800 text-white" />
                               <Input value={sv.capacity} onChange={(e) => updateServer(sv.id, { capacity: Math.max(10, Number(e.target.value || 10)) })} type="number" className="w-28 bg-zinc-900/60 border border-zinc-800 text-white" />
                               <div className="ml-auto flex gap-1">
-                                <Button variant="ghost" onClick={() => toggleHealth(sv.id)} className="p-1 border border-zinc-800 text-white cursor-pointer">{sv.healthy ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</Button>
+                                <Button variant="ghost"  onClick={() => toggleHealth(sv.id)} className="hover:bg-black hover:text-orange-400 cursor-pointer bg-black text-white border border-zinc-500/60">{sv.healthy ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</Button>
                                 <Button variant="ghost" onClick={() => removeServer(sv.id)} className="p-1 border border-zinc-800 bg-red-600 cursor-pointer hover:bg-red-600 text-black"><Trash2 className="w-4 h-4" /></Button>
                               </div>
                             </div>
@@ -704,8 +706,8 @@ export default function LoadBalancePage() {
                     </div>
 
                     <div className="flex gap-2 mt-2">
-                      <Button className="flex-1 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a]" onClick={addServer}><Plus className="w-4 h-4 mr-2" /> Add Server</Button>
-                      <Button variant="ghost" className="border border-zinc-800" onClick={() => { setServersCfg([{ id: "srv-1", weight: 2, capacity: 120, healthy: true }]); toast("Reset servers"); }}>Reset</Button>
+                      <Button className="flex-1 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] cursor-pointer" onClick={addServer}><BadgePlus className="w-4 h-4 mr-2" /> Add Server</Button>
+                      <Button variant="ghost" className="border text-white cursor-pointer border-zinc-800" onClick={() => { setServersCfg([{ id: "srv-1", weight: 2, capacity: 120, healthy: true }]); toast("Reset servers"); }}>Reset</Button>
                     </div>
                   </div>
 
@@ -717,9 +719,9 @@ export default function LoadBalancePage() {
                   </div>
 
                   <div className="mt-2 flex gap-2">
-                    <Button className="px-3 py-2 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-                    <Button variant="outline" className="px-3 py-2" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
-                    <Button variant="ghost" className="px-3 py-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
+                    <Button className="px-3 py-2 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
+                    <Button variant="outline" className="px-3 py-2 cursor-pointer" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+                    <Button variant="ghost" className="px-3 py-2 text-white cursor-pointer border border-zinc-700" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
                   </div>
                 </CardContent>
               </Card>
@@ -731,7 +733,7 @@ export default function LoadBalancePage() {
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32 }}>
               <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden">
                 <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
+                  <CardTitle className="flex md:items-center items-start gap-3 md:flex-row flex-col justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center"><Server className="w-5 h-5" /></div>
                       <div>
@@ -818,11 +820,11 @@ export default function LoadBalancePage() {
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-60 w-[92%] sm:w-auto sm:left-auto sm:translate-x-0 sm:bottom-6 sm:right-6 lg:hidden" role="region" aria-label="Mobile controls">
         <div className="flex items-center justify-between gap-3 bg-black/80 border border-zinc-800 p-3 rounded-full shadow-lg">
           <div className="flex items-center gap-2">
-            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-zinc-300 text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
+            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-black cursor-pointer text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" className="border border-zinc-800 text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
+            <Button variant="ghost" className="border border-zinc-800 cursor-pointer text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
           </div>
         </div>
       </div>

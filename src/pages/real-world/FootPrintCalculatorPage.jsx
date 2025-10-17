@@ -514,7 +514,7 @@ export default function FootPrintCalculatorPage() {
 
   return (
     <div
-      className="min-h-screen bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.25)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden"
+      className="min-h-screen pb-20 bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.25)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden"
     >
       <Toaster position="top-center" richColors />
 
@@ -576,7 +576,7 @@ export default function FootPrintCalculatorPage() {
             </div>
 
             <div className="md:hidden">
-              <Button variant="ghost" className="border cursor-pointer cursor-pointer border-zinc-800 p-2 rounded-lg" onClick={() => setMobileOpen(!mobileOpen)}>
+              <Button variant="ghost" className="border cursor-pointer border-zinc-800 p-2 rounded-lg" onClick={() => setMobileOpen(!mobileOpen)}>
                 {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </Button>
             </div>
@@ -604,7 +604,7 @@ export default function FootPrintCalculatorPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2 rounded-md" onClick={snapshot}>Snapshot</Button>
+                <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2 rounded-md" onClick={snapshot}>Snapshot</Button>
                 <Button variant="ghost" className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2 rounded-md" onClick={toggleRunning}>{running ? "Pause" : "Play"}</Button>
               </div>
             </div>
@@ -734,8 +734,8 @@ export default function FootPrintCalculatorPage() {
                     </div>
 
                     <div className="flex gap-2">
-                      <Button variant="outline" onClick={() => addActivity("diet")} className="flex-1">Add Diet</Button>
-                      <Button variant="ghost" className="flex-1 border border-zinc-800 text-zinc-300" onClick={() => { setActivities([]); toast("Cleared activities"); }}>Clear</Button>
+                      <Button variant="outline" onClick={() => addActivity("diet")} className="flex-1 cursor-pointer">Add Diet</Button>
+                      <Button variant="ghost" className="flex-1 border cursor-pointer border-zinc-800 text-zinc-300" onClick={() => { setActivities([]); toast("Cleared activities"); }}>Clear</Button>
                     </div>
                   </div>
 
@@ -747,8 +747,8 @@ export default function FootPrintCalculatorPage() {
 
                   <div className="flex items-center gap-2 justify-between mt-2">
                     <div className="flex gap-2">
-                      <Button className="px-3 py-2 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-                      <Button variant="outline" className="px-3 py-2 border-zinc-700 text-black" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+                      <Button className="px-3 py-2 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
+                      <Button variant="outline" className="px-3 py-2 cursor-pointer border-zinc-700 text-black" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
                     </div>
 
                     <div className="flex gap-2">
@@ -846,7 +846,7 @@ export default function FootPrintCalculatorPage() {
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-60 w-[92%] sm:w-auto sm:left-auto sm:translate-x-0 sm:bottom-6 sm:right-6 lg:hidden" role="region" aria-label="Mobile controls">
         <div className="flex items-center justify-between gap-3 bg-black/80 border border-zinc-800 p-3 rounded-full shadow-lg">
           <div className="flex items-center gap-2">
-            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
+            <Button className="px-3  py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
             <Button variant="outline" className="px-3 py-2 border-zinc-700 text-black cursor-pointer text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
           </div>
           <div className="flex items-center gap-2">

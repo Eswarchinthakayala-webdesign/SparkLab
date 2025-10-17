@@ -267,7 +267,7 @@ export default function EnergyControls({
             disabled={geminiLoading}
           >
             <Sparkles className="w-4 h-4 mr-2" />
-            {geminiLoading ? "Thinking..." : "Generate Tips (Gemini)"}
+            {geminiLoading ? "Thinking..." : "Generate Tips"}
           </Button>
           <Button
             variant="outline"

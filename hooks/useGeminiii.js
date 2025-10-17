@@ -65,10 +65,7 @@ export default function useGemini({ model = "gemini-2.0-flash-exp" } = {}) {
               parts: [{ text: prompt }],
             },
           ],
-          generationConfig: {
-            temperature: opts.temperature ?? 0.2,
-            maxOutputTokens: opts.maxTokens ?? 512,
-          },
+          
         };
 
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;

@@ -282,7 +282,7 @@ const inverterY = centerY - 40;
 
   return (
     <div className="w-full rounded-xl p-4 bg-gradient-to-b from-black/40 to-zinc-900/10 border border-zinc-800 overflow-hidden">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start md:flex-row flex-col justify-between gap-4">
         <div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <div style={{
@@ -295,13 +295,13 @@ const inverterY = centerY - 40;
               justifyContent: "center",
               color: "#000",
               fontWeight: 700
-            }}>B</div>
+            }}><Battery/></div>
             <div>
               <div style={{ color: "#ffd24a", fontSize: 18, fontWeight: 700 }}>
                 Battery & UPS Visualizer
               </div>
               <div style={{ color: "#9aa0a6", fontSize: 12 }}>
-                Cinematic energy core — visual simulation only
+                visual simulation 
               </div>
             </div>
           </div>
@@ -1070,21 +1070,21 @@ export default function BatteryUPSDesignerPage() {
                     </div>
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                       <div className="text-xs text-zinc-400">Battery Current (inst)</div>
-                      <div className="text-lg font-semibold text-[#00ffbf]">{round(latest.Ibat || 0, 6)} A</div>
+                      <div className="text-lg font-semibold text-[#00ffbf] truncate">{round(latest.Ibat || 0, 6)} A</div>
                     </div>
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                       <div className="text-xs text-zinc-400">Battery Power (inst)</div>
-                      <div className="text-lg font-semibold text-[#ff9a4a]">{round(latest.Pbat || 0, 4)} W</div>
+                      <div className="text-lg font-semibold text-[#ff9a4a] truncate">{round(latest.Pbat || 0, 4)} W</div>
                     </div>
 
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                       <div className="text-xs text-zinc-400">Inverter Eff</div>
-                      <div className="text-lg font-semibold text-[#ffd24a]">{round(Number(inverterEff) || 0.92, 2)}</div>
+                      <div className="text-lg font-semibold text-[#ffd24a] truncate">{round(Number(inverterEff) || 0.92, 2)}</div>
                     </div>
 
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                       <div className="text-xs text-zinc-400">Charger Current</div>
-                      <div className="text-lg font-semibold text-[#ffd24a]">{chargerA} A</div>
+                      <div className="text-lg font-semibold text-[#ffd24a] truncate">{chargerA} A</div>
                     </div>
 
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">

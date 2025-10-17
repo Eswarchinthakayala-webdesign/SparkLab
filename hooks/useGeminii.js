@@ -36,7 +36,7 @@ export default function useGemini({ model = "gemini-2.0-flash-exp" } = {}) {
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: opts.temperature ?? 0.2,
-            maxOutputTokens: opts.maxTokens ?? 512,
+           
           },
         };
 

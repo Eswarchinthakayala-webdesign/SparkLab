@@ -338,7 +338,7 @@ function VisualizerSVG({ mainsV = 230, history = [], running = true, appliances 
         <svg viewBox={`0 0 ${svgWidth} 220`} preserveAspectRatio="xMidYMid meet" className="w-full h-52">
           {/* mains supply block */}
           <g transform={`translate(48,${busY})`}>
-            <rect x="-36" y="-28" width="72" height="56" rx="8" fill="#060606" stroke="#222" />
+            <rect x="-36" y="-28" width="72" height="56" rx="8" fill="#FFA500" stroke="#222" />
             <text x="-50" y="-42" fontSize="12" fill="#ffd24a">{mainsV} V</text>
             <text x="-50" y="36" fontSize="10" fill="#9aa">Mains</text>
           </g>
@@ -363,12 +363,11 @@ function VisualizerSVG({ mainsV = 230, history = [], running = true, appliances 
                 <path d={`M ${x} ${busY} V ${busY + 46}`} stroke="#111" strokeWidth="6" strokeLinecap="round" />
 
                 {/* appliance box */}
-                <g transform={`translate(${x},${busY + 86})`}>
-                  <rect x="-40" y="-36" width="80" height="72" rx="12" fill="#080808" stroke="#222" />
-                  <rect x="-34" y="-30" width="68" height="56" rx="8" fill={fill} opacity={0.95} />
-                  <text x="-30" y="-36" fontSize="10" fill="#111">{ap.base.name}</text>
-                  <text x="-30" y="6" fontSize="11" fill="#000" className="font-semibold">{Math.round(P)} W</text>
-                  <text x="-30" y="20" fontSize="9" fill="#fff/60">{ap.setting}% × {ap.count}</text>
+                <g transform={`translate(${x},${busY + 46})`}>
+               <rect width="68" height="52" rx="10" fill={fill} opacity={0.98} />
+                          <text x="4" y="10" fontSize="10" fill="#0b0b0b" fontWeight={700}>{ap.base.name}</text>
+                          <text x="4" y="36" fontSize="13" fill="#0b0b0b" fontWeight={800}>{Math.round(P)} W</text>
+                          <text x="4" y="48" fontSize="9" fill="#0b0b0b" opacity={0.7}>{ap.setting}% × {ap.count}</text>
                 </g>
 
                 {/* animated flow dots along branch */}
@@ -565,7 +564,7 @@ export default function ComparePage() {
   const costPerDay = costPerHour * 24;
 
   return (
-    <div className="min-h-screen bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.22)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
+    <div className="min-h-screen pb-20 bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.22)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
       <Toaster position="top-center" richColors />
 
       {/* Header */}
@@ -832,11 +831,11 @@ export default function ComparePage() {
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-60 w-[92%] sm:w-auto sm:left-auto sm:translate-x-0 sm:bottom-6 sm:right-6 lg:hidden" role="region" aria-label="Mobile controls">
         <div className="flex items-center justify-between gap-3 bg-black/80 border border-zinc-800 p-3 rounded-full shadow-lg">
           <div className="flex items-center gap-2">
-            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-zinc-300 text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
+            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-black cursor-pointer text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" className="border border-zinc-800 text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
+            <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
           </div>
         </div>
       </div>
