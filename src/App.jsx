@@ -46,7 +46,7 @@ import TheoremTutorialPage from "./pages/hub/TheoremTutorialPage";
 import NotesPage from "./pages/hub/NotesPage";
 import ExplainerPage from "./pages/hub/ExplainerPage";
 import CheatCodesPage from "./pages/hub/CheatCodesPage";
-import GlossaryCard from "./components/GlossaryCard";
+
 import RealLifeApplicationsSection from "./components/landing/RealLifeApplicationsSection";
 import RealWorldApplicationPage from "./pages/RealWorldApplicationPage";
 import ApplianceEnergyAnalyzer from "./pages/real-world/ApplianceEnergyAnalyzer";
@@ -59,6 +59,11 @@ import LoadBalancePage from "./pages/real-world/LoadBalancePage";
 import FootPrintCalculatorPage from "./pages/real-world/FootPrintCalculatorPage";
 import EnergyEnginePage from "./pages/real-world/EnergyEnginePage";
 import ComparePage from "./pages/real-world/ComparePage";
+import GlossaryPage from "./pages/hub/GlossaryPage";
+import ConceptMapPage from "./pages/hub/ConceptMapPage";
+import DocumentationPage from "./pages/hub/DocumentationPage";
+import SolverPage from "./pages/hub/SolverPage";
+import FlashCardPage from "./pages/hub/FlashCard";
 
 // TODO: You can add these later
 // import LoginPage from "./pages/LoginPage";
@@ -115,7 +120,7 @@ export default function App() {
         <Route path="/learning/short-notes" element={<NotesPage/>} />
         <Route path="/learning/animated-explainers" element={<ExplainerPage/>} />
         <Route path="/learning/cheat-codes" element={<CheatCodesPage/>} />
-        <Route path="/learning/glossary" element={<GlossaryCard/>} />
+        <Route path="/learning/glossary" element={<GlossaryPage/>} />
 
         <Route path="/topics/real-life" element={<RealWorldApplicationPage/>} />
         <Route path="/tools/real-world/appliance-analyzer" element={<ApplianceEnergyAnalyzer/>} />
@@ -128,6 +133,10 @@ export default function App() {
         <Route path='/tools/real-world/carbon-footprint' element={<FootPrintCalculatorPage/>} />
         <Route path="/tools/real-world/energy-tips" element={<EnergyEnginePage/>} />
         <Route path="/tools/real-world/compare-appliances" element={<ComparePage/>} />
+        <Route path="/learning/concept-maps" element={<ConceptMapPage/>} />
+        <Route path="/learning/video-integration" element={<DocumentationPage/>}/>
+        <Route path="/learning/step-solvers" element={<SolverPage/>}/>
+        <Route path="/learning/flashcards" element={<FlashCardPage/>} />
       </Routes>
     </Router>
   );
