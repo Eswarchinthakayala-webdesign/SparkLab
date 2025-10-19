@@ -4,21 +4,19 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
+  Grid,
   Zap,
-  Cpu,
-  Thermometer,
-  BatteryCharging,
+
+  Activity,
   Play,
   Pause,
   Download,
   Settings,
   Menu,
   X,
-  Zap as Flash,
-  Trash2 as ZapOff,
+  AlertTriangle,
 
-  Activity,
-  Usb,
+  Plug,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
@@ -45,13 +43,9 @@ import {
   Legend,
 } from "recharts";
 
-/* ============================
+/* ===========================
    Utilities
-   ============================ */
-const toNum = (v) => {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : NaN;
-};
+   =========================== */
 const round = (v, p = 6) => {
   if (!Number.isFinite(v)) return NaN;
   const f = 10 ** p;
@@ -59,114 +53,72 @@ const round = (v, p = 6) => {
 };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-/* ============================
-   DMM Simulation Hook
-   - Simulates a simple resistor network and provides V/I/R readings over time.
-   - Supports measureMode: "voltage" | "current" | "resistance"
-   - For resistance measurement we "inject" a small test current or use user-supplied test voltage.
-   ============================ */
-function useDmmSim({
+/* ===========================
+   Simple DMM simulation hook
+   - Models a simple circuit: Vsup -> seriesR -> loadR -> GND
+   - Modes:
+     - VOLTAGE: DMM measures voltage across load
+     - CURRENT: DMM measures current through load (via series path)
+     - RESISTANCE: DMM applies small test current/voltage and measures R (with safety)
+   - Produces time-series for oscilloscope + an animated "raw" value
+   =========================== */
+function useDMMSim({
   running,
-  timestep = 80,
-  measureMode = "voltage",
-  circuit = { type: "series", resistors: [100, 220] }, // resistances in ohms
+  timestep = 100,
   Vsup = 5,
-  manualProbe = { node: 0 }, // for voltage measurement node index
-  manualI = "",
-  testCurrent = 0.001, // 1 mA injection for Ohm measurement by default
+  seriesR = 1,
+  loadR = 1000,
+  mode = "VOLTAGE",
+  dmmRange = null, // e.g., { type: 'AUTO' } or specific scale
+  noise = 0.002,
 }) {
-  const historyRef = useRef(Array.from({ length: 240 }, (_, i) => ({ t: i, V: 0, I: 0, R: 0 })));
+  // history entries: { tIndex, value } where value is measured quantity (V, A, or Ω)
+  const historyRef = useRef(Array.from({ length: 240 }, (_, i) => ({ t: i, v: 0 })));
   const [history, setHistory] = useState(historyRef.current);
   const tRef = useRef(0);
   const lastRef = useRef(performance.now());
   const rafRef = useRef(null);
 
-  // compute equivalent resistance depending on type
-  const computeReq = useCallback((circ) => {
-    if (!circ || !circ.resistors || circ.resistors.length === 0) return { Req: NaN, parts: [] };
-    const parts = circ.resistors.map((r) => (Number.isFinite(Number(r)) && r > 0 ? Number(r) : NaN));
-    if (circ.type === "series") {
-      const Req = parts.reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0);
-      return { Req, parts };
-    } else {
-      // parallel
-      let denom = 0;
-      parts.forEach((p) => {
-        if (Number.isFinite(p) && p > 0) denom += 1 / p;
-      });
-      const Req = denom > 0 ? 1 / denom : Infinity;
-      return { Req, parts };
-    }
-  }, []);
+  // safe test current for resistance measurement (in A)
+  const TEST_CURRENT_A = 1e-4; // 100 μA typical DMM small current
+  // small noise generator
+  const randNoise = useCallback((scale) => (Math.random() - 0.5) * 2 * scale, []);
 
-  const eq = useMemo(() => computeReq(circuit), [circuit, computeReq]);
-
-  // core instant compute:
-  const computeInstant = useCallback(
+  const computeInstantValue = useCallback(
     (tSeconds) => {
-      // baseline: if circuit has supply, V across whole network = Vsup
-      const Rtot = eq.Req;
-      const VsupNum = Number.isFinite(Number(Vsup)) ? Number(Vsup) : 0;
+      // circuit simple model:
+      // I = Vsup / (seriesR + loadR)
+      const Rseries = Math.max(1e-6, Number(seriesR));
+      const Rload = Math.max(1e-9, Number(loadR)); // avoid divide-by-zero
+      const V = Number(Vsup);
 
-      // simulated current if driven by Vsup across Rtot
-      const I_sim = Rtot > 0 && Number.isFinite(Rtot) ? VsupNum / Rtot : 0;
-
-      // for voltage measurement: assume nodes of series chain - compute node voltages
-      const nodeVoltages = [];
-      if (circuit.type === "series") {
-        // voltage divider
-        const parts = eq.parts;
-        let accum = 0;
-        for (let i = 0; i < parts.length; ++i) {
-          const r = parts[i];
-          const drop = (I_sim * r) || 0;
-          accum += drop;
-          nodeVoltages.push(round(accum, 6)); // voltage at node after resistor i
-        }
-      } else {
-        // parallel: node voltage equals Vsup
-        for (let i = 0; i < eq.parts.length; ++i) nodeVoltages.push(VsupNum);
+      if (mode === "VOLTAGE") {
+        // voltage across load: V * (Rload / (Rseries + Rload))
+        const Vload = V * (Rload / (Rseries + Rload));
+        const noiseVal = randNoise(noise) * Math.max(1, Math.abs(Vload));
+        return clamp(Vload + noiseVal, -1e6, 1e6);
       }
 
-      // measurement logic:
-      let V_meas = 0;
-      let I_meas = 0;
-      let R_meas = 0;
-
-      // manualI overrides measured current when provided
-      const I_used = Number.isFinite(Number(manualI)) && manualI !== "" ? Number(manualI) : I_sim;
-
-      if (measureMode === "voltage") {
-        // choose node index from manualProbe.node (0-based). If -1 use supply.
-        const idx = Number.isFinite(Number(manualProbe.node)) ? Number(manualProbe.node) : 0;
-        if (idx < 0) {
-          V_meas = VsupNum;
-        } else {
-          V_meas = nodeVoltages[Math.min(Math.max(0, idx), nodeVoltages.length - 1)] || 0;
-        }
-        I_meas = I_used;
-        R_meas = Number.isFinite(Rtot) ? Rtot : Infinity;
-      } else if (measureMode === "current") {
-        // measure current through entire circuit (I_sim or manual override)
-        I_meas = I_used;
-        V_meas = VsupNum;
-        R_meas = Number.isFinite(Rtot) && Rtot > 0 ? V_meas / I_meas : Rtot;
-      } else {
-        // resistance measurement: simulate injecting testCurrent and measuring resulting voltage
-        const Itest = testCurrent || 0.001;
-        // For real DMM, R = measured V / injected I (accounting for series resistance). We'll simulate simply:
-        const Vdrop = Itest * (Rtot || 0);
-        R_meas = Rtot;
-        V_meas = Vdrop;
-        I_meas = Itest;
+      if (mode === "CURRENT") {
+        const I = V / (Rseries + Rload);
+        const noiseVal = randNoise(noise) * Math.max(1e-6, Math.abs(I));
+        return clamp(I + noiseVal, -1e3, 1e3);
       }
 
-      // small flicker / noise to feel more "real"
-      const noise = (Math.sin(tSeconds * 7.3) * 0.002 + Math.sin(tSeconds * 12.7) * 0.001) * (Math.max(1, Math.abs(I_meas)) + 1);
+      // RESISTANCE mode: simulate measuring R by applying small TEST_CURRENT_A
+      if (mode === "RESISTANCE") {
+        // if circuit is powered (Vsup > 0) real DMM resistance reading will be confused,
+        // so we simulate that the user is in "open" circuit measurement (we temporarily "disconnect" Vsup).
+        // The DMM applies TEST_CURRENT_A across the unknown and measures voltage: R = V_meas / I_test.
+        const measuredV = Rload * TEST_CURRENT_A;
+        const noiseVal = randNoise(noise) * Math.max(1, Math.abs(measuredV));
+        const Rmeas = clamp((measuredV + noiseVal) / TEST_CURRENT_A, 0, 1e9);
+        return Rmeas;
+      }
 
-      return { V: V_meas + noise, I: I_meas + noise * 0.01, R: R_meas };
+      return 0;
     },
-    [eq, Vsup, measureMode, manualProbe, manualI, testCurrent]
+    [Vsup, seriesR, loadR, mode, noise, randNoise]
   );
 
   useEffect(() => {
@@ -184,13 +136,12 @@ function useDmmSim({
       lastRef.current = ts;
       tRef.current += dt;
       const tSeconds = tRef.current / 1000;
-
-      const inst = computeInstant(tSeconds);
+      const val = computeInstantValue(tSeconds);
 
       setHistory((h) => {
         const next = h.slice();
         const lastT = next.length ? next[next.length - 1].t : 0;
-        next.push({ t: lastT + 1, V: inst.V, I: inst.I, R: inst.R });
+        next.push({ t: lastT + 1, v: val });
         if (next.length > 720) next.shift();
         return next;
       });
@@ -201,162 +152,329 @@ function useDmmSim({
       alive = false;
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [running, timestep, computeInstant]);
+  }, [running, timestep, computeInstantValue]);
 
-  return { history, eq };
+  const latest = history.length ? history[history.length - 1].v : 0;
+  return { history, latest };
 }
 
-/* ============================
-   Circuit Visualizer (SVG)
-   - Renders resistors and animated electrons based on measured current
-   - Shows voltmeter/ammeter/ohmmeter dials (readouts)
-   ============================ */
-function CircuitVisualizer({ circuit, Vsup, measureMode, history = [], running, manualProbe, manualI }) {
-  const latest = history.length ? history[history.length - 1] : { V: 0, I: 0, R: 0 };
-  const Vsim = latest.V || 0;
-  const Isim = latest.I || 0;
-  const Rsim = latest.R || 0;
+/* ===========================
+   Animated Multimeter SVG
+   - shows dial, digital readout, probes, and small animations when measuring
+   - colors follow orange/black theme
+   =========================== */
 
-  const Iused = Number.isFinite(Number(manualI)) && manualI !== "" ? Number(manualI) : Isim;
-  const absI = Math.abs(Iused);
-  const dotCount = clamp(Math.round(3 + absI * 30), 3, 36);
-  const speed = clamp(1.2 / (absI + 0.01), 0.18, 5); // seconds per cycle - smaller means faster animation for higher I
+ function MultimeterSVG({
+  mode = "VOLTAGE", // "VOLTAGE" | "CURRENT" | "RESISTANCE"
+  reading = 0,
+  running = true,
+  probesConnected = false,
+  rangeLabel = "AUTO",
+}) {
+  // unit and display
+const _clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const _round = (v, p = 4) => (Number.isFinite(v) ? Math.round(v * 10 ** p) / 10 ** p : v);
 
-  const parts = circuit.resistors || [];
-  const partCount = Math.max(1, parts.length);
-  const spacing = Math.max(80, Math.min(220, Math.floor(520 / Math.max(1, Math.min(partCount, 6)))));
-  const startX = 140;
-  const svgWidth = Math.max(900, startX + spacing * partCount + 160);
-  const busY = 140;
-  const busStart = 80;
-  const busEnd = svgWidth - 80;
+  const unit = mode === "VOLTAGE" ? "V" : mode === "CURRENT" ? "A" : "Ω";
+  const display = (() => {
+    if (!Number.isFinite(reading)) return "--";
+    if (mode === "VOLTAGE") return `${_round(reading, 4)} ${unit}`;
+    if (mode === "CURRENT") {
+      if (Math.abs(reading) >= 1e-3) return `${_round(reading * 1000, 3)} mA`;
+      return `${_round(reading, 9)} A`;
+    }
+    if (mode === "RESISTANCE") {
+      if (reading >= 1e6) return `${_round(reading / 1e6, 3)} MΩ`;
+      if (reading >= 1e3) return `${_round(reading / 1e3, 3)} kΩ`;
+      return `${_round(reading, 4)} Ω`;
+    }
+    return `${_round(reading, 4)} ${unit}`;
+  })();
 
-  // helper to format values
-  const formatOhm = (r) => {
-    if (!Number.isFinite(r)) return "--";
-    if (r >= 1000) return `${round(r / 1000, 3)} kΩ`;
-    return `${round(r, 3)} Ω`;
+  const intensity = _clamp(
+    Math.min(Math.abs(reading) / (mode === "CURRENT" ? 0.01 : 10), 1),
+    0.05,
+    1
+  );
+
+  const colorMap = {
+    VOLTAGE: "#00eaff",
+    CURRENT: "#ffb84a",
+    RESISTANCE: "#c084fc",
   };
+  const accent = colorMap[mode] || "#ffd24a";
 
-  const formatVolt = (v) => {
-    if (!Number.isFinite(v)) return "--";
-    if (Math.abs(v) < 1e-3) return `${round(v * 1e6, 3)} μV`;
-    if (Math.abs(v) < 1) return `${round(v * 1e3, 3)} mV`;
-    return `${round(v, 4)} V`;
-  };
-
-  const formatAmp = (i) => {
-    if (!Number.isFinite(i)) return "--";
-    if (Math.abs(i) < 1e-3) return `${round(i * 1e6, 3)} μA`;
-    if (Math.abs(i) < 1) return `${round(i * 1e3, 3)} mA`;
-    return `${round(i, 6)} A`;
-  };
-
-  // voltmeter placement: measure node index
-  const selectedNodeIdx = Number.isFinite(Number(manualProbe.node)) ? Number(manualProbe.node) : 0;
+  const knobAngle =
+    mode === "VOLTAGE" ? -120 : mode === "CURRENT" ? -60 : mode === "RESISTANCE" ? 0 : 160;
 
   return (
-    <div className="w-full rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
-            <Usb className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-lg font-semibold text-[#ffd24a]">Digital Multimeter • Live Visualizer</div>
-            <div className="text-xs text-zinc-400">Select measurement • V / A / Ω • Animated flow</div>
-          </div>
-        </div>
+    <div className="w-full rounded-2xl p-4 bg-gradient-to-b from-[#050505]/90 to-[#0a0a0a]/70 border border-zinc-800/80 shadow-[0_0_40px_rgba(255,200,100,0.05)]">
+      <div className="flex flex-col items-center gap-3">
+        <svg
+          viewBox="0 0 560 300"
+          className="w-full h-[340px]"
+          preserveAspectRatio="xMidYMid meet"
+        >
+          {/* === DEFINITIONS === */}
+          <defs>
+            <radialGradient id="bodyGrad" cx="50%" cy="40%" r="80%">
+              <stop offset="0%" stopColor="#101010" />
+              <stop offset="80%" stopColor="#070707" />
+              <stop offset="100%" stopColor="#040404" />
+            </radialGradient>
+            <linearGradient id="edgeGlow" x1="0" x2="1">
+              <stop offset="0%" stopColor="#444" />
+              <stop offset="50%" stopColor="#888" />
+              <stop offset="100%" stopColor="#444" />
+            </linearGradient>
+            <filter id="glow">
+              <feGaussianBlur stdDeviation="4" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+            <filter id="neonPulse">
+              <feGaussianBlur stdDeviation="2" result="b" />
+              <feColorMatrix
+                in="b"
+                type="matrix"
+                values="1 0 0 0 0
+                        0 1 0 0 0
+                        0 0 1 0 0
+                        0 0 0 1 0"
+              />
+              <feMerge>
+                <feMergeNode in="b" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
 
-        <div className="flex gap-3 items-center flex-wrap">
-          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">Mode: <span className="text-[#ffd24a] ml-1">{measureMode.toUpperCase()}</span></Badge>
-          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">V<sub>sup</sub>: <span className="text-[#ffd24a] ml-1">{Vsup} V</span></Badge>
-          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">R<sub>eq</sub>: <span className="text-[#ff9a4a] ml-1">{formatOhm(Rsim)}</span></Badge>
-        </div>
-      </div>
+          {/* === BODY === */}
+          <rect
+            x="8"
+            y="8"
+            rx="24"
+            width="544"
+            height="284"
+            fill="url(#bodyGrad)"
+            stroke="#1c1c1c"
+            strokeWidth="3"
+            filter="url(#glow)"
+          />
+          <rect
+            x="12"
+            y="12"
+            rx="20"
+            width="536"
+            height="276"
+            fill="none"
+            stroke="url(#edgeGlow)"
+            strokeWidth="0.8"
+            opacity="0.4"
+          />
 
-      <div className="mt-3 w-full overflow-x-auto">
-        <svg viewBox={`0 0 ${svgWidth} 300`} preserveAspectRatio="xMidYMid meet" className="w-full h-64">
-          {/* supply */}
-          <g transform={`translate(${busStart - 60},${busY})`}>
-            <rect x="-22" y="-36" width="44" height="72" rx="6" fill="#060606" stroke="#222" />
-            <text x="-36" y="-46" fontSize="12" fill="#ffd24a">{Vsup} V</text>
+          {/* === DIGITAL DISPLAY === */}
+          <g transform="translate(30,30)">
+            <rect
+              x="0"
+              y="0"
+              rx="10"
+              width="340"
+              height="90"
+              fill="#000"
+              stroke="#222"
+              strokeWidth="2"
+              filter="url(#glow)"
+            />
+            <text
+              x="20"
+              y="58"
+              fontFamily="monospace"
+              fontSize="36"
+              fill={accent}
+              filter="url(#neonPulse)"
+              style={{ letterSpacing: "1px" }}
+            >
+              {display}
+            </text>
+            <text x="22" y="78" fontSize="12" fill="#888">
+              {rangeLabel} • {mode}
+            </text>
+            <rect
+              x="12"
+              y="12"
+              width="316"
+              height="66"
+              rx="6"
+              fill="none"
+              stroke={accent}
+              opacity="0.12"
+              strokeWidth="1.5"
+            />
           </g>
 
-          {/* bus */}
-          <path d={`M ${busStart} ${busY} H ${busEnd}`} stroke="#111" strokeWidth="6" strokeLinecap="round" />
-
-          {/* resistors */}
-          {parts.map((r, i) => {
-            const x = startX + i * spacing;
-            const resistorLabel = `${r} Ω`;
-            return (
-              <g key={`r-${i}`}>
-                {/* vertical branch */}
-                <path d={`M ${x} ${busY} V ${busY - 80}`} stroke="#111" strokeWidth="4" strokeLinecap="round" />
-                {/* resistor symbol (zig-zag as rect sequence) */}
-                <g transform={`translate(${x - 24},${busY - 80})`}>
-                  <rect x="0" y="0" rx="6" width="48" height="28" fill="#0a0a0a" stroke="#222" />
-                  <rect x="4" y="4" width="40" height="20" rx="4" fill="#ffb86b" opacity={0.95} />
-                  <text x="6" y="-6" fontSize="10" fill="#ffd24a">{resistorLabel}</text>
+          {/* === ROTARY DIAL === */}
+          <g transform="translate(460,80)">
+            <circle cx="0" cy="0" r="62" fill="#080808" stroke="#111" strokeWidth="2" />
+            <circle
+              cx="0"
+              cy="0"
+              r="60"
+              fill="url(#bodyGrad)"
+              stroke="#2a2a2a"
+              strokeWidth="1.5"
+            />
+            {["V", "A", "Ω", "OFF"].map((d, i) => {
+              const ang = (-120 + i * 60) * (Math.PI / 180);
+              const x = Math.cos(ang) * 46;
+              const y = Math.sin(ang) * 46;
+              return (
+                <g key={d} transform={`translate(${x},${y})`}>
+                  <text
+                    x="-6"
+                    y="6"
+                    fontSize="12"
+                    fill={d[0] === mode[0] ? accent : "#555"}
+                  >
+                    {d}
+                  </text>
                 </g>
-
-                {/* small node connector down to bus */}
-                <path d={`M ${x + 24} ${busY - 66} V ${busY}`} stroke="#111" strokeWidth="4" strokeLinecap="round" />
-
-                {/* numeric label above */}
-                <text x={x} y={busY - 96} fontSize="11" fill="#fff" textAnchor="middle">{formatOhm(Number(r))}</text>
-              </g>
-            );
-          })}
-
-          {/* voltmeter indicator near selected node */}
-          <g transform={`translate(${startX + Math.min(partCount - 1, selectedNodeIdx) * spacing}, ${busY - 120})`}>
-            <rect x="-38" y="-24" width="76" height="42" rx="10" fill="#060606" stroke="#222" />
-            <text x="0" y="-6" fontSize="11" fill="#ffd24a" textAnchor="middle">Vmeter</text>
-            <text x="0" y="12" fontSize="12" fill="#fff" fontWeight="600" textAnchor="middle">{formatVolt(Vsim)}</text>
+              );
+            })}
+            {/* knob pointer */}
+            <g transform={`rotate(${knobAngle})`}>
+              <rect
+                x="-2"
+                y="-5"
+                width="40"
+                height="10"
+                rx="3"
+                fill={accent}
+                filter="url(#glow)"
+              />
+            </g>
+            <circle cx="0" cy="0" r="6" fill="#000" stroke="#333" strokeWidth="2" />
           </g>
 
-          {/* ammeter / ohmmeter readouts on right */}
-          <g transform={`translate(${svgWidth - 160}, ${20})`}>
-            <rect x="-80" y="-14" width="160" height="128" rx="12" fill="#060606" stroke="#222" />
-            <text x="-60" y="6" fontSize="12" fill="#ffb57a">Meters</text>
+          {/* === PROBE JACKS === */}
+          <g transform="translate(60,160)">
+            <circle cx="0" cy="0" r="16" fill="#111" stroke="#333" strokeWidth="2" />
+            <circle
+              cx="0"
+              cy="0"
+              r={6 + (probesConnected ? 2 : 0)}
+              fill={probesConnected ? accent : "#333"}
+              filter="url(#glow)"
+            />
+            <text x="28" y="5" fontSize="11" fill="#ccc">
+              COM
+            </text>
 
-            <text x="-60" y="30" fontSize="12" fill="#fff">V: <tspan fill="#ffd24a">{formatVolt(Vsim)}</tspan></text>
-            <text x="-60" y="54" fontSize="12" fill="#fff">I: <tspan fill="#00ffbf">{formatAmp(Iused)}</tspan></text>
-            <text x="-60" y="78" fontSize="12" fill="#fff">R: <tspan fill="#ff9a4a">{formatOhm(Rsim)}</tspan></text>
+            <g transform="translate(0,42)">
+              <circle cx="0" cy="0" r="16" fill="#111" stroke="#333" strokeWidth="2" />
+              <circle
+                cx="0"
+                cy="0"
+                r={6 + intensity * 4}
+                fill={probesConnected ? accent : "#222"}
+                filter="url(#glow)"
+              />
+              <text x="28" y="5" fontSize="11" fill="#ccc">
+                {mode === "RESISTANCE" ? "Ω/μA" : "V/A"}
+              </text>
+            </g>
           </g>
 
-          {/* animated electrons (dots) travelling along bus and down branches */}
-          {Array.from({ length: dotCount }).map((_, di) => {
-            // choose a branch path for each dot (distribute across parts)
-            const branchIndex = di % partCount;
-            const x = startX + branchIndex * spacing;
-            const pathStr = `M ${busStart} ${busY} H ${x} V ${busY - 80} H ${x + 24}`;
-            const delay = (di / dotCount) * speed;
-            const style = {
-              offsetPath: `path('${pathStr}')`,
-              animationName: "dmmFlow",
-              animationDuration: `${speed}s`,
-              animationTimingFunction: "linear",
-              animationDelay: `${-delay}s`,
-              animationIterationCount: "infinite",
-              animationPlayState: running ? "running" : "paused",
-              transformOrigin: "0 0",
-            };
-            const dotColor = Iused >= 0 ? "#ffd24a" : "#ff6a9a";
-            return <circle key={`dot-${di}`} r="3.5" fill={dotColor} style={style} />;
-          })}
+          {/* === PROBE CONNECTION ANIMATION === */}
+          <g transform="translate(260,190)">
+            <path
+              d="M-80 60 Q -40 10 0 30 T 80 10"
+              stroke={probesConnected ? accent : "#333"}
+              strokeWidth="3"
+              fill="none"
+              strokeLinecap="round"
+              style={{
+                filter: "url(#glow)",
+                opacity: probesConnected ? 0.8 : 0.3,
+                animation: probesConnected ? "probeFlow 2s linear infinite" : "none",
+              }}
+            />
+            <circle
+              cx="80"
+              cy="10"
+              r={8}
+              fill={probesConnected ? accent : "#222"}
+              filter="url(#neonPulse)"
+            />
+            <text x="96" y="16" fontSize="12" fill="#aaa">
+              Probe
+            </text>
+          </g>
 
+          {/* === STATUS PANEL === */}
+          <g transform="translate(40,100)">
+            <rect x="0" y="0" width="140" height="34" rx="10" fill="#080808" stroke="#222" />
+            <circle
+              cx="18"
+              cy="17"
+              r="6"
+              fill={running ? "#00ffbf" : "#444"}
+              filter="url(#glow)"
+            />
+            <text x="34" y="21" fontSize="11" fill="#888">
+              {running ? "RUNNING" : "PAUSED"}
+            </text>
+            <circle
+              cx="90"
+              cy="17"
+              r="6"
+              fill={probesConnected ? accent : "#444"}
+              filter="url(#glow)"
+            />
+            <text x="106" y="21" fontSize="11" fill="#888">
+              {probesConnected ? "PROBE" : "OPEN"}
+            </text>
+          </g>
+
+          {/* === BRAND MARK === */}
+          <g transform="translate(460,240)">
+            <text
+              x="-6"
+              y="6"
+              fontSize="12"
+              fill="#777"
+              letterSpacing="1"
+              style={{ fontFamily: "Rajdhani, sans-serif" }}
+            >
+              SparkLab DMM
+            </text>
+          </g>
+
+          {/* === ANIMATIONS === */}
           <style>{`
-            @keyframes dmmFlow {
-              0% { offset-distance: 0%; opacity: 0.95; transform: translate(-1px,-1px) scale(0.9); }
-              45% { opacity: 0.95; transform: translate(0,0) scale(1.05); }
-              100% { offset-distance: 100%; opacity: 0; transform: translate(4px,4px) scale(0.8); }
+            @keyframes probeFlow {
+              0% { stroke-dasharray: 6 30; stroke-dashoffset: 0; }
+              100% { stroke-dasharray: 6 30; stroke-dashoffset: -36; }
             }
-            circle[style] { will-change: offset-distance, transform, opacity; }
+
+            @keyframes ledPulse {
+              0% { opacity: 0.6; transform: scale(1); }
+              50% { opacity: 1; transform: scale(1.2); }
+              100% { opacity: 0.6; transform: scale(1); }
+            }
+
+            circle[fill="#00ffbf"], circle[fill="${accent}"] {
+              animation: ledPulse 2.8s ease-in-out infinite;
+            }
+
+            text {
+              user-select: none;
+            }
+
             @media (max-width: 640px) {
-              text { font-size: 9px; }
+              text { font-size: 10px; }
             }
           `}</style>
         </svg>
@@ -365,31 +483,23 @@ function CircuitVisualizer({ circuit, Vsup, measureMode, history = [], running, 
   );
 }
 
-/* ============================
-   Oscilloscope component
-   - Plots the selected measurement in time (V / I / R)
-   ============================ */
-function DmmOscilloscope({ history = [], selectedChannel = "V", running }) {
-  const data = history.slice(-360).map((d, idx) => {
-    return {
-      t: idx,
-      V: round(d.V, 6),
-      I: round(d.I, 9),
-      R: round(d.R, 6),
-    };
+
+/* ===========================
+   Oscilloscope component for DMM
+   - Plots last N samples of selected measurement
+   =========================== */
+function DMMScope({ history = [], mode }) {
+  const data = history.slice(-300).map((d, idx) => {
+    return { t: idx, val: d.v };
   });
 
-  const colors = {
-    V: "#ffd24a",
-    I: "#00ffbf",
-    R: "#ff9a4a",
-  };
+  // axis label formatting based on mode
+  const yKey = "val";
 
   return (
     <div className="rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden">
       <div className="flex items-center justify-between mb-2">
-        <div className="text-sm font-medium text-orange-400">Scope — {selectedChannel === "V" ? "Voltage (V)" : selectedChannel === "I" ? "Current (A)" : "Resistance (Ω)"}</div>
-        <div className="text-xs text-zinc-400">{running ? "Live" : "Paused"}</div>
+        <div className="text-sm font-medium text-orange-400">Scope — {mode}</div>
       </div>
       <div className="h-44 sm:h-56">
         <ResponsiveContainer width="100%" height="100%">
@@ -399,7 +509,7 @@ function DmmOscilloscope({ history = [], selectedChannel = "V", running }) {
             <YAxis tick={{ fill: "#888" }} />
             <ReTooltip contentStyle={{ background: "#0b0b0b", border: "1px solid #222", color: "#fff", borderRadius: "10px" }} />
             <Legend wrapperStyle={{ color: "#aaa" }} />
-            <Line type="monotone" dataKey={selectedChannel} stroke={colors[selectedChannel]} strokeWidth={2} dot={false} isAnimationActive={false} name={selectedChannel === "V" ? "Voltage (V)" : selectedChannel === "I" ? "Current (A)" : "Resistance (Ω)"} />
+            <Line type="monotone" dataKey={yKey} stroke="#ffd24a" strokeWidth={2} dot={false} isAnimationActive={false} name={mode} />
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -407,78 +517,76 @@ function DmmOscilloscope({ history = [], selectedChannel = "V", running }) {
   );
 }
 
-/* ============================
-   Main Simulator Page Component
-   ============================ */
+/* ===========================
+   Main Simulator Page
+   - Combines controls, SVG, scope, summary, export, and mobile-friendly actions
+   =========================== */
 export default function SimulatorPage() {
   // UI state
-  const [measureMode, setMeasureMode] = useState("voltage"); // voltage | current | resistance
+  const [mode, setMode] = useState("VOLTAGE"); // VOLTAGE | CURRENT | RESISTANCE
   const [Vsup, setVsup] = useState("5");
+  const [seriesR, setSeriesR] = useState("1");
+  const [loadR, setLoadR] = useState("1000");
   const [running, setRunning] = useState(true);
+  const [manualOverride, setManualOverride] = useState(""); // if set, used as measured value
+  const [probesConnected, setProbesConnected] = useState(true);
+  const [range, setRange] = useState("AUTO");
+  const [noise, setNoise] = useState(0.002);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [manualI, setManualI] = useState(""); // optional override
-  const [manualProbe, setManualProbe] = useState({ node: 0 }); // for voltage node selection
-  const [testCurrent, setTestCurrent] = useState("0.001"); // 1 mA default for resistance measurement
-  const [selectedChannel, setSelectedChannel] = useState("V"); // channel shown in scope
 
-  const [circuit, setCircuit] = useState({ type: "series", resistors: [100, 220] }); // default circuit
-
-  const { history, eq } = useDmmSim({
+  // hook: produces history + latest real measured value
+  const { history, latest } = useDMMSim({
     running,
-    timestep: 80,
-    measureMode,
-    circuit,
-    Vsup: Number.isFinite(Number(Vsup)) ? Number(Vsup) : 0,
-    manualProbe,
-    manualI,
-    testCurrent: Number.isFinite(Number(testCurrent)) ? Number(testCurrent) : 0.001,
+    timestep: 120,
+    Vsup: Number(Vsup),
+    seriesR: Number(seriesR),
+    loadR: Number(loadR),
+    mode,
+    noise: Number(noise),
   });
 
-  useEffect(() => {
-    // when mode changes, auto-set scope channel
-    if (measureMode === "voltage") setSelectedChannel("V");
-    if (measureMode === "current") setSelectedChannel("I");
-    if (measureMode === "resistance") setSelectedChannel("R");
-  }, [measureMode]);
+  const effectiveReading = Number.isFinite(Number(manualOverride)) && manualOverride !== "" ? Number(manualOverride) : latest;
 
-  // small helpers for mutating circuit
-  const addResistor = () => setCircuit((s) => ({ ...s, resistors: [...s.resistors, 100] }));
-  const updateResistor = (idx, val) => setCircuit((s) => ({ ...s, resistors: s.resistors.map((r, i) => (i === idx ? (Number.isFinite(Number(val)) ? Number(val) : 0) : r)) }));
-  const removeResistor = (idx) => setCircuit((s) => ({ ...s, resistors: s.resistors.filter((_, i) => i !== idx) }));
-  const setCircuitType = (t) => setCircuit((s) => ({ ...s, type: t }));
+  // friendly string for display for top summary
+  const formattedReading = useMemo(() => {
+    if (!Number.isFinite(effectiveReading)) return "--";
+    if (mode === "VOLTAGE") return `${round(effectiveReading, 6)} V`;
+    if (mode === "CURRENT") {
+      if (Math.abs(effectiveReading) >= 1e-3) return `${round(effectiveReading * 1000, 6)} mA`;
+      return `${round(effectiveReading, 9)} A`;
+    }
+    // resistance
+    if (effectiveReading >= 1e6) return `${round(effectiveReading / 1e6, 6)} MΩ`;
+    if (effectiveReading >= 1e3) return `${round(effectiveReading / 1e3, 6)} kΩ`;
+    return `${round(effectiveReading, 6)} Ω`;
+  }, [effectiveReading, mode]);
 
-  // derived display values
-  const ReqDisplay = useMemo(() => {
-    const R = eq && Number.isFinite(eq.Req) ? eq.Req : NaN;
-    if (!Number.isFinite(R)) return "--";
-    if (R >= 1000) return `${round(R / 1000, 4)} kΩ`;
-    return `${round(R, 4)} Ω`;
-  }, [eq]);
+  // basic safety checks and error messages
+  const validationErrors = useMemo(() => {
+    const errs = [];
+    if (!Number.isFinite(Number(Vsup))) errs.push("Supply voltage must be numeric.");
+    if (!Number.isFinite(Number(seriesR)) || Number(seriesR) < 0) errs.push("Series resistance must be ≥ 0.");
+    if (!Number.isFinite(Number(loadR)) || Number(loadR) <= 0) errs.push("Load resistance must be > 0.");
+    if (mode === "CURRENT" && Number(loadR) < 0.001) errs.push("Load too low for safe current reading (simulate realistic values).");
+    return errs;
+  }, [Vsup, seriesR, loadR, mode]);
 
-  const IeqSim = history.length ? history[history.length - 1].I : 0;
-  const IeqUsed = Number.isFinite(Number(manualI)) && manualI !== "" ? Number(manualI) : IeqSim;
-
+  // UI actions
   const toggleRunning = () => {
     setRunning((r) => {
       const nxt = !r;
-      toast(nxt ? "Simulation resumed" : "Simulation paused");
+      toast(nxt ? "Simulator resumed" : "Simulator paused");
       return nxt;
     });
   };
 
-  const resetDefaults = () => {
-    setMeasureMode("voltage");
-    setVsup("5");
-    setRunning(true);
-    setCircuit({ type: "series", resistors: [100, 220] });
-    setManualI("");
-    setManualProbe({ node: 0 });
-    setTestCurrent("0.001");
-    toast("Reset to defaults");
+  const snapshot = () => {
+    toast.success("Snapshot captured");
+    // TODO: could implement actual image capture if desired
   };
 
   const exportCSV = () => {
-    const rows = [["t", "V", "I", "R"], ...history.map((d) => [d.t, round(d.V, 9), round(d.I, 9), round(d.R, 6)])];
+    const rows = [["t", "value"], ...history.map((h) => [h.t, h.v])];
     const csv = rows.map((r) => r.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -490,79 +598,116 @@ export default function SimulatorPage() {
     toast.success("Exported CSV");
   };
 
+  const resetDefaults = () => {
+    setMode("VOLTAGE");
+    setVsup("5");
+    setSeriesR("1");
+    setLoadR("1000");
+    setManualOverride("");
+    setRange("AUTO");
+    setNoise(0.002);
+    setProbesConnected(true);
+    toast("Defaults restored");
+  };
+
+  // small computed summary
+  const summary = useMemo(() => {
+    return {
+      reading: formattedReading,
+      Vsup: `${Vsup} V`,
+      Iapprox: mode === "CURRENT" ? `${round(Number(Vsup) / (Number(seriesR) + Number(loadR)), 6)} A` : "—",
+      LoadR: `${loadR} Ω`,
+    };
+  }, [formattedReading, Vsup, seriesR, loadR, mode]);
+
   return (
-    <div className="min-h-screen bg-[#05060a]
-                 bg-[radial-gradient(circle,_rgba(255,122,28,0.18)_1px,transparent_1px)]
-                 bg-[length:18px_18px] text-white overflow-x-hidden">
+    <div className="min-h-screen pb-20 bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.18)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
       <Toaster position="top-center" richColors />
 
       {/* Header */}
       <header className="fixed w-full top-0 z-50 backdrop-blur-lg bg-black/70 border-b border-zinc-800 shadow-lg py-2">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-12 sm:h-14 md:h-16">
-            <motion.div initial={{ y: -6, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.36 }} className="flex items-center gap-2 sm:gap-3 cursor-pointer select-none min-w-0" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
-              <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-lg bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center shadow-md transform transition-transform duration-300 hover:scale-105">
-                <Zap className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 text-black" />
+            <motion.div
+              initial={{ y: -6, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ duration: 0.36 }}
+              className="flex items-center gap-3 cursor-pointer select-none"
+              onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+            >
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center shadow-md">
+                <Zap className="w-6 h-6 text-black" />
               </div>
-              <div className="truncate">
-                <div className="text-sm sm:text-base md:text-lg font-semibold text-zinc-200 truncate">SparkLab</div>
-                <div className="text-xs sm:text-sm md:text-sm text-zinc-400 -mt-0.5 truncate">Digital Multimeter Simulator</div>
+              <div>
+                <div className="text-sm sm:text-base md:text-lg font-semibold text-zinc-200">SparkLab</div>
+                <div className="text-xs sm:text-sm md:text-sm text-zinc-400 -mt-0.5">Digital Multimeter Simulator</div>
               </div>
             </motion.div>
 
-            <div className="hidden md:flex items-center gap-4">
+            <div className="hidden md:flex items-center gap-3">
               <div className="w-36">
-                <Select value={measureMode} onValueChange={(v) => setMeasureMode(v)}>
+                <Select value={mode} onValueChange={(v) => setMode(v)}>
                   <SelectTrigger className="w-full bg-black/80 border cursor-pointer border-zinc-800 text-white text-sm rounded-md shadow-sm hover:border-orange-500 focus:ring-2 focus:ring-orange-500">
-                    <SelectValue placeholder="Measure" />
+                    <SelectValue placeholder="Mode" />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                    <SelectItem value="voltage" className="text-white hover:bg-orange-500/20 data-[highlighted]:text-orange-200 cursor-pointer data-[highlighted]:bg-orange-500/30 rounded-md">Voltage (V)</SelectItem>
-                    <SelectItem value="current" className="text-white hover:bg-orange-500/20 data-[highlighted]:text-orange-200 cursor-pointer data-[highlighted]:bg-orange-500/30 rounded-md">Current (A)</SelectItem>
-                    <SelectItem value="resistance" className="text-white hover:bg-orange-500/20 data-[highlighted]:text-orange-200 cursor-pointer data-[highlighted]:bg-orange-500/30 rounded-md">Resistance (Ω)</SelectItem>
+                    <SelectItem value="VOLTAGE"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Voltage (V)</SelectItem>
+                    <SelectItem value="CURRENT"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Current (A)</SelectItem>
+                    <SelectItem value="RESISTANCE"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Resistance (Ω)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="flex items-center gap-2">
-                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer font-semibold text-sm px-3 py-1 rounded-lg shadow-md hover:scale-105 transition-transform duration-200" onClick={() => toast.success("Snapshot saved")} title="Save Snapshot">Snapshot</Button>
-
-                <Button variant="ghost" className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg hover:bg-zinc-800 hover:text-orange-400 transition-colors duration-200" onClick={toggleRunning} aria-label="Play / Pause" title={running ? "Pause" : "Play"}>
+                <Button className="cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-1 rounded-lg shadow-md" onClick={snapshot}>Snapshot</Button>
+                <Button variant="ghost" className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg" onClick={toggleRunning} title={running ? "Pause" : "Play"}>
                   {running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
                 </Button>
-
-                <Button variant="ghost" className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg hover:bg-zinc-800 hover:text-orange-400 transition-colors duration-200" onClick={resetDefaults} aria-label="Reset" title="Reset">
+                <Button variant="ghost" className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg" onClick={resetDefaults} title="Reset">
                   <Settings className="w-5 h-5" />
                 </Button>
               </div>
             </div>
 
             <div className="md:hidden">
-              <Button variant="ghost" className="border cursor-pointer border-zinc-800 p-2 rounded-lg" onClick={() => setMobileOpen(!mobileOpen)}>
+              <Button variant="ghost" className="border cursor-pointer border-zinc-800 p-2 rounded-lg" onClick={() => setMobileOpen((s) => !s)}>
                 {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </Button>
             </div>
           </div>
 
-          {/* mobile panel */}
-          <div className={`md:hidden transition-all duration-300 overflow-hidden ${mobileOpen ? "max-h-60 py-3" : "max-h-0"}`}>
+          <div className={`md:hidden transition-all duration-300 overflow-hidden ${mobileOpen ? "max-h-56 py-3" : "max-h-0"}`}>
             <div className="flex flex-col gap-2 mb-3">
-              <div className="flex flex-row gap-2">
-                <div className="w-36">
-                  <Select value={measureMode} onValueChange={(v) => setMeasureMode(v)}>
-                    <SelectTrigger className="w-full bg-black/80 border cursor-pointer border-zinc-800 text-white text-sm rounded-md shadow-sm hover:border-orange-500 focus:ring-2 focus:ring-orange-500">
-                      <SelectValue placeholder="Measure" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                      <SelectItem value="voltage" className="text-white hover:bg-orange-500/20 data-[highlighted]:text-orange-200 cursor-pointer data-[highlighted]:bg-orange-500/30 rounded-md">Voltage (V)</SelectItem>
-                      <SelectItem value="current" className="text-white hover:bg-orange-500/20 data-[highlighted]:text-orange-200 cursor-pointer data-[highlighted]:bg-orange-500/30 rounded-md">Current (A)</SelectItem>
-                      <SelectItem value="resistance" className="text-white hover:bg-orange-500/20 data-[highlighted]:text-orange-200 cursor-pointer data-[highlighted]:bg-orange-500/30 rounded-md">Resistance (Ω)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2 rounded-md" onClick={() => toast.success("Snapshot saved")}>Snapshot</Button>
-                <Button variant="ghost" className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2 rounded-md" onClick={toggleRunning}>{running ? "Pause" : "Run"}</Button>
-                <Button variant="ghost" className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2 rounded-md" onClick={resetDefaults}>Reset</Button>
+              <div className="flex gap-2">
+                <Select value={mode} onValueChange={(v) => setMode(v)}>
+                  <SelectTrigger className="w-full cursor-pointer bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm">
+                    <SelectValue placeholder="Mode" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
+                    <SelectItem value="VOLTAGE"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Voltage (V)</SelectItem>
+                    <SelectItem value="CURRENT"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Current (A)</SelectItem>
+                    <SelectItem value="RESISTANCE"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Resistance (Ω)</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={snapshot}>Snapshot</Button>
+              </div>
+
+              <div className="flex gap-2">
+                <Button variant="ghost" className="flex-1 cursor-pointer border border-zinc-800" onClick={toggleRunning}>{running ? "Pause" : "Run"}</Button>
+                <Button variant="ghost" className="flex-1 cursor-pointer border border-zinc-800" onClick={exportCSV}>Export</Button>
               </div>
             </div>
           </div>
@@ -571,27 +716,27 @@ export default function SimulatorPage() {
 
       <div className="h-16 sm:h-16" />
 
-      {/* Main */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Controls column */}
+
+          {/* Controls (left) */}
           <div className="lg:col-span-4 space-y-4">
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden w-full max-w-full">
+              <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
+                      <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center">
                         <Activity className="w-5 h-5" />
                       </div>
                       <div>
-                        <div className="text-lg font-semibold text-[#ffd24a]">Digital Multimeter</div>
-                        <div className="text-xs text-zinc-400">Measure Voltage, Current, Resistance — live</div>
+                        <div className="text-lg font-semibold text-[#ffd24a]">DMM Controls</div>
+                        <div className="text-xs text-zinc-400">Configure circuit • ranges • manual overrides</div>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <Badge className="bg-black/80 border border-orange-500 text-orange-300 px-3 py-1 rounded-full shadow-sm">Mode</Badge>
+                      <Badge className="bg-black/80 border border-orange-500 text-orange-300 px-3 py-1 rounded-full">Mode</Badge>
                     </div>
                   </CardTitle>
                 </CardHeader>
@@ -604,162 +749,134 @@ export default function SimulatorPage() {
                     </div>
 
                     <div>
-                      <label className="text-xs text-zinc-400">Manual Current Override (A) — optional</label>
-                      <Input value={manualI} onChange={(e) => setManualI(e.target.value)} placeholder="Leave empty to use simulated value" type="text" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                      <div className="text-xs text-zinc-500 mt-1">Override measured current. Helpful to emulate probe loading or clamp meters.</div>
+                      <label className="text-xs text-zinc-400">Series Resistance (Ω)</label>
+                      <Input value={seriesR} onChange={(e) => setSeriesR(e.target.value)} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
                     </div>
 
                     <div>
-                      <label className="text-xs text-zinc-400">Resistance Test Current (A) — used when measuring Ω</label>
-                      <Input value={testCurrent} onChange={(e) => setTestCurrent(e.target.value)} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                      <div className="text-xs text-zinc-500 mt-1">Small test current injected to derive R: R = V / I.</div>
+                      <label className="text-xs text-zinc-400">Load Resistance (Ω)</label>
+                      <Input value={loadR} onChange={(e) => setLoadR(e.target.value)} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
                     </div>
-                  </div>
 
-                  {/* Circuit Editor */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <Badge className="bg-black/80 border border-orange-500 text-orange-300 px-3 py-1 rounded-full shadow-sm">{circuit.type.toUpperCase()}</Badge>
-                        <div className="text-xs text-zinc-400">Circuit layout (resistors)</div>
-                      </div>
+                    <div>
+                      <label className="text-xs text-zinc-400">Manual Override (use to set measured)</label>
+                      <Input value={manualOverride} onChange={(e) => setManualOverride(e.target.value)} placeholder="Leave empty to use simulated value" className="bg-zinc-900/60 border border-zinc-800 text-white" />
+                    </div>
 
-                      <Select value={circuit.type} onValueChange={(v) => setCircuitType(v)}>
-                        <SelectTrigger className="w-32 bg-black/80 border cursor-pointer border-zinc-800 text-white text-sm hover:border-orange-500 focus:ring-2 focus:ring-orange-500 rounded-md shadow-sm">
-                          <SelectValue placeholder="Type" />
+                    <div className="flex gap-2">
+                      <Select value={range} onValueChange={(v) => setRange(v)}>
+                        <SelectTrigger className="w-full bg-black/80 border cursor-pointer focus:border-orange-500 border-zinc-800 text-white text-sm rounded-md">
+                          <SelectValue placeholder="Range" />
                         </SelectTrigger>
                         <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                          <SelectItem value="series" className="text-white hover:bg-orange-500/20 data-[highlighted]:text-orange-200 cursor-pointer data-[highlighted]:bg-orange-500/30 rounded-md">Series</SelectItem>
-                          <SelectItem value="parallel" className="text-white hover:bg-orange-500/20 data-[highlighted]:text-orange-200 cursor-pointer data-[highlighted]:bg-orange-500/30 rounded-md">Parallel</SelectItem>
+                          <SelectItem value="AUTO"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Auto</SelectItem>
+                          <SelectItem value="V:20"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Voltage 20V</SelectItem>
+                          <SelectItem value="V:200"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Voltage 200V</SelectItem>
+                          <SelectItem value="I:10"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Current 10A</SelectItem>
+                          <SelectItem value="R:2k"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Resistance 2kΩ</SelectItem>
                         </SelectContent>
                       </Select>
-                    </div>
 
-                    <div className="space-y-2">
-                      {circuit.resistors.map((val, idx) => (
-                        <div key={idx} className="flex items-center gap-2">
-                          <Input value={val} onChange={(e) => updateResistor(idx, e.target.value)} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                          <div className="text-xs text-zinc-400">Ω</div>
-                          <div className="ml-auto flex gap-2">
-                            <Button variant="ghost" onClick={() => removeResistor(idx)} className="p-1 border border-zinc-800 bg-red-500 cursor-pointer text-black hover:bg-red-600"><ZapOff className="w-4 h-4" /></Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button className="flex-1 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] cursor-pointer" onClick={addResistor}><PlusIconFallback /> Add Resistor</Button>
-                      <Button variant="ghost" className="border border-zinc-800 text-zinc-300 cursor-pointer" onClick={() => { setCircuit({ type: "series", resistors: [100, 220] }); toast("Reset circuit"); }}>Reset Circuit</Button>
+                      <Input value={noise} onChange={(e) => setNoise(Number(e.target.value))} type="number" className="w-28 bg-zinc-900/60 border border-zinc-800 text-white" />
                     </div>
                   </div>
 
-                  <div className="bg-black/70 border border-orange-500/30 text-white px-3 py-2 rounded-full shadow-sm backdrop-blur-sm text-xs flex flex-wrap gap-2 items-center">
-                    <span>Equivalent: <span className="text-[#ff9a4a] font-semibold">{ReqDisplay}</span></span>
-                    <span>•</span>
-                    <span>I<sub>sim</sub>: <span className="text-[#00ffbf] font-semibold">{round(IeqSim, 9)} A</span></span>
-                    <span>•</span>
-                    <span>I<sub>used</sub>: <span className="text-[#ffd24a] font-semibold">{manualI === "" ? "—" : `${manualI} A`}</span></span>
-                  </div>
-
-                  <div className="flex items-center gap-2 justify-between mt-2">
+                  <div className="space-y-2">
                     <div className="flex gap-2">
-                      <Button className="px-3 py-2 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-                      <Button variant="outline" className="px-3 py-2 border-zinc-700 text-black cursor-pointer" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+                      <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={() => setProbesConnected((s) => !s)}>{probesConnected ? "Disconnect Probes" : "Connect Probes"}</Button>
+                      <Button variant="ghost" className="border cursor-pointer bg-white border-zinc-800" onClick={() => { setManualOverride(""); toast("Manual override cleared"); }}>Clear</Button>
                     </div>
 
                     <div className="flex gap-2">
+                      <Button className="px-3 cursor-pointer py-2 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
+                      <Button variant="outline" className="px-3 py-2 cursor-pointer border-zinc-700 text-black" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+                    </div>
+
+                    <div className="flex gap-2 mt-2">
                       <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
+                      <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-zinc-300 p-2" onClick={resetDefaults}><Settings className="w-4 h-4" /></Button>
                     </div>
+                  </div>
+
+                  {/* validation indicator */}
+                  <div className="mt-2">
+                    {validationErrors.length ? (
+                      <div className="text-xs text-red-400 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4" />
+                        <div>{validationErrors[0]}</div>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-zinc-400">All systems nominal</div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
             </motion.div>
           </div>
 
-          {/* Visual & scope column */}
+          {/* Visual + Scope (right) */}
           <div className="lg:col-span-8 space-y-4">
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl w-full max-w-full overflow-hidden">
+              <Card className="bg-black/70 border border-zinc-800 rounded-2xl w-full overflow-hidden">
                 <CardHeader>
-                  <CardTitle className="flex items-center justify-between flex-wrap gap-2">
+                  <CardTitle className="flex items-start md:flex-row flex-col md:items-center justify-between gap-2">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
-                        <Usb className="w-5 h-5" />
+                      <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center">
+                        <Plug className="w-5 h-5" />
                       </div>
                       <div>
-                        <div className="text-lg font-semibold text-[#ffd24a]">Interactive DMM Visualizer</div>
-                        <div className="text-xs text-zinc-400">Animated electron flow • dynamic meters • oscilloscope</div>
+                        <div className="text-lg font-semibold text-[#ffd24a]">Digital Multimeter Simulator</div>
+                        <div className="text-xs text-zinc-400">Real-time measurements • probe animation • scope</div>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-3 flex-wrap mt-2 sm:mt-0">
-                      <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">Mode: <span className="text-[#ffd24a] ml-1">{measureMode}</span></Badge>
-                      <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">Vsup: <span className="text-[#ffd24a] ml-1">{Vsup} V</span></Badge>
-                      <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">Req: <span className="text-[#ff9a4a] ml-1">{ReqDisplay}</span></Badge>
+                      <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">Mode: <span className="text-[#ffd24a] ml-1">{mode}</span></Badge>
+                      <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full ">Reading: <div className="text-[#00ffbf] w-10 truncate ml-1">{formattedReading}</div></Badge>
+                      <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">Range: <span className="text-[#ffd24a] ml-1">{range}</span></Badge>
                     </div>
                   </CardTitle>
                 </CardHeader>
 
-                <CardContent className="w-full max-w-full overflow-hidden">
-                  <CircuitVisualizer circuit={circuit} Vsup={Number(Vsup)} measureMode={measureMode} history={history} running={running} manualProbe={manualProbe} manualI={manualI} />
+                <CardContent>
+                  <div className="grid grid-cols-1 gap-4">
+                    <div>
+                      <MultimeterSVG mode={mode} reading={effectiveReading} running={running} probesConnected={probesConnected} rangeLabel={range} />
+                    </div>
+
+                    <div className="space-y-4">
+                      <DMMScope history={history} mode={mode} />
+
+                      <Card className="bg-black/60 border border-zinc-800 rounded-xl p-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-xs text-zinc-400">Summary</div>
+                            <div className="text-lg font-semibold text-[#ff9a4a]">{summary.reading}</div>
+                            <div className="text-xs text-zinc-500 mt-1">Vsup: {summary.Vsup} • Load: {summary.LoadR}</div>
+                          </div>
+
+                          <div className="text-right">
+                            <div className="text-xs text-zinc-400">Approx I</div>
+                            <div className="text-lg font-semibold text-[#00ffbf]">{summary.Iapprox}</div>
+                            <div className="text-xs text-zinc-400 mt-1">Manual override: {manualOverride === "" ? "—" : manualOverride}</div>
+                          </div>
+                        </div>
+                      </Card>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             </motion.div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-full overflow-hidden">
-              <div className="w-full max-w-full">
-                <DmmOscilloscope history={history} selectedChannel={selectedChannel} running={running} />
-              </div>
-
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl">
-                <CardHeader>
-                  <CardTitle className="flex text-[#ffd24a] items-center gap-2">
-                    <BatteryCharging className="w-5 h-5" /> Summary
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
-                      <div className="text-xs text-zinc-400">Equivalent</div>
-                      <div className="text-lg font-semibold text-[#ff9a4a] truncate">{ReqDisplay}</div>
-                      <div className="text-xs text-zinc-400 mt-1">Total R</div>
-                    </div>
-
-                    <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
-                      <div className="text-xs text-zinc-400">I<sub>sim</sub> (last)</div>
-                      <div className="text-lg font-semibold text-[#00ffbf] truncate">{round(IeqSim, 9)} A</div>
-                    </div>
-
-                    <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
-                      <div className="text-xs text-zinc-400">I<sub>used</sub></div>
-                      <div className="text-lg font-semibold text-[#ffd24a] truncate">{manualI === "" ? "—" : `${manualI} A`}</div>
-                    </div>
-
-                    <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
-                      <div className="text-xs text-zinc-400">Last Voltage</div>
-                      <div className="text-lg font-semibold text-[#ffd24a] truncate">{round(history.length ? history[history.length - 1].V : 0, 6)} V</div>
-                    </div>
-
-                    <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
-                      <div className="text-xs text-zinc-400">Last Resistance</div>
-                      <div className="text-lg font-semibold text-[#ff9a4a] truncate">{round(history.length ? history[history.length - 1].R : 0, 6)} Ω</div>
-                    </div>
-
-                    <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
-                      <div className="text-xs text-zinc-400">Manual Probe</div>
-                      <div className="text-lg font-semibold text-[#ffd24a] truncate">Node {manualProbe.node}</div>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 text-xs sm:text-sm bg-black/70 border border-orange-500/30 text-orange-300 px-3 py-2 rounded-md shadow-sm backdrop-blur-sm flex items-start gap-2">
-                    <span className="text-orange-400"><Flash /></span>
-                    <span>
-                      Tip: switch modes to quickly verify node voltages, line currents, or measure resistance by injecting a small test current. Use manual current override to emulate clamp meters.
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
           </div>
         </div>
       </main>
@@ -768,22 +885,14 @@ export default function SimulatorPage() {
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-60 w-[92%] sm:w-auto sm:left-auto sm:translate-x-0 sm:bottom-6 sm:right-6 lg:hidden" role="region" aria-label="Mobile controls">
         <div className="flex items-center justify-between gap-3 bg-black/80 border border-zinc-800 p-3 rounded-full shadow-lg">
           <div className="flex items-center gap-2">
-            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-zinc-300 text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+            <Button className="px-3 cursor-pointer py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
+            <Button variant="outline" className="px-3 py-2 cursor-pointer border-zinc-700 text-black text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" className="border border-zinc-800 text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
+            <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
           </div>
         </div>
       </div>
     </div>
   );
-}
-
-/* ============================
-   Small helper icon fallback (kept inline so file remains self-contained)
-   - You can remove and use proper lucide icons as needed
-   ============================ */
-function PlusIconFallback() {
-  return <svg viewBox="0 0 24 24" className="w-4 h-4 inline-block mr-2" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16M4 12h16" /></svg>;
 }

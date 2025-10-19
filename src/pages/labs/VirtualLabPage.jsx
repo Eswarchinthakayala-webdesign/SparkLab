@@ -189,130 +189,261 @@ function useWaveSim({
    - Simple circuit shapes for RC, RL, RLC, and 'Open' (no circuit)
    - Animated dots to represent current/flow; dot speed responds to frequency/amplitude
    ============================ */
-function CircuitVisualizer({ circuit = "open", amplitude = 1, frequency = 1, running = true, probeValue = 0 }) {
-  // map circuit to simple SVG layout
+
+
+ function CircuitVisualizer({
+  circuit = "rlc", // "open", "rc", "rl", "rlc"
+  amplitude = 1,
+  frequency = 1,
+  running = true,
+  probeValue = 0,
+}) {
+  function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+function round(num, dec = 2) {
+  return parseFloat(num.toFixed(dec));
+}
   const width = 900;
-  const height = 220;
-  const busY = 110;
-  // dot animation params
+  const height = 260;
+  const busY = 130;
+
   const absAmp = Math.abs(amplitude);
-  const dotCount = clamp(Math.round(2 + absAmp * 6), 2, 16);
-  const baseSpeed = clamp(1 / Math.max(0.1, frequency), 0.08, 2.5); // seconds per cycle
+  const dotCount = clamp(Math.round(4 + absAmp * 8), 4, 18);
+  const baseSpeed = clamp(1 / Math.max(0.1, frequency), 0.06, 3.0);
+  const dotColor = amplitude >= 0 ? "#ffb85c" : "#00fff7";
+  const glowColor = amplitude >= 0 ? "#ff8c2f" : "#00b7ff";
 
-  const dotColor = amplitude >= 0 ? "#ffd24a" : "#ff6a9a";
+  // Path definitions (simulate realistic circuit shape)
+  const mainPath =
+    circuit === "open"
+      ? `M 80 ${busY} H ${width - 80}`
+      : `M 80 ${busY} H ${width - 260} V ${busY - 60} H ${width - 120} V ${busY} H ${width - 80}`;
 
-  // paths for dot motion depend on circuit
-  const pathMain = circuit === "open" ? `M 80 ${busY} L ${width - 80} ${busY}` : `M 80 ${busY} L ${width - 260} ${busY} L ${width - 260} ${busY - 48} L ${width - 120} ${busY - 48} L ${width - 120} ${busY}`;
-  // variation for R, L, C segments can be drawn (simplified)
+  // Generate SVG glow trail path
+  const glowPath = (
+    <path
+      d={mainPath}
+      stroke={glowColor}
+      strokeWidth="5"
+      strokeLinecap="round"
+      strokeOpacity="0.25"
+      fill="none"
+      filter="url(#glow)"
+    />
+  );
+
+  // Circuit Components
+  const components = {
+    rc: (
+      <>
+        <Resistor x={width - 260} y={busY - 16} label="R" />
+        <Capacitor x={width - 120} y={busY - 34} label="C" />
+      </>
+    ),
+    rl: (
+      <>
+        <Resistor x={width - 260} y={busY - 16} label="R" />
+        <Inductor x={width - 120} y={busY - 30} label="L" />
+      </>
+    ),
+    rlc: (
+      <>
+        <Resistor x={width - 300} y={busY - 16} label="R" />
+        <Inductor x={width - 210} y={busY - 30} label="L" />
+        <Capacitor x={width - 120} y={busY - 34} label="C" />
+      </>
+    ),
+  };
 
   return (
-    <div className="w-full rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden">
-      <div className="flex items-start justify-between gap-3">
+    <div className="w-full rounded-2xl p-5 bg-gradient-to-b from-black/60 to-zinc-900/30 border border-zinc-800 shadow-xl">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
-            <Cpu className="w-5 h-5" />
+          <div className="w-12 h-12 rounded-lg bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center shadow-md shadow-[#ff7a2d]/30">
+            <Cpu className="w-6 h-6 text-black" />
           </div>
           <div>
-            <div className="text-lg font-semibold text-[#ffd24a]">Circuit Visualizer</div>
-            <div className="text-xs text-zinc-400">Animated flow — circuit: {circuit.toUpperCase()}</div>
+            <h2 className="text-lg font-semibold text-[#ffd24a] tracking-wide">
+              Circuit Visualizer
+            </h2>
+            <p className="text-xs text-zinc-400">
+              Live Energy Flow — Mode: <span className="text-[#4de1ff] font-medium">{circuit.toUpperCase()}</span>
+            </p>
           </div>
         </div>
 
-        <div className="flex gap-2 items-center">
-          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">Freq: <span className="text-[#ffd24a] ml-1">{frequency} Hz</span></Badge>
-          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">Amp: <span className="text-[#00ffbf] ml-1">{round(amplitude, 4)}</span></Badge>
+        <div className="flex gap-2">
+          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">
+            <Zap className="inline-block w-3.5 h-3.5 mr-1 text-[#ffd24a]" />
+            Freq: <span className="text-[#ffd24a] ml-1">{frequency} Hz</span>
+          </Badge>
+          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">
+            <Activity className="inline-block w-3.5 h-3.5 mr-1 text-[#00ffbf]" />
+            Amp: <span className="text-[#00ffbf] ml-1">{round(amplitude, 3)}</span>
+          </Badge>
         </div>
       </div>
 
-      <div className="mt-3 w-full overflow-x-auto">
-        <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet" className="w-full h-44">
-          {/* base bus */}
-          <path d={`M 80 ${busY} H ${width - 80}`} stroke="#111" strokeWidth="6" strokeLinecap="round" />
+      {/* SVG Circuit Canvas */}
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="w-full h-[240px]"
+        preserveAspectRatio="xMidYMid meet"
+      >
+        {/* glow filter */}
+        <defs>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="4" result="coloredBlur" />
+            <feMerge>
+              <feMergeNode in="coloredBlur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
 
-          {/* generate a simplified circuit drawing based on selection */}
-          {circuit === "rc" && (
-            <>
-              {/* resistor (zigzag) near end */}
-              <g transform={`translate(${width - 260}, ${busY - 10})`}>
-                <rect x="-40" y="-8" width="80" height="16" rx="6" fill="#0a0a0a" stroke="#222" />
-                <text x="-36" y="-12" fontSize="10" fill="#ffd24a">R</text>
-              </g>
-              {/* capacitor */}
-              <g transform={`translate(${width - 120}, ${busY - 24})`}>
-                <rect x="-12" y="-6" width="24" height="12" fill="#ffb86b" rx="3" />
-                <text x="-6" y="-16" fontSize="10" fill="#ffd24a">C</text>
-              </g>
-            </>
-          )}
+        {/* base wire path */}
+        <path
+          d={mainPath}
+          stroke="#222"
+          strokeWidth="7"
+          strokeLinecap="round"
+          fill="none"
+        />
 
-          {circuit === "rl" && (
-            <>
-              <g transform={`translate(${width - 240}, ${busY - 16})`}>
-                <rect x="-44" y="-8" width="88" height="16" rx="6" fill="#0a0a0a" stroke="#222" />
-                <text x="-36" y="-12" fontSize="10" fill="#ffd24a">R</text>
-              </g>
-              <g transform={`translate(${width - 120}, ${busY - 18})`}>
-                <rect x="-18" y="-8" width="36" height="16" fill="#ff6a9a" rx="8" />
-                <text x="-6" y="-16" fontSize="10" fill="#ffd24a">L</text>
-              </g>
-            </>
-          )}
+        {/* glowing path (energy pulse) */}
+        {glowPath}
 
-          {circuit === "rlc" && (
-            <>
-              <g transform={`translate(${width - 300}, ${busY - 16})`}>
-                <rect x="-44" y="-8" width="88" height="16" rx="6" fill="#0a0a0a" stroke="#222" />
-                <text x="-36" y="-12" fontSize="10" fill="#ffd24a">R</text>
-              </g>
-              <g transform={`translate(${width - 220}, ${busY - 18})`}>
-                <rect x="-18" y="-8" width="36" height="16" fill="#ff6a9a" rx="8" />
-                <text x="-6" y="-16" fontSize="10" fill="#ffd24a">L</text>
-              </g>
-              <g transform={`translate(${width - 120}, ${busY - 24})`}>
-                <rect x="-12" y="-6" width="24" height="12" fill="#ffb86b" rx="3" />
-                <text x="-6" y="-16" fontSize="10" fill="#ffd24a">C</text>
-              </g>
-            </>
-          )}
+        {/* Circuit Components */}
+        {components[circuit] || null}
 
-          {/* animate dots along pathMain */}
-          {Array.from({ length: dotCount }).map((_, i) => {
-            const delay = (i / dotCount) * baseSpeed;
-            const style = {
-              offsetPath: `path('${pathMain}')`,
-              animationName: "dotTravel",
-              animationDuration: `${baseSpeed}s`,
-              animationTimingFunction: "linear",
-              animationDelay: `${-delay}s`,
-              animationIterationCount: "infinite",
-              animationPlayState: running ? "running" : "paused",
-            };
-            return <circle key={`dot-${i}`} r="4" fill={dotColor} style={style} />;
-          })}
+        {/* Animated dots along energy path */}
+        {Array.from({ length: dotCount }).map((_, i) => {
+          const delay = (i / dotCount) * baseSpeed;
+          return (
+            <motion.circle
+              key={i}
+              r={4}
+              fill={dotColor}
+              style={{ offsetPath: `path('${mainPath}')` }}
+              animate={{ offsetDistance: ["0%", "100%"] }}
+              transition={{
+                duration: baseSpeed,
+                repeat: Infinity,
+                ease: "linear",
+                delay: -delay,
+              }}
+              initial={false}
+              className="drop-shadow-[0_0_6px_rgba(255,210,74,0.7)]"
+            />
+          );
+        })}
 
-          {/* probe reading bubble */}
-          <g transform={`translate(${width - 60}, ${busY - 60})`}>
-            <rect x="-72" y="-30" width="140" height="56" rx="8" fill="#060606" stroke="#222" />
-            <text x="-64" y="-6" fontSize="12" fill="#ffb57a">Probe</text>
-            <text x="-64" y="12" fontSize="14" fill="#fff">V: <tspan fill="#ffd24a">{round(probeValue, 4)} V</tspan></text>
-          </g>
-
-          <style>{`
-            @keyframes dotTravel {
-              0% { offset-distance: 0%; opacity: 0.95; transform: translate(-2px,-2px) scale(0.95); }
-              45% { opacity: 0.9; transform: translate(0,0) scale(1.05); }
-              100% { offset-distance: 100%; opacity: 0; transform: translate(6px,6px) scale(0.8); }
-            }
-            circle[style] { will-change: offset-distance, transform, opacity; }
-            @media (max-width: 640px) {
-              text { font-size: 9px; }
-            }
-          `}</style>
-        </svg>
-      </div>
+        {/* Probe Value */}
+        <g transform={`translate(${width - 60}, ${busY - 60})`}>
+          <rect
+            x="-72"
+            y="-30"
+            width="140"
+            height="56"
+            rx="10"
+            fill="#0a0a0a"
+            stroke="#222"
+            opacity="0.95"
+          />
+          <text x="-64" y="-6" fontSize="12" fill="#ffb57a">
+            Probe
+          </text>
+          <text x="-64" y="12" fontSize="14" fill="#fff">
+            V: <tspan fill="#ffd24a">{round(probeValue, 4)} V</tspan>
+          </text>
+        </g>
+      </svg>
     </div>
   );
 }
+
+/* ────────────────────────────── COMPONENTS ────────────────────────────── */
+
+function Resistor({ x, y, label }) {
+  return (
+    <g transform={`translate(${x}, ${y})`}>
+      <rect
+        x="-36"
+        y="-8"
+        width="72"
+        height="16"
+        rx="5"
+        fill="url(#gradR)"
+        stroke="#444"
+      />
+      <text x="-4" y="-12" fontSize="10" fill="#ffd24a">
+        {label}
+      </text>
+      <defs>
+        <linearGradient id="gradR" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#ff9a4a" />
+          <stop offset="100%" stopColor="#ffb86b" />
+        </linearGradient>
+      </defs>
+    </g>
+  );
+}
+
+function Inductor({ x, y, label }) {
+  const turns = 4;
+  const radius = 6;
+  const spacing = 14;
+  return (
+    <g transform={`translate(${x}, ${y})`}>
+      {Array.from({ length: turns }).map((_, i) => (
+        <circle
+          key={i}
+          cx={i * spacing - (turns * spacing) / 2 + spacing / 2}
+          cy="0"
+          r={radius}
+          stroke="#00b7ff"
+          strokeWidth="2"
+          fill="none"
+          filter="url(#glow)"
+        />
+      ))}
+      <text x="-6" y="-16" fontSize="10" fill="#ffd24a">
+        {label}
+      </text>
+    </g>
+  );
+}
+
+function Capacitor({ x, y, label }) {
+  return (
+    <g transform={`translate(${x}, ${y})`}>
+      <rect
+        x="-3"
+        y="-14"
+        width="6"
+        height="28"
+        fill="#ffd24a"
+        rx="1"
+        filter="url(#glow)"
+      />
+      <rect
+        x="8"
+        y="-14"
+        width="6"
+        height="28"
+        fill="#ffd24a"
+        rx="1"
+        filter="url(#glow)"
+      />
+      <text x="-6" y="-22" fontSize="10" fill="#ffd24a">
+        {label}
+      </text>
+    </g>
+  );
+}
+
 
 /* ============================
    Oscilloscope Chart

@@ -5,17 +5,19 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { motion } from "framer-motion";
 import {
   Zap,
+  CircuitBoard,
   Play,
   Pause,
-
+  Settings,
   Menu,
   X,
-
-  Download,
-  BugPlayIcon as Bulb,
+  Layers,
   Activity,
-  CircuitBoard,
-  
+  Lightbulb,
+  Monitor,
+  Thermometer,
+  Sparkles,
+  Cpu,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
@@ -25,12 +27,11 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
+  SelectTrigger,
   SelectContent,
   SelectItem,
-  SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 
 import {
   ResponsiveContainer,
@@ -43,32 +44,30 @@ import {
   Legend,
 } from "recharts";
 
-/* ===========================
-   Utilities
-   =========================== */
+/* ============================
+   Utilities (safe numeric helpers)
+   ============================ */
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const round = (v, p = 6) => {
-  if (!Number.isFinite(v)) return 0;
+  if (!Number.isFinite(v)) return NaN;
   const f = 10 ** p;
   return Math.round(v * f) / f;
 };
+const toNum = (v, fallback = NaN) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+};
 
-/* ===========================
-   Lightweight simulation hook
-   - supports step, sine (AC), and pulse modes
-   - returns live history + instantaneous values
-   - designed for explainer visuals (fast, stable)
-   =========================== */
+/* ============================
+   Simulation hook: useExplainerSim
+   - supports multiple explainers (RC, RL, RLC, Voltage Divider, LED)
+   - returns realtime history and descriptive state
+   ============================ */
 function useExplainerSim({
   running,
-  mode = "step", // "step" | "sine" | "pulse"
-  Vsup = 5,
-  seriesR = 10,
-  compValue = 10, // μF for cap or mH for inductor where applicable
-  compType = "cap", // "cap" or "ind"
   timestep = 80,
-  freq = 1,
-  pulseDuty = 0.5,
+  concept = "rc",
+  params = {},
 }) {
   const historyRef = useRef([]);
   const [history, setHistory] = useState([]);
@@ -76,83 +75,77 @@ function useExplainerSim({
   const lastRef = useRef(performance.now());
   const rafRef = useRef(null);
 
-  // compute equivalent quickly (single component for explainer)
-  const eq = useMemo(() => {
-    if (compType === "cap") return { totalReq: compValue * 1e-6, display: `${compValue} μF` };
-    return { totalReq: compValue * 1e-3, display: `${compValue} mH` };
-  }, [compValue, compType]);
-
   const computeInstant = useCallback(
     (tSeconds) => {
-      const R = Math.max(1e-6, seriesR);
-      if (compType === "cap") {
-        const C = eq.totalReq;
-        if (mode === "step") {
-          const tau = clamp(R * C, 1e-6, 1e6);
-          const Vt = Vsup * (1 - Math.exp(-tSeconds / tau));
-          const dVdt = (Vsup / tau) * Math.exp(-tSeconds / tau);
-          const It = C * dVdt;
-          const P = Vt * It;
-          return { V: Vt, I: It, P, E: 0.5 * C * Vt * Vt };
-        } else if (mode === "sine") {
-          const omega = 2 * Math.PI * freq;
-          const Vt = Vsup * Math.sin(omega * tSeconds);
-          const dVdt = Vsup * omega * Math.cos(omega * tSeconds);
-          const It = C * dVdt;
-          const P = Vt * It;
-          return { V: Vt, I: It, P, E: 0.5 * C * Vt * Vt };
-        } else if (mode === "pulse") {
-          // simple square wave amplitude toggling between 0 and Vsup
-          const period = 1 / Math.max(1e-6, freq);
-          const phase = (tSeconds % period) / period;
-          const Vtarget = phase < pulseDuty ? Vsup : 0;
-          // use RC exponential to reach Vtarget (simple approximation)
-          const tau = clamp(R * C, 1e-6, 1e6);
-          const Vt = Vtarget + (0 - Vtarget) * Math.exp(-tSeconds / tau);
-          const dVdt = (Vtarget - Vt) / tau;
-          const It = C * dVdt;
-          const P = Vt * It;
-          return { V: Vt, I: It, P, E: 0.5 * C * Vt * Vt };
-        }
-      } else {
-        // inductor: simulate I(t) similarly but for brevity we use simple models
-        const L = eq.totalReq;
-        if (mode === "step") {
-          const tau = clamp(L / R, 1e-6, 1e6);
-          const Iinf = Vsup / R;
-          const It = Iinf * (1 - Math.exp(-tSeconds / tau));
-          const Vl = L * (Iinf / tau) * Math.exp(-tSeconds / tau);
-          const P = Vl * It;
-          return { V: Vl, I: It, P, E: 0.5 * L * It * It };
-        } else if (mode === "sine") {
-          const omega = 2 * Math.PI * freq;
-          const Ipeak = Vsup / Math.sqrt(R * R + Math.pow(omega * L, 2));
-          const phase = Math.atan2(omega * L, R);
-          const It = Ipeak * Math.sin(omega * tSeconds - phase);
-          const Vl = L * (Ipeak * omega * Math.cos(omega * tSeconds - phase));
-          const P = Vl * It;
-          return { V: Vl, I: It, P, E: 0.5 * L * It * It };
-        } else {
-          // pulse for inductor: simple approximated response
-          const period = 1 / Math.max(1e-6, freq);
-          const phase = (tSeconds % period) / period;
-          const Vtarget = phase < pulseDuty ? Vsup : 0;
-          const tau = clamp(L / R, 1e-6, 1e6);
-          const Iinf = Vtarget / R;
-          const It = Iinf * (1 - Math.exp(-tSeconds / tau));
-          const Vl = L * ((Iinf / tau) * Math.exp(-tSeconds / tau));
-          const P = Vl * It;
-          return { V: Vl, I: It, P, E: 0.5 * L * It * It };
-        }
+      // base params with safe conversions
+      const V = toNum(params.Vsup, 5);
+      const R = Math.max(1e-6, toNum(params.R, 1000));
+      const C = Math.max(1e-12, toNum(params.C, 1e-6)); // in F
+      const L = Math.max(1e-9, toNum(params.L, 1e-3)); // in H
+      const freq = Math.max(0.0001, toNum(params.freq, 50));
+      // per-concept models (simple, pedagogical)
+      if (concept === "rc") {
+        // step response charging Vc = V*(1-exp(-t/RC))
+        const tau = clamp(R * C, 1e-9, 1e6);
+        const Vc = V * (1 - Math.exp(-tSeconds / tau));
+        const dVdt = (V / tau) * Math.exp(-tSeconds / tau);
+        const I = C * dVdt;
+        const P = Vc * I;
+        const energy = 0.5 * C * Vc * Vc;
+        return { t: tSeconds, Vc, I, P, energy, meta: { tau } };
+      } else if (concept === "rl") {
+        // step response in RL: I = V/R*(1 - exp(-R t / L))
+        const tauL = clamp(L / R, 1e-9, 1e6);
+        const Iinf = V / R;
+        const I = Iinf * (1 - Math.exp(-tSeconds / tauL));
+        const dIdt = (Iinf / tauL) * Math.exp(-tSeconds / tauL);
+        const Vl = L * dIdt;
+        const P = Vl * I;
+        const energy = 0.5 * L * I * I;
+        return { t: tSeconds, I, Vl, P, energy, meta: { tauL } };
+      } else if (concept === "rlc") {
+        // simple driven RLC at freq -> compute steady-state amplitude (voltage across C)
+        // R, L, C are series RLC driven by sinusoidal source V*sin(2πft)
+        const w = 2 * Math.PI * freq;
+        const Xl = w * L;
+        const Xc = 1 / (w * C);
+        const Z = Math.sqrt(R * R + (Xl - Xc) * (Xl - Xc));
+        const Iamp = V / Z;
+        // phase and instantaneous values for visualization: use tSeconds mod period
+        const instI = Iamp * Math.sin(w * tSeconds);
+        const Vc = instI * Xc * Math.cos(Math.atan2(Xl - Xc, R)); // approximate phasing for demo
+        const P = (Iamp * Iamp) * R * 0.5; // average power on resistor
+        return { t: tSeconds, I: instI, Vc, P, meta: { Xl, Xc, Z, Iamp } };
+      } else if (concept === "divider") {
+        // simple two-resistor divider: Vout = V*(R2/(R1+R2))
+        const R1 = Math.max(1e-6, toNum(params.R1, 1000));
+        const R2 = Math.max(1e-6, toNum(params.R2, 1000));
+        const Vout = V * (R2 / (R1 + R2));
+        const I = V / (R1 + R2);
+        const P = Vout * I;
+        return { t: tSeconds, Vout, I, P, meta: { R1, R2 } };
+      } else if (concept === "led") {
+        // LED forward conduction model (simple diode + resistor)
+        // Use piecewise: if V > Vf (0.7..2.2) current flows as (V-Vf)/R
+        const Vf = toNum(params.Vf, 2.0);
+        const Rled = Math.max(1e-3, toNum(params.R, 220));
+        const I = Math.max(0, (V - Vf) / Rled);
+        const P = V * I;
+        const on = I > 1e-6;
+        return { t: tSeconds, I, P, on, Vf, meta: { Rled } };
       }
-      return { V: 0, I: 0, P: 0, E: 0 };
+      // default fallback
+      return { t: tSeconds, I: 0, Vc: 0, P: 0, energy: 0, meta: {} };
     },
-    [mode, Vsup, seriesR, compType, eq.totalReq, freq, pulseDuty]
+    [concept, params]
   );
 
   useEffect(() => {
     let alive = true;
     lastRef.current = performance.now();
+    tRef.current = 0;
+    historyRef.current = [];
+    setHistory([]);
     const step = (ts) => {
       if (!alive) return;
       rafRef.current = requestAnimationFrame(step);
@@ -165,165 +158,303 @@ function useExplainerSim({
       lastRef.current = ts;
       tRef.current += dt;
       const tSeconds = tRef.current / 1000;
-
-      const inst = computeInstant(tSeconds);
-      // push history
-      historyRef.current = [...(historyRef.current || []).slice(-480), { t: tSeconds, ...inst }];
-      if (alive) setHistory(historyRef.current);
+      const sample = computeInstant(tSeconds);
+      // push to history
+      historyRef.current.push(sample);
+      if (historyRef.current.length > 720) historyRef.current.shift();
+      // update state (throttle updates slightly by copying)
+      setHistory(historyRef.current.slice());
     };
+
     rafRef.current = requestAnimationFrame(step);
     return () => {
       alive = false;
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [running, computeInstant, timestep, freq, pulseDuty]);
+  }, [running, timestep, computeInstant, concept, params]);
 
-  return { history, instant: history.length ? history[history.length - 1] : { V: 0, I: 0, P: 0, E: 0 }, eq };
+  // api: history, latest, meta
+  const latest = history.length ? history[history.length - 1] : null;
+  return { history, latest };
 }
 
-/* ===========================
-   Small Meters (Voltmeter & Ammeter)
-   - simple circular meter that reads from simulation
-   =========================== */
-function Meter({ label, value, unit, min = 0, max = 10, accent = "#ffb86b" }) {
-  const pct = clamp((value - min) / (max - min || 1), 0, 1);
-  const angle = -120 + pct * 240; // -120deg to +120deg
+/* ============================
+   Visualizer: ExplainerSVG
+   - renders different visualizations depending on concept
+   - uses animated particles/needles/led glow for realistic, data-driven visuals
+   ============================ */
+function ExplainerSVG({ concept, params, history = [], running }) {
+  const latest = history.length ? history[history.length - 1] : {};
+  // envelope metrics
+  const I = latest.I ?? 0;
+  const Vc = latest.Vc ?? latest.Vout ?? 0;
+  const P = latest.P ?? 0;
+  const on = latest.on ?? false;
+
+  // particle count scaled with |I|
+  const absI = Math.min(12, Math.abs(I) * 8 + 2);
+  const dotCount = clamp(Math.round(absI), 2, 18);
+  const speed = clamp(1.2 / (Math.abs(I) + 0.02), 0.25, 3.0);
+  const svgW = 1100;
+  const svgH = 320;
+
+  // helpers for small animated needle
+  const needleAngle = (val, maxVal = 5) => {
+    // map [-maxVal,maxVal] to [-40,40] degrees
+    const v = clamp(val, -maxVal, maxVal);
+    return (v / maxVal) * 40;
+  };
+
+  // Choose layout per concept
   return (
-    <div className="w-32 sm:w-36 p-2 bg-zinc-900/50 border border-zinc-800 rounded-lg flex flex-col items-center">
-      <div className="text-xs text-zinc-400">{label}</div>
-      <div className="relative w-20 h-20 flex items-center justify-center">
-        <svg viewBox="0 0 100 100" className="w-20 h-20">
-          <defs>
-            <radialGradient id="g" cx="50%" cy="30%">
-              <stop offset="0%" stopColor="#111" />
-              <stop offset="100%" stopColor="#060606" />
-            </radialGradient>
-          </defs>
-          <circle cx="50" cy="50" r="45" fill="url(#g)" stroke="#222" />
-          {/* ticks */}
-          {Array.from({ length: 9 }).map((_, i) => {
-            const a = (-120 + (i / 8) * 240) * (Math.PI / 180);
-            const x1 = 50 + Math.cos(a) * 36;
-            const y1 = 50 + Math.sin(a) * 36;
-            const x2 = 50 + Math.cos(a) * 42;
-            const y2 = 50 + Math.sin(a) * 42;
-            return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#333" strokeWidth="1" />;
-          })}
-          {/* needle */}
-          <g transform={`rotate(${angle} 50 50)`}>
-            <rect x="49" y="18" width="2" height="36" fill={accent} rx="1" />
-            <circle cx="50" cy="56" r="3" fill="#111" stroke={accent} strokeWidth="1.2" />
-          </g>
-        </svg>
-      </div>
-      <div className="mt-1 text-sm font-semibold" style={{ color: accent }}>
-        {round(value, 4)} {unit}
-      </div>
-    </div>
-  );
-}
-
-/* ===========================
-   Circuit Visualizer (SVG)
-   - Animated dots representing current flow (uses offset-path)
-   - Adjustable detail level
-   =========================== */
-function CircuitVisualizer({ compType = "cap", compValue = 10, mode = "step", Vsup = 5, running = true, instant = { V: 0, I: 0, P: 0, E: 0 }, detail = "futuristic" }) {
-  const absI = Math.abs(instant.I || 0);
-  // more current => more dots and faster animation
-  const dotCount = clamp(Math.round(3 + Math.abs(absI) * 10), 3, 22);
-  const speed = clamp(1.5 / (absI + 0.02), 0.18, 3.2);
-
-  const svgWidth = 960;
-  const svgHeight = 320;
-  const busY = 160;
-  const startX = 120;
-  const compX = svgWidth / 2;
-  const endX = svgWidth - 120;
-
-  // style variations by 'detail'
-  const glow = detail === "futuristic";
-  const compFill = compType === "cap" ? "#ffb86b" : "#ff6a9a";
-
-  return (
-    <div className="rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden">
+    <div className="w-full rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className={`w-11 h-11 rounded-md ${glow ? "bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]" : "bg-orange-600"} text-black flex items-center justify-center`}>
+          <div className="w-11 h-11 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
             <CircuitBoard className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-lg font-semibold text-[#ffd24a]">{compType === "cap" ? "Capacitor" : "Inductor"} Explainer</div>
-            <div className="text-xs text-zinc-400">Mode: {mode} • Live visual</div>
+            <div className="text-lg font-semibold text-[#ffd24a]">
+              {concept === "rc" ? "RC Charging" : concept === "rl" ? "RL Charging" : concept === "rlc" ? "RLC Resonance" : concept === "divider" ? "Voltage Divider" : "LED Circuit"}
+            </div>
+            <div className="text-xs text-zinc-400">Interactive explainer • real-time • animated</div>
           </div>
         </div>
 
-        <div className="flex gap-2 items-center flex-wrap">
-          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">V: <span className="text-[#ffd24a] ml-1">{Vsup} V</span></Badge>
-          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">I: <span className="text-[#00ffbf] ml-1">{round(instant.I, 6)} A</span></Badge>
-          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">P: <span className="text-[#ff9a4a] ml-1">{round(instant.P, 6)} W</span></Badge>
+        <div className="flex gap-3 items-center flex-wrap">
+          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">V<sub>sup</sub>: <span className="text-[#ffd24a] ml-1">{params.Vsup} V</span></Badge>
+          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">I (now): <span className="text-[#00ffbf] ml-1">{round(I, 6)} A</span></Badge>
+          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">P: <span className="text-[#ff9a4a] ml-1">{round(P, 6)} W</span></Badge>
         </div>
       </div>
 
       <div className="mt-3 w-full overflow-x-auto">
-        <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} preserveAspectRatio="xMidYMid meet" className="w-full h-64">
-          {/* supply */}
-          <g transform={`translate(${startX - 64},${busY})`}>
-            <rect x="-20" y="-28" width="40" height="56" rx="6" fill="#060606" stroke="#222" />
-            <text x="-36" y="-38" fontSize="12" fill="#ffd24a">{Vsup}V</text>
-          </g>
+        <svg viewBox={`0 0 ${svgW} ${svgH}`} preserveAspectRatio="xMidYMid meet" className="w-full h-64">
+          {/* base horizontal bus */}
+          <path d={`M 60 ${svgH / 2} H ${svgW - 60}`} stroke="#111" strokeWidth="6" strokeLinecap="round" />
 
-          {/* bus */}
-          <path d={`M ${startX} ${busY} H ${endX}`} stroke="#111" strokeWidth="6" strokeLinecap="round" />
+          {/* depending on concept, draw a different diagram */}
+          {concept === "rc" && (
+            <>
+              {/* supply block */}
+              <g transform={`translate(40, ${svgH / 2 - 12})`}>
+                <rect x="-24" y="-28" width="48" height="56" rx="6" fill="#060606" stroke="#222" />
+                <text x="-36" y="-40" fontSize="12" fill="#ffd24a">{params.Vsup} V</text>
+              </g>
 
-          {/* component block */}
-          <g transform={`translate(${compX},${busY})`}>
-            <rect x="-64" y="-30" width="128" height="60" rx="12" fill="#060606" stroke="#222" />
-            <rect x="-44" y="-18" width="88" height="36" rx="8" fill={compFill} opacity="0.95" />
-            <text x="-36" y="-26" fontSize="12" fill="#ffd24a">{compType === "cap" ? `${compValue} μF` : `${compValue} mH`}</text>
-            <text x="-36" y="34" fontSize="11" fill="#fff">Interactive component</text>
+              {/* resistor */}
+              <g transform={`translate(240, ${svgH / 2})`}>
+                <rect x="-30" y="-18" width="60" height="36" rx="8" fill="#0a0a0a" stroke="#222" />
+                <text x="-24" y="-26" fontSize="12" fill="#ffb86b">R = {params.R} Ω</text>
+                <text x="-24" y="36" fontSize="12" fill="#fff">I ~ {round(I, 6)} A</text>
+              </g>
 
-            {glow && <filter id="f1"><feGaussianBlur stdDeviation="6" result="b" /></filter>}
-          </g>
+              {/* capacitor */}
+              <g transform={`translate(520, ${svgH / 2})`}>
+                <rect x="-30" y="-22" width="60" height="44" rx="8" fill="#0a0a0a" stroke="#222" />
+                <rect x="-18" y="-10" width="36" height="20" rx="6" fill="#ffb86b" opacity={0.95} />
+                <text x="-24" y="-32" fontSize="12" fill="#ffd24a">C = {params.Cu || params.C} μF</text>
+                <text x="-24" y="36" fontSize="12" fill="#fff">Vc {`≈`} {round(Vc, 3)} V</text>
+              </g>
 
-          {/* measure leads */}
-          <path d={`M ${startX + 36} ${busY} H ${compX - 64}`} stroke="#222" strokeWidth="3" strokeLinecap="round" />
-          <path d={`M ${compX + 64} ${busY} H ${endX - 36}`} stroke="#222" strokeWidth="3" strokeLinecap="round" />
+              {/* animated dots along path from supply->resistor->cap */}
+              {Array.from({ length: dotCount }).map((_, di) => {
+                const pathStr = `M 104 ${svgH / 2} H 260 H 520`;
+                const delay = (di / dotCount) * speed;
+                const style = {
+                  offsetPath: `path('${pathStr}')`,
+                  animationName: "flowExplainer",
+                  animationDuration: `${speed}s`,
+                  animationTimingFunction: "linear",
+                  animationDelay: `${-delay}s`,
+                  animationIterationCount: "infinite",
+                  animationPlayState: running ? "running" : "paused",
+                  transformOrigin: "0 0",
+                };
+                return <circle key={`dot-rc-${di}`} r="4" fill="#ffd24a" style={style} />;
+              })}
+            </>
+          )}
 
-          {/* animated dots along bus */}
-          {Array.from({ length: dotCount }).map((_, di) => {
-            const pathStr = `M ${startX} ${busY} H ${endX}`;
-            const delay = (di / dotCount) * speed;
-            const style = {
-              offsetPath: `path('${pathStr}')`,
-              animationName: "flowExplainer",
-              animationDuration: `${speed}s`,
-              animationTimingFunction: "linear",
-              animationDelay: `${-delay}s`,
-              animationIterationCount: "infinite",
-              animationPlayState: running ? "running" : "paused",
-            };
-            return <circle key={`d-${di}`} r={4} fill="#ffd24a" style={style} />;
-          })}
+          {concept === "rl" && (
+            <>
+              {/* supply */}
+              <g transform={`translate(40, ${svgH / 2 - 12})`}>
+                <rect x="-24" y="-28" width="48" height="56" rx="6" fill="#060606" stroke="#222" />
+                <text x="-36" y="-40" fontSize="12" fill="#ffd24a">{params.Vsup} V</text>
+              </g>
 
-          {/* small oscilloscope widget on the right */}
-          <g transform={`translate(${endX - 200},${40})`}>
-            <rect x="-10" y="-20" width="200" height="120" rx="10" fill="#060606" stroke="#222" />
-            <text x="-2" y="-2" fontSize="11" fill="#ffb57a">Scope</text>
-            {/* dynamic indicator bars */}
-            <rect x="8" y="18" width={Math.max(8, Math.min(180, Math.abs(instant.V) * 10))} height="12" rx="4" fill="#ffd24a" />
-            <rect x="8" y="40" width={Math.max(8, Math.min(180, Math.abs(instant.I) * 30))} height="12" rx="4" fill="#00ffbf" />
-            <rect x="8" y="62" width={Math.max(8, Math.min(180, Math.abs(instant.P) * 40))} height="12" rx="4" fill="#ff9a4a" />
+              {/* inductor (coil effect) */}
+              <g transform={`translate(420, ${svgH / 2})`}>
+                <rect x="-38" y="-24" width="76" height="48" rx="10" fill="#0a0a0a" stroke="#222" />
+                {/* stylized coils */}
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <ellipse key={i} cx={-18 + i * 9} cy={0} rx="6" ry="12" fill="none" stroke="#ff6a9a" strokeWidth="3" />
+                ))}
+                <text x="-34" y="-36" fontSize="12" fill="#ff6a9a">L = {params.Lm || params.L} mH</text>
+                <text x="-34" y="36" fontSize="12" fill="#fff">I {`≈`} {round(I, 6)} A</text>
+              </g>
+
+              {Array.from({ length: dotCount }).map((_, di) => {
+                const pathStr = `M 104 ${svgH / 2} H 420`;
+                const delay = (di / dotCount) * speed;
+                const style = {
+                  offsetPath: `path('${pathStr}')`,
+                  animationName: "flowExplainerInd",
+                  animationDuration: `${speed}s`,
+                  animationTimingFunction: "linear",
+                  animationDelay: `${-delay}s`,
+                  animationIterationCount: "infinite",
+                  animationPlayState: running ? "running" : "paused",
+                  transformOrigin: "0 0",
+                };
+                return <circle key={`dot-rl-${di}`} r="4" fill="#00ffbf" style={style} />;
+              })}
+            </>
+          )}
+
+          {concept === "rlc" && (
+            <>
+              {/* R -> L -> C series depiction */}
+              <g transform={`translate(120, ${svgH / 2})`}>
+                <text x="-36" y="-36" fontSize="12" fill="#ffd24a">Series RLC</text>
+                <rect x="-40" y="-16" width="80" height="32" rx="8" fill="#0a0a0a" stroke="#222" />
+                <text x="-28" y="4" fontSize="11" fill="#ffb86b">R</text>
+                <text x="6" y="4" fontSize="11" fill="#ff6a9a">L</text>
+                <text x="32" y="4" fontSize="11" fill="#ffd24a">C</text>
+                <text x="-36" y="36" fontSize="12" fill="#fff">Iamp {`≈`} {latest.meta ? round(latest.meta.Iamp || 0, 4) : "—"}</text>
+              </g>
+
+              {/* animated sinusoidal waveform (small sparkles) */}
+              {Array.from({ length: dotCount }).map((_, di) => {
+                const x0 = 300 + di * 18;
+                const y0 = svgH / 2 + Math.sin((Date.now() / 500 + di) / 6) * 18;
+                return <circle key={`spark-${di}`} cx={x0} cy={y0} r="3" fill="#ffd24a" opacity={0.85} />;
+              })}
+            </>
+          )}
+
+          {concept === "divider" && (
+            <>
+              {/* R1, R2 vertical stack with Vout node */}
+              <g transform={`translate(420, ${svgH / 2 - 16})`}>
+                <rect x="-36" y="-26" width="72" height="18" rx="8" fill="#0a0a0a" stroke="#222" />
+                <text x="-30" y="-14" fontSize="11" fill="#ffb86b">R1 = {params.R1} Ω</text>
+                <rect x="-36" y="2" width="72" height="18" rx="8" fill="#0a0a0a" stroke="#222" />
+                <text x="-30" y="14" fontSize="11" fill="#ff9a4a">R2 = {params.R2} Ω</text>
+                <text x="-36" y="36" fontSize="12" fill="#fff">Vout {`=`} {round(latest.Vout ?? 0, 3)} V</text>
+              </g>
+
+              {/* small dot flow */}
+              {Array.from({ length: dotCount }).map((_, di) => {
+                const pathStr = `M 104 ${svgH / 2} H 420`;
+                const delay = (di / dotCount) * speed;
+                const style = {
+                  offsetPath: `path('${pathStr}')`,
+                  animationName: "flowExplainer",
+                  animationDuration: `${speed}s`,
+                  animationTimingFunction: "linear",
+                  animationDelay: `${-delay}s`,
+                  animationIterationCount: "infinite",
+                  animationPlayState: running ? "running" : "paused",
+                  transformOrigin: "0 0",
+                };
+                return <circle key={`dot-divider-${di}`} r="4" fill="#ff9a4a" style={style} />;
+              })}
+            </>
+          )}
+
+          {concept === "led" && (
+            <>
+              {/* resistor + LED */}
+              <g transform={`translate(260, ${svgH / 2})`}>
+                <rect x="-50" y="-20" width="100" height="44" rx="10" fill="#0a0a0a" stroke="#222" />
+                <text x="-42" y="-28" fontSize="12" fill="#ffb86b">R = {params.R} Ω</text>
+
+                <g transform={`translate(28,0)`}>
+                  <circle cx="0" cy="0" r="14" fill={on ? "#ffdd88" : "#222"} stroke={on ? "#ff6a00" : "#333"} strokeWidth="3" />
+                  <text x="-12" y="36" fontSize="12" fill="#fff">{on ? "LED ON" : "LED OFF"}</text>
+                </g>
+              </g>
+
+              {Array.from({ length: dotCount }).map((_, di) => {
+                const pathStr = `M 104 ${svgH / 2} H 260`;
+                const delay = (di / dotCount) * speed;
+                const style = {
+                  offsetPath: `path('${pathStr}')`,
+                  animationName: "flowExplainer",
+                  animationDuration: `${speed}s`,
+                  animationTimingFunction: "linear",
+                  animationDelay: `${-delay}s`,
+                  animationIterationCount: "infinite",
+                  animationPlayState: running ? "running" : "paused",
+                  transformOrigin: "0 0",
+                };
+                return <circle key={`dot-led-${di}`} r="4" fill={on ? "#ffd24a" : "#555"} style={style} />;
+              })}
+            </>
+          )}
+
+          {/* readout panel */}
+          <g transform={`translate(${svgW - 220},28)`}>
+            <rect x="-100" y="-18" width="200" height="110" rx="10" fill="#060606" stroke="#222" />
+            <text x="-88" y="2" fontSize="12" fill="#ffb57a">Readouts</text>
+
+            {concept === "rc" && (
+              <>
+                <text x="-88" y="24" fontSize="12" fill="#fff">Vc: <tspan fill="#ffd24a">{round(Vc, 6)} V</tspan></text>
+                <text x="-88" y="44" fontSize="12" fill="#fff">I: <tspan fill="#00ffbf">{round(I, 8)} A</tspan></text>
+                <text x="-88" y="64" fontSize="12" fill="#fff">Energy: <tspan fill="#9ee6ff">{round(latest.energy ?? 0, 8)}</tspan></text>
+              </>
+            )}
+
+            {concept === "rl" && (
+              <>
+                <text x="-88" y="24" fontSize="12" fill="#fff">I: <tspan fill="#00ffbf">{round(I, 8)} A</tspan></text>
+                <text x="-88" y="44" fontSize="12" fill="#fff">V_L: <tspan fill="#ff9a4a">{round(latest.Vl ?? 0, 6)} V</tspan></text>
+                <text x="-88" y="64" fontSize="12" fill="#fff">Energy: <tspan fill="#9ee6ff">{round(latest.energy ?? 0, 8)}</tspan></text>
+              </>
+            )}
+
+            {concept === "rlc" && (
+              <>
+                <text x="-88" y="24" fontSize="12" fill="#fff">Iamp: <tspan fill="#00ffbf">{latest.meta ? round(latest.meta.Iamp || 0, 6) : "—"}</tspan></text>
+                <text x="-88" y="44" fontSize="12" fill="#fff">Xl: <tspan fill="#ff9a4a">{latest.meta ? round(latest.meta.Xl || 0, 4) : "—"}</tspan></text>
+                <text x="-88" y="64" fontSize="12" fill="#fff">Xc: <tspan fill="#ffd24a">{latest.meta ? round(latest.meta.Xc || 0, 4) : "—"}</tspan></text>
+              </>
+            )}
+
+            {concept === "divider" && (
+              <>
+                <text x="-88" y="24" fontSize="12" fill="#fff">Vout: <tspan fill="#ffd24a">{round(latest.Vout ?? 0, 6)} V</tspan></text>
+                <text x="-88" y="44" fontSize="12" fill="#fff">I: <tspan fill="#00ffbf">{round(latest.I ?? 0, 8)} A</tspan></text>
+              </>
+            )}
+
+            {concept === "led" && (
+              <>
+                <text x="-88" y="24" fontSize="12" fill="#fff">I: <tspan fill="#00ffbf">{round(latest.I ?? 0, 8)} A</tspan></text>
+                <text x="-88" y="44" fontSize="12" fill="#fff">State: <tspan fill={latest.on ? "#00ffbf" : "#ff9a4a"}>{latest.on ? "Forward" : "Off"}</tspan></text>
+                <text x="-88" y="64" fontSize="12" fill="#fff">Vf: <tspan fill="#ffd24a">{round(latest.Vf ?? params.Vf ?? 0, 3)} V</tspan></text>
+              </>
+            )}
           </g>
 
           <style>{`
             @keyframes flowExplainer {
-              0% { offset-distance: 0%; opacity: 0.95; transform: translate(-2px,-2px) scale(1); }
-              40% { opacity: 0.95; transform: translate(0,0) scale(1.06); }
-              100% { offset-distance: 100%; opacity: 0; transform: translate(4px,6px) scale(0.88); }
+              0% { offset-distance: 0%; opacity: 0.95; transform: translate(-2px,-2px) scale(0.95); }
+              45% { opacity: 0.9; transform: translate(0,0) scale(1.05); }
+              100% { offset-distance: 100%; opacity: 0; transform: translate(6px,6px) scale(0.8); }
+            }
+            @keyframes flowExplainerInd {
+              0% { offset-distance: 0%; opacity: 0.95; transform: translate(2px,-2px) scale(0.95); }
+              45% { opacity: 0.9; transform: translate(0,0) scale(1.06); }
+              100% { offset-distance: 100%; opacity: 0; transform: translate(-6px,6px) scale(0.82); }
             }
             circle[style] { will-change: offset-distance, transform, opacity; }
-            @media (max-width: 640px) { text { font-size: 9px; } }
+            @media (max-width: 640px) {
+              text { font-size: 10px; }
+            }
           `}</style>
         </svg>
       </div>
@@ -331,401 +462,474 @@ function CircuitVisualizer({ compType = "cap", compValue = 10, mode = "step", Vs
   );
 }
 
-/* ===========================
-   ExplainerPage (main)
-   =========================== */
-export default function ExplainerPage() {
-  // UI state
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [running, setRunning] = useState(true);
-  const [compType, setCompType] = useState("cap"); // cap | ind
-  const [mode, setMode] = useState("step"); // step | sine | pulse
-  const [Vsup, setVsup] = useState("5");
-  const [seriesR, setSeriesR] = useState("10");
-  const [compValue, setCompValue] = useState("10"); // μF or mH
-  const [freq, setFreq] = useState("1");
-  const [pulseDuty, setPulseDuty] = useState(0.5);
-  const [timestep, setTimestep] = useState(80);
-  const [detail, setDetail] = useState("futuristic"); // minimal | detailed | futuristic
-  const [userType, setUserType] = useState("student"); // student | instructor | engineer
-  const [showHelp, setShowHelp] = useState(true);
-  const [autoScale, setAutoScale] = useState(true);
-
-  // map userType to presets
-  useEffect(() => {
-    if (userType === "student") {
-      setCompValue("10");
-      setSeriesR("10");
-      setVsup("5");
-      setMode("step");
-    } else if (userType === "instructor") {
-      setCompValue("22");
-      setSeriesR("5");
-      setVsup("12");
-      setMode("sine");
-    } else {
-      // engineer
-      setCompValue("4.7");
-      setSeriesR("2");
-      setVsup("9");
-      setMode("pulse");
-      setFreq("10");
-      setPulseDuty(0.3);
+/* ============================
+   Oscilloscope / Plot
+   - For each concept we plot the most relevant trace(s)
+   ============================ */
+function ExplainerOscilloscope({ history = [], concept }) {
+  // build data depending on concept
+  const data = history.slice(-360).map((d, idx) => {
+    if (concept === "rc") {
+      return { t: idx, Vc: round(d.Vc ?? 0, 6), I: round(d.I ?? 0, 8) };
+    } else if (concept === "rl") {
+      return { t: idx, I: round(d.I ?? 0, 8), Vl: round(d.Vl ?? 0, 6) };
+    } else if (concept === "rlc") {
+      return { t: idx, I: round(d.I ?? 0, 6), Vc: round(d.Vc ?? 0, 6) };
+    } else if (concept === "divider") {
+      return { t: idx, Vout: round(d.Vout ?? 0, 6) };
+    } else if (concept === "led") {
+      return { t: idx, I: round(d.I ?? 0, 6) };
     }
-  }, [userType]);
-
-  const { history, instant, eq } = useExplainerSim({
-    running,
-    mode,
-    Vsup: Number(Vsup) || 0,
-    seriesR: Number(seriesR) || 1,
-    compValue: Number(compValue) || 1,
-    compType: compType === "cap" ? "cap" : "ind",
-    timestep: Math.max(40, Number(timestep) || 80),
-    freq: Number(freq) || 1,
-    pulseDuty: Number(pulseDuty) || 0.5,
+    return { t: idx };
   });
 
-  // scope data
-  const scopeData = history.slice(-360).map((d, i) => ({
-    t: (i / 60).toFixed(2),
-    V: round(d.V, 5),
-    I: round(d.I, 6),
-    P: round(d.P, 6),
-  }));
+  return (
+    <div className="rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm font-medium text-orange-400">Oscilloscope — live traces</div>
+        <div className="text-xs text-zinc-400">{history.length ? "Live" : "Idle"}</div>
+      </div>
+      <div className="h-44 sm:h-56">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data}>
+            <CartesianGrid stroke="#111" strokeDasharray="3 3" />
+            <XAxis dataKey="t" tick={{ fill: "#888" }} />
+            <YAxis tick={{ fill: "#888" }} />
+            <ReTooltip contentStyle={{ background: "#0b0b0b", border: "1px solid #222", color: "#fff", borderRadius: "10px" }} />
+            <Legend wrapperStyle={{ color: "#aaa" }} />
+            {concept === "rc" && <Line dataKey="Vc" stroke="#ffd24a" strokeWidth={2} dot={false} isAnimationActive={false} name="Vc (V)" />}
+            {concept === "rc" && <Line dataKey="I" stroke="#00ffbf" strokeWidth={2} dot={false} isAnimationActive={false} name="I (A)" />}
+            {concept === "rl" && <Line dataKey="I" stroke="#00ffbf" strokeWidth={2} dot={false} isAnimationActive={false} name="I (A)" />}
+            {concept === "rl" && <Line dataKey="Vl" stroke="#ff9a4a" strokeWidth={2} dot={false} isAnimationActive={false} name="V_L (V)" />}
+            {concept === "rlc" && <Line dataKey="I" stroke="#00ffbf" strokeWidth={2} dot={false} isAnimationActive={false} name="I (A)" />}
+            {concept === "rlc" && <Line dataKey="Vc" stroke="#ffd24a" strokeWidth={2} dot={false} isAnimationActive={false} name="V_C (V)" />}
+            {concept === "divider" && <Line dataKey="Vout" stroke="#ffd24a" strokeWidth={2} dot={false} isAnimationActive={false} name="Vout (V)" />}
+            {concept === "led" && <Line dataKey="I" stroke="#00ffbf" strokeWidth={2} dot={false} isAnimationActive={false} name="I (A)" />}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
 
+/* ============================
+   Main Explainer Page
+   ============================ */
+export default function ExplainerPage() {
+  // UI state
+  const [concept, setConcept] = useState("rc");
+  const [running, setRunning] = useState(true);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [role, setRole] = useState("student"); // student/instructor/engineer
+  // param store keyed by concept (store user-friendly units)
+  const [params, setParams] = useState({
+    rc: { Vsup: 5, R: 1000, C: 1e-6, Cu: 1, label: "RC", },
+    rl: { Vsup: 5, R: 100, L: 10e-3, Lm: 10, label: "RL", },
+    rlc: { Vsup: 5, R: 10, L: 10e-3, C: 0.1e-6, freq: 1000, label: "RLC", },
+    divider: { Vsup: 12, R1: 1000, R2: 1000, label: "Divider", },
+    led: { Vsup: 5, R: 220, Vf: 2.0, label: "LED", },
+  });
+
+  // select param view for current concept
+  const activeParams = params[concept];
+
+  // hook
+  const paramForSim = useMemo(() => {
+    // convert units into SI where needed:
+    if (concept === "rc") {
+      return { Vsup: toNum(activeParams.Vsup, 5), R: toNum(activeParams.R, 1000), C: toNum(activeParams.C, 1e-6), Cu: activeParams.Cu };
+    }
+    if (concept === "rl") {
+      return { Vsup: toNum(activeParams.Vsup, 5), R: toNum(activeParams.R, 100), L: toNum(activeParams.L, 10e-3), Lm: activeParams.Lm };
+    }
+    if (concept === "rlc") {
+      return { Vsup: toNum(activeParams.Vsup, 5), R: toNum(activeParams.R, 10), L: toNum(activeParams.L, 10e-3), C: toNum(activeParams.C, 0.1e-6), freq: toNum(activeParams.freq, 1000) };
+    }
+    if (concept === "divider") {
+      return { Vsup: toNum(activeParams.Vsup, 12), R1: toNum(activeParams.R1, 1000), R2: toNum(activeParams.R2, 1000) };
+    }
+    if (concept === "led") {
+      return { Vsup: toNum(activeParams.Vsup, 5), R: toNum(activeParams.R, 220), Vf: toNum(activeParams.Vf, 2.0) };
+    }
+    return {};
+  }, [concept, activeParams]);
+
+  const { history, latest } = useExplainerSim({ running, timestep: 80, concept, params: paramForSim });
+
+  // actions
   const toggleRunning = () => {
     setRunning((r) => {
       const nxt = !r;
-      toast(nxt ? "Resumed" : "Paused");
+      toast(nxt ? "Simulation resumed" : "Simulation paused");
       return nxt;
     });
   };
-
-  const exportPNG = () => {
-    toast.success("Export snapshot (mock) — integrate html2canvas to capture real screenshot.");
+  const resetToPresets = () => {
+    setParams((p) => ({
+      ...p,
+      rc: { Vsup: 5, R: 1000, C: 1e-6, Cu: 1 },
+      rl: { Vsup: 5, R: 100, L: 10e-3, Lm: 10 },
+      rlc: { Vsup: 5, R: 10, L: 10e-3, C: 0.1e-6, freq: 1000 },
+      divider: { Vsup: 12, R1: 1000, R2: 1000 },
+      led: { Vsup: 5, R: 220, Vf: 2.0 },
+    }));
+    toast.success("Presets restored");
   };
 
+  const updateActiveParam = (k, v) => {
+    setParams((p) => ({ ...p, [concept]: { ...p[concept], [k]: v } }));
+  };
+
+  // convenience: convert μF input to C in F for simulation, keep both stored for readability
+  useEffect(() => {
+    if (concept === "rc") {
+      // keep `C` in F derived from Cu (microfarads) if user modifies Cu
+      const cu = params.rc.Cu ?? 1;
+      setParams((p) => ({ ...p, rc: { ...p.rc, C: cu * 1e-6 } }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // small validation when user enters crazy values
+  useEffect(() => {
+    // check for negative or zero supplies
+    const V = toNum(activeParams.Vsup, 0);
+    if (V <= 0) toast.error("Supply voltage should be > 0");
+    // check certain concept-specific constraints
+    if (concept === "rlc") {
+      if (!Number.isFinite(activeParams.freq) || activeParams.freq <= 0) toast.error("Frequency must be > 0 for RLC simulation");
+    }
+    // no blocking; these are just helpful nudges
+  }, [activeParams, concept]);
+
   return (
-    <div className="min-h-screen bg-[#05060a] text-white overflow-x-hidden">
+    <div className="min-h-screen bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.25)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
       <Toaster position="top-center" richColors />
 
       {/* Header */}
       <header className="fixed w-full top-0 z-50 backdrop-blur-lg bg-black/70 border-b border-zinc-800 shadow-lg py-2">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14">
-            <motion.div initial={{ y: -6, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.32 }} className="flex items-center gap-3 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center shadow-md">
+          <div className="flex items-center justify-between h-12 sm:h-14 md:h-16">
+            <motion.div initial={{ y: -6, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.36 }} className="flex items-center gap-3 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center shadow-md transform transition-transform duration-300 hover:scale-105">
                 <Zap className="w-6 h-6 text-black" />
               </div>
-              <div className="truncate">
-                <div className="text-sm md:text-lg font-semibold text-zinc-200">SparkLab • Explainers</div>
-                <div className="text-xs text-zinc-400 -mt-0.5">Animated Concept Explainers — Step-by-step visuals</div>
+              <div>
+                <div className="text-sm sm:text-base md:text-lg font-semibold text-zinc-200">SparkLab — Explainers</div>
+                <div className="text-xs sm:text-sm md:text-sm text-zinc-400 -mt-0.5">Animated Concept Explainers • BEEE</div>
               </div>
             </motion.div>
 
-            <div className="hidden md:flex items-center gap-3">
-              <div className="w-36">
-                <Select value={userType} onValueChange={(v) => setUserType(v)}>
-                  <SelectTrigger className="w-full bg-black/80 border border-zinc-800 rounded-md text-white text-sm">
-                    <SelectValue placeholder="Profile" />
+            {/* desktop controls */}
+            <div className="hidden md:flex items-center gap-4">
+              <div className="w-52">
+                <Select value={concept} onValueChange={(v) => setConcept(v)}>
+                  <SelectTrigger className="w-full bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm hover:border-orange-500 focus:ring-2 focus:ring-orange-500">
+                    <SelectValue placeholder="Select Concept" />
                   </SelectTrigger>
-                  <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md">
-                    <SelectItem value="student">Student</SelectItem>
-                    <SelectItem value="instructor">Instructor</SelectItem>
-                    <SelectItem value="engineer">Engineer</SelectItem>
+                  <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
+                    <SelectItem value="rc">RC Charging</SelectItem>
+                    <SelectItem value="rl">RL Charging</SelectItem>
+                    <SelectItem value="rlc">RLC Resonance</SelectItem>
+                    <SelectItem value="divider">Voltage Divider</SelectItem>
+                    <SelectItem value="led">LED + Resistor</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              <div className="flex gap-2">
-                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-1" onClick={() => toast.success("Saved preset")}>Save</Button>
-                <Button variant="ghost" className="border border-zinc-800 p-2" onClick={toggleRunning} title={running ? "Pause" : "Play"}>
+              <div className="flex items-center gap-2">
+                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-1 rounded-lg shadow-md hover:scale-105" onClick={() => toast.success("Saved snapshot (demo)")}>
+                  Snapshot
+                </Button>
+
+                <Button variant="ghost" className="border border-zinc-700 text-zinc-300 p-2 rounded-lg" onClick={toggleRunning} title={running ? "Pause" : "Play"}>
                   {running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
                 </Button>
-                <Button variant="ghost" className="border border-zinc-800 p-2" onClick={() => { setShowHelp(!showHelp); toast(showHelp ? "Hide help" : "Show help"); }}>
-                  <Bulb className="w-5 h-5" />
+                <Button variant="ghost" className="border border-zinc-700 text-zinc-300 p-2 rounded-lg" onClick={resetToPresets} title="Reset Presets">
+                  <Settings className="w-5 h-5" />
                 </Button>
               </div>
             </div>
 
+            {/* mobile menu toggle */}
             <div className="md:hidden">
-              <Button variant="ghost" className="border border-zinc-800 p-2" onClick={() => setMobileOpen(!mobileOpen)}>
+              <Button variant="ghost" className="border border-zinc-800 p-2 rounded-lg" onClick={() => setMobileOpen((s) => !s)}>
                 {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </Button>
             </div>
           </div>
 
-          {/* mobile slide controls */}
-          <div className={`md:hidden transition-all duration-300 overflow-hidden ${mobileOpen ? "max-h-64 py-3" : "max-h-0"}`}>
-            <div className="flex gap-2 items-center">
-              <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={() => toast.success("Saved preset")}>Save</Button>
-              <Button variant="ghost" className="flex-1 border border-zinc-800" onClick={toggleRunning}>{running ? "Pause" : "Play"}</Button>
+          {/* mobile panel */}
+          <div className={`md:hidden transition-all duration-300 overflow-hidden ${mobileOpen ? "max-h-60 py-3" : "max-h-0"}`}>
+            <div className="flex flex-col gap-2 mb-3">
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <Select value={concept} onValueChange={(v) => setConcept(v)}>
+                    <SelectTrigger className="w-full bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm hover:border-orange-500 focus:ring-2 focus:ring-orange-500">
+                      <SelectValue placeholder="Concept" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
+                      <SelectItem value="rc">RC Charging</SelectItem>
+                      <SelectItem value="rl">RL Charging</SelectItem>
+                      <SelectItem value="rlc">RLC Resonance</SelectItem>
+                      <SelectItem value="divider">Voltage Divider</SelectItem>
+                      <SelectItem value="led">LED + Resistor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-2 rounded-md" onClick={() => toast.success("Snapshot saved")}>Snapshot</Button>
+                <Button variant="ghost" className="border border-zinc-800 px-3 py-2 rounded-md" onClick={toggleRunning}>{running ? "Pause" : "Play"}</Button>
+              </div>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="h-16" />
+      <div className="h-16 sm:h-16" />
 
       {/* Main */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* left panel: controls */}
+          {/* Left: controls */}
           <div className="lg:col-span-4 space-y-4">
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28 }}>
               <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center">
+                      <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
                         <Activity className="w-5 h-5" />
                       </div>
                       <div>
                         <div className="text-lg font-semibold text-[#ffd24a]">Explainer Controls</div>
-                        <div className="text-xs text-zinc-400">Choose mode, component, and live parameters</div>
+                        <div className="text-xs text-zinc-400">Change parameters & presets</div>
                       </div>
                     </div>
-                    <div>
-                      <Badge className="bg-black/80 border border-orange-500 text-orange-300 px-3 py-1 rounded-full">Mode</Badge>
+
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-black/80 border border-orange-500 text-orange-300 px-3 py-1 rounded-full">Role: {role}</Badge>
                     </div>
                   </CardTitle>
                 </CardHeader>
 
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-xs text-zinc-400">Profile</label>
-                      <Select value={userType} onValueChange={(v) => setUserType(v)}>
-                        <SelectTrigger className="w-full bg-zinc-900/50 border border-zinc-800 rounded-md text-white">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md">
-                          <SelectItem value="student">Student</SelectItem>
-                          <SelectItem value="instructor">Instructor</SelectItem>
-                          <SelectItem value="engineer">Engineer</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <label className="text-xs text-zinc-400">Detail</label>
-                      <Select value={detail} onValueChange={(v) => setDetail(v)}>
-                        <SelectTrigger className="w-full bg-zinc-900/50 border border-zinc-800 rounded-md text-white">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md">
-                          <SelectItem value="minimal">Minimal</SelectItem>
-                          <SelectItem value="detailed">Detailed</SelectItem>
-                          <SelectItem value="futuristic">Futuristic</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs text-zinc-400">Component</label>
-                    <div className="flex gap-2 mt-2">
-                      <Button className={`flex-1 ${compType === "cap" ? "bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" : "bg-zinc-900/40"}`} onClick={() => setCompType("cap")}>Capacitor (μF)</Button>
-                      <Button className={`flex-1 ${compType === "ind" ? "bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" : "bg-zinc-900/40"}`} onClick={() => setCompType("ind")}>Inductor (mH)</Button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs text-zinc-400">Mode</label>
-                    <div className="flex gap-2 mt-2">
-                      <Button className={`flex-1 ${mode === "step" ? "bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" : "bg-zinc-900/40"}`} onClick={() => setMode("step")}>Step</Button>
-                      <Button className={`flex-1 ${mode === "sine" ? "bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" : "bg-zinc-900/40"}`} onClick={() => setMode("sine")}>Sine</Button>
-                      <Button className={`flex-1 ${mode === "pulse" ? "bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" : "bg-zinc-900/40"}`} onClick={() => setMode("pulse")}>Pulse</Button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-xs text-zinc-400">V (V)</label>
-                      <Input value={Vsup} onChange={(e) => setVsup(e.target.value)} type="number" className="bg-zinc-900/40 border border-zinc-800 text-white" />
-                    </div>
-                    <div>
-                      <label className="text-xs text-zinc-400">R<sub>s</sub> (Ω)</label>
-                      <Input value={seriesR} onChange={(e) => setSeriesR(e.target.value)} type="number" className="bg-zinc-900/40 border border-zinc-800 text-white" />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-xs text-zinc-400">{compType === "cap" ? "C (μF)" : "L (mH)"}</label>
-                      <Input value={compValue} onChange={(e) => setCompValue(e.target.value)} type="number" className="bg-zinc-900/40 border border-zinc-800 text-white" />
-                    </div>
-                    <div>
-                      <label className="text-xs text-zinc-400">Freq (Hz)</label>
-                      <Input value={freq} onChange={(e) => setFreq(e.target.value)} type="number" step="0.1" className="bg-zinc-900/40 border border-zinc-800 text-white" />
-                    </div>
-                  </div>
-
-                  {mode === "pulse" && (
-                    <div>
-                      <label className="text-xs text-zinc-400">Pulse Duty</label>
-                      <input type="range" min="0.05" max="0.95" step="0.01" value={pulseDuty} onChange={(e) => setPulseDuty(Number(e.target.value))} className="w-full" />
-                    </div>
+                <CardContent>
+                  {/* Concept-specific inputs */}
+                  {concept === "rc" && (
+                    <>
+                      <label className="text-xs text-zinc-400">Supply Voltage (V)</label>
+                      <Input type="number" value={activeParams.Vsup} onChange={(e) => updateActiveParam("Vsup", Number(e.target.value))} className="bg-zinc-900/60 border border-zinc-800 text-white mb-2" />
+                      <label className="text-xs text-zinc-400">Resistance R (Ω)</label>
+                      <Input type="number" value={activeParams.R} onChange={(e) => updateActiveParam("R", Math.max(0, Number(e.target.value)))} className="bg-zinc-900/60 border border-zinc-800 text-white mb-2" />
+                      <label className="text-xs text-zinc-400">Capacitance (μF)</label>
+                      <Input type="number" value={activeParams.Cu ?? (activeParams.C * 1e6)} onChange={(e) => {
+                        const cu = Math.max(0, Number(e.target.value));
+                        updateActiveParam("Cu", cu);
+                        updateActiveParam("C", cu * 1e-6);
+                      }} className="bg-zinc-900/60 border border-zinc-800 text-white" />
+                    </>
                   )}
 
-                  <div className="flex items-center gap-2 justify-between mt-2">
-                    <div className="flex gap-2">
-                      <Button className="px-3 py-2 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-                      <Button variant="outline" className="px-3 py-2 border-zinc-700 text-white" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="ghost" className="border border-zinc-800 p-2" onClick={exportPNG}><Download className="w-4 h-4" /></Button>
-                    </div>
+                  {concept === "rl" && (
+                    <>
+                      <label className="text-xs text-zinc-400">Supply Voltage (V)</label>
+                      <Input type="number" value={activeParams.Vsup} onChange={(e) => updateActiveParam("Vsup", Number(e.target.value))} className="bg-zinc-900/60 border border-zinc-800 text-white mb-2" />
+                      <label className="text-xs text-zinc-400">Resistance R (Ω)</label>
+                      <Input type="number" value={activeParams.R} onChange={(e) => updateActiveParam("R", Math.max(0, Number(e.target.value)))} className="bg-zinc-900/60 border border-zinc-800 text-white mb-2" />
+                      <label className="text-xs text-zinc-400">Inductance (mH)</label>
+                      <Input type="number" value={activeParams.Lm ?? (activeParams.L * 1e3)} onChange={(e) => {
+                        const lm = Math.max(0, Number(e.target.value));
+                        updateActiveParam("Lm", lm);
+                        updateActiveParam("L", lm * 1e-3);
+                      }} className="bg-zinc-900/60 border border-zinc-800 text-white" />
+                    </>
+                  )}
+
+                  {concept === "rlc" && (
+                    <>
+                      <label className="text-xs text-zinc-400">Supply Voltage (V)</label>
+                      <Input type="number" value={activeParams.Vsup} onChange={(e) => updateActiveParam("Vsup", Number(e.target.value))} className="bg-zinc-900/60 border border-zinc-800 text-white mb-2" />
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs text-zinc-400">R (Ω)</label>
+                          <Input type="number" value={activeParams.R} onChange={(e) => updateActiveParam("R", Math.max(0, Number(e.target.value)))} className="bg-zinc-900/60 border border-zinc-800 text-white mb-2" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-zinc-400">freq (Hz)</label>
+                          <Input type="number" value={activeParams.freq} onChange={(e) => updateActiveParam("freq", Math.max(0.1, Number(e.target.value)))} className="bg-zinc-900/60 border border-zinc-800 text-white mb-2" />
+                        </div>
+                      </div>
+
+                      <label className="text-xs text-zinc-400">L (mH)</label>
+                      <Input type="number" value={activeParams.Lm ?? (activeParams.L * 1e3)} onChange={(e) => {
+                        const lm = Math.max(0, Number(e.target.value));
+                        updateActiveParam("Lm", lm);
+                        updateActiveParam("L", lm * 1e-3);
+                      }} className="bg-zinc-900/60 border border-zinc-800 text-white mb-2" />
+                      <label className="text-xs text-zinc-400">C (μF)</label>
+                      <Input type="number" value={(activeParams.C || 0) * 1e6} onChange={(e) => {
+                        const cu = Math.max(0, Number(e.target.value));
+                        updateActiveParam("C", cu * 1e-6);
+                      }} className="bg-zinc-900/60 border border-zinc-800 text-white" />
+                    </>
+                  )}
+
+                  {concept === "divider" && (
+                    <>
+                      <label className="text-xs text-zinc-400">Supply Voltage (V)</label>
+                      <Input type="number" value={activeParams.Vsup} onChange={(e) => updateActiveParam("Vsup", Number(e.target.value))} className="bg-zinc-900/60 border border-zinc-800 text-white mb-2" />
+                      <label className="text-xs text-zinc-400">R1 (Ω)</label>
+                      <Input type="number" value={activeParams.R1} onChange={(e) => updateActiveParam("R1", Math.max(1e-6, Number(e.target.value)))} className="bg-zinc-900/60 border border-zinc-800 text-white mb-2" />
+                      <label className="text-xs text-zinc-400">R2 (Ω)</label>
+                      <Input type="number" value={activeParams.R2} onChange={(e) => updateActiveParam("R2", Math.max(1e-6, Number(e.target.value)))} className="bg-zinc-900/60 border border-zinc-800 text-white" />
+                    </>
+                  )}
+
+                  {concept === "led" && (
+                    <>
+                      <label className="text-xs text-zinc-400">Supply Voltage (V)</label>
+                      <Input type="number" value={activeParams.Vsup} onChange={(e) => updateActiveParam("Vsup", Number(e.target.value))} className="bg-zinc-900/60 border border-zinc-800 text-white mb-2" />
+                      <label className="text-xs text-zinc-400">Resistor R (Ω)</label>
+                      <Input type="number" value={activeParams.R} onChange={(e) => updateActiveParam("R", Math.max(0, Number(e.target.value)))} className="bg-zinc-900/60 border border-zinc-800 text-white mb-2" />
+                      <label className="text-xs text-zinc-400">LED forward Vf (V)</label>
+                      <Input type="number" value={activeParams.Vf} onChange={(e) => updateActiveParam("Vf", Number(e.target.value))} className="bg-zinc-900/60 border border-zinc-800 text-white" />
+                    </>
+                  )}
+
+                  <div className="mt-4 flex gap-2">
+                    <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={() => { setRunning(true); toast.success("Running"); }}>
+                      <Play className="w-4 h-4 mr-2" /> Run
+                    </Button>
+                    <Button variant="outline" className="flex-1 border-zinc-700" onClick={() => { setRunning(false); toast("Paused"); }}>
+                      <Pause className="w-4 h-4 mr-2" /> Pause
+                    </Button>
                   </div>
 
-                  <div className="mt-3 text-xs text-zinc-400">
-                    Equivalent: <span className="text-[#ff9a4a] font-semibold ml-1">{eq.display}</span>
+                  <div className="mt-3 flex gap-2">
+                    <Button variant="ghost" className="flex-1 border border-zinc-800" onClick={() => toast("Saved demo snapshot")}><Layers className="w-4 h-4 mr-2" /> Snapshot</Button>
+                    <Button variant="ghost" className="flex-1 border border-zinc-800" onClick={() => updateActiveParam("C", (activeParams.C || 0) * 1) && toast("Action")}>Apply</Button>
                   </div>
                 </CardContent>
               </Card>
             </motion.div>
 
-            {/* explanation card */}
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32 }}>
-              <Card className="bg-black/60 border border-zinc-800 rounded-2xl">
+            {/* Quick tips / explanation card */}
+            <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28 }}>
+              <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden">
                 <CardHeader>
-                  <CardTitle className="text-[#ffd24a]">Guided Steps</CardTitle>
+                  <CardTitle className="flex items-center gap-2 text-[#ffd24a]">
+                    <Lightbulb className="w-4 h-4" /> Concept Notes
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-sm text-zinc-300 space-y-2">
-                    <div>
-                      <div className="text-xs text-zinc-400">1. Select profile</div>
-                      <div className="text-xs">Profiles set sensible defaults: <span className="font-semibold">Student, Instructor, Engineer</span>.</div>
-                    </div>
-
-                    <div>
-                      <div className="text-xs text-zinc-400">2. Choose mode</div>
-                      <div className="text-xs">Step shows transient charging / ramp. Sine shows AC reactive behavior. Pulse shows periodic switching response.</div>
-                    </div>
-
-                    <div>
-                      <div className="text-xs text-zinc-400">3. Observe visualizer</div>
-                      <div className="text-xs">Animated particles show current flow; meters & scope are live and reflect values computed from the physics model.</div>
-                    </div>
-                  </div>
-
-                  <div className="mt-3">
-                    <Badge className="bg-black/80 border border-orange-500 text-orange-300 px-3 py-1 rounded-full">Tip</Badge>
-                    <div className="mt-2 text-xs text-zinc-400">Toggle detail for a futuristic look, or minimal for simpler diagrams during lecturing.</div>
+                  <div className="text-sm text-zinc-300">
+                    {concept === "rc" && (
+                      <div>
+                        RC circuits show exponential charging: <span className="text-white font-semibold">V<sub>C</sub>(t) = V(1 − e^(−t/RC))</span>. Change R and C to see tau = RC change.
+                      </div>
+                    )}
+                    {concept === "rl" && (
+                      <div>
+                        RL circuits show current rise with time constant <span className="text-white font-semibold">τ = L/R</span>. Inductor resists change in current.
+                      </div>
+                    )}
+                    {concept === "rlc" && (
+                      <div>
+                        RLC circuits have resonance where reactance cancels. Adjust <span className="text-white font-semibold">f</span>, <span className="text-white font-semibold">L</span>, and <span className="text-white font-semibold">C</span> to observe amplitude changes.
+                      </div>
+                    )}
+                    {concept === "divider" && (
+                      <div>
+                        Voltage divider: Vout = V * (R2 / (R1 + R2)). Useful for reference voltages and sensors.
+                      </div>
+                    )}
+                    {concept === "led" && (
+                      <div>
+                        LED conduction: when Vsup &gt; Vf, current flows through resistor: I = (Vsup − Vf) / R. Watch LED glow & current.
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
             </motion.div>
           </div>
 
-          {/* right panel: visual / scope / meters */}
+          {/* Right: visual + oscilloscope */}
           <div className="lg:col-span-8 space-y-4">
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl w-full overflow-hidden">
+              <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center">
+                      <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
                         <CircuitBoard className="w-5 h-5" />
                       </div>
                       <div>
-                        <div className="text-lg font-semibold text-[#ffd24a]">Animated Explainer</div>
-                        <div className="text-xs text-zinc-400">Interactive circuit visualizer • live meters • oscilloscope</div>
+                        <div className="text-lg font-semibold text-[#ffd24a]">Interactive Explainer</div>
+                        <div className="text-xs text-zinc-400">Animated visuals & live plots</div>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-3">
-                      <Badge className="bg-zinc-900 border border-zinc-800 px-3 py-1 rounded-full">Mode: <span className="text-[#ffd24a] ml-1">{mode}</span></Badge>
-                      <Badge className="bg-zinc-900 border border-zinc-800 px-3 py-1 rounded-full">Profile: <span className="text-[#ffd24a] ml-1">{userType}</span></Badge>
+                      <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">Mode: <span className="text-[#ffd24a] ml-1">{concept}</span></Badge>
+                      <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">Role: <span className="text-[#ffd24a] ml-1">{role}</span></Badge>
                     </div>
                   </CardTitle>
                 </CardHeader>
 
-                <CardContent className="w-full">
-                  <CircuitVisualizer compType={compType === "cap" ? "cap" : "ind"} compValue={Number(compValue)} mode={mode} Vsup={Number(Vsup)} running={running} instant={instant} detail={detail} />
+                <CardContent>
+                  <ExplainerSVG concept={concept} params={activeParams} history={history} running={running} />
                 </CardContent>
               </Card>
             </motion.div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="md:col-span-2">
-                <Card className="bg-black/70 border border-zinc-800 rounded-2xl">
-                  <CardHeader>
-                    <CardTitle className="text-[#ffd24a]">Oscilloscope — Live</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="h-48">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={scopeData}>
-                          <CartesianGrid stroke="#111" strokeDasharray="3 3" />
-                          <XAxis dataKey="t" tick={{ fill: "#888" }} />
-                          <YAxis tick={{ fill: "#888" }} />
-                          <ReTooltip contentStyle={{ background: "#0b0b0b", border: "1px solid #222", color: "#fff", borderRadius: "10px" }} />
-                          <Legend wrapperStyle={{ color: "#aaa" }} />
-                          <Line type="monotone" dataKey="V" stroke="#ffd24a" strokeWidth={2} dot={false} isAnimationActive={false} name="Voltage (V)" />
-                          <Line type="monotone" dataKey="I" stroke="#00ffbf" strokeWidth={2} dot={false} isAnimationActive={false} name="Current (A)" />
-                          <Line type="monotone" dataKey="P" stroke="#ff9a4a" strokeWidth={2} dot={false} isAnimationActive={false} name="Power (W)" />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <ExplainerOscilloscope history={history} concept={concept} />
 
-              <div>
-                <Card className="bg-black/70 border border-zinc-800 rounded-2xl">
-                  <CardHeader>
-                    <CardTitle className="text-[#ffd24a]">Meters</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 gap-2">
-                      <Meter label="Voltmeter" value={instant.V} unit="V" min={-Number(Vsup)*1.2} max={Number(Vsup)*1.2} accent="#ffd24a" />
-                      <div className="mt-2" />
-                      <Meter label="Ammeter" value={instant.I} unit="A" min={-Math.max(0.01, Math.abs(instant.I)*2)} max={Math.max(0.01, Math.abs(instant.I)*2)} accent="#00ffbf" />
+              <Card className="bg-black/70 border border-zinc-800 rounded-2xl">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-[#ffd24a]">
+                    <Monitor className="w-5 h-5" /> Summary
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
+                      <div className="text-xs text-zinc-400">Latest (t)</div>
+                      <div className="text-lg font-semibold text-[#ff9a4a]">{latest ? round(latest.t ?? 0, 3) : "—"} s</div>
+                      <div className="text-xs text-zinc-400 mt-1">Simulation time</div>
                     </div>
-                  </CardContent>
-                </Card>
-              </div>
+
+                    <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
+                      <div className="text-xs text-zinc-400">Instant Current</div>
+                      <div className="text-lg font-semibold text-[#00ffbf]">{latest ? round(latest.I ?? 0, 6) : "—"} A</div>
+                    </div>
+
+                    <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
+                      <div className="text-xs text-zinc-400">Instant Voltage</div>
+                      <div className="text-lg font-semibold text-[#ffd24a]">{latest ? round(latest.Vc ?? latest.Vout ?? 0, 6) : "—"} V</div>
+                    </div>
+
+                    <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
+                      <div className="text-xs text-zinc-400">Power</div>
+                      <div className="text-lg font-semibold text-[#ff9a4a]">{latest ? round(latest.P ?? 0, 6) : "—"} W</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 text-xs sm:text-sm bg-black/70 border border-orange-500/30 text-orange-300 px-3 py-2 rounded-md shadow-sm backdrop-blur-sm flex items-start gap-2">
+                    <span className="text-orange-400"><Lightbulb /></span>
+                    <span>
+                      Tip: Try changing the parameters while simulation is running to see immediate changes in the animation and oscilloscope.
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-
-            <Card className="bg-black/60 border border-zinc-800 rounded-2xl">
-              <CardHeader>
-                <CardTitle className="text-[#ffd24a]">Summary & Tips</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="p-3 bg-zinc-900/40 border border-zinc-800 rounded-md">
-                    <div className="text-xs text-zinc-400">Equivalent</div>
-                    <div className="text-lg font-semibold text-[#ff9a4a]">{eq.display}</div>
-                  </div>
-                  <div className="p-3 bg-zinc-900/40 border border-zinc-800 rounded-md">
-                    <div className="text-xs text-zinc-400">I (instant)</div>
-                    <div className="text-lg font-semibold text-[#00ffbf]">{round(instant.I, 6)} A</div>
-                  </div>
-                  <div className="p-3 bg-zinc-900/40 border border-zinc-800 rounded-md">
-                    <div className="text-xs text-zinc-400">P (instant)</div>
-                    <div className="text-lg font-semibold text-[#ff9a4a]">{round(instant.P, 6)} W</div>
-                  </div>
-                </div>
-
-                <div className="mt-3 text-xs text-zinc-400">
-                  {showHelp ? (
-                    <>
-                      <div>Tip: Change mode to see different behaviors. Use 'Pulse' to demonstrate switching systems, 'Sine' for AC reactance, and 'Step' for classic transient charging.</div>
-                      <div className="mt-2">Pro tip: For lecture mode choose <span className="font-semibold">minimal</span> detail to keep attention on the math, or <span className="font-semibold">futuristic</span> for demo videos and marketing visuals.</div>
-                    </>
-                  ) : (
-                    <div className="text-center text-zinc-500">Help hidden — toggle via header bulb.</div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
           </div>
         </div>
       </main>
 
-      {/* mobile sticky */}
+      {/* mobile sticky controls */}
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-60 w-[92%] sm:w-auto sm:left-auto sm:translate-x-0 sm:bottom-6 sm:right-6 lg:hidden" role="region" aria-label="Mobile controls">
         <div className="flex items-center justify-between gap-3 bg-black/80 border border-zinc-800 p-3 rounded-full shadow-lg">
           <div className="flex items-center gap-2">
@@ -733,7 +937,7 @@ export default function ExplainerPage() {
             <Button variant="outline" className="px-3 py-2 border-zinc-700 text-zinc-300 text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" className="border border-zinc-800 text-zinc-300 p-2" onClick={exportPNG}><Download className="w-4 h-4" /></Button>
+            <Button variant="ghost" className="border border-zinc-800 text-zinc-300 p-2" onClick={() => toast("Share feature demo")}>Share</Button>
           </div>
         </div>
       </div>

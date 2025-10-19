@@ -19,6 +19,12 @@ import {
   Mic,
   Settings,
   Award,
+  Atom,
+  Brain,
+  Tag,
+  Layers,
+  Info,
+  Sparkles,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
@@ -5297,151 +5303,565 @@ function TermVisualizer({ visual, running = true, onChange }) {
   );
 })()}
 
-
-
 {visual?.symbol === "rl_circuit" && (() => {
-  const freq = visual?.waveform?.freq ?? 2.0;
-  const amp = visual?.waveform?.amp ?? 1.0;
+  const freq = visual?.waveform?.freq ?? 1.4; // Hz
   const running = visual?.running ?? true;
-  const loopSec = 4 / freq;
-  const glow = 2.5;
-  const svgW = 1000, svgH = 520;
-  const particleCount = 12;
+  const loopSec = Math.max(0.5, 4 / freq); // base loop time for animations
+  const svgW = 1000, svgH = 420;
+  const glow = 3;
+  const particleCount = 14;
+
+  // wave path helper: returns a smooth sinusoid path with given amplitude and horizontal shift
+  const sinPath = (x0, x1, y, amp = 40, cycles = 2, phase = 0) => {
+    // we'll make a 4-curve approximation across the span to keep SVG compact
+    // easier: return a fixed bezier-style pattern scaled by amp
+    const mx = (x0 + x1) / 2;
+    const third = (x1 - x0) / (cycles * 2 + 2);
+    // Using precomputed control points for visual variety; not exact sine but visually smooth
+    return `M ${x0} ${y} C ${x0 + third} ${y - amp * Math.cos(phase)} ${x0 + third * 3} ${y + amp * Math.cos(phase)} ${mx} ${y}
+            C ${mx + third * 3} ${y - amp * Math.cos(phase)} ${x1 - third} ${y + amp * Math.cos(phase)} ${x1} ${y}`;
+  };
+
+  // voltage (V) path base (magenta)
+  const vPathBase = sinPath(60, 360, 120, 48, 2, 0);
+  // current (I) initial small-amplitude (transient start)
+  const iPathSmall = sinPath(60, 360, 200, 8, 2, Math.PI / 3); // phase lag ~60deg initial
+  // current (I) final steady-state amplitude (after exponential rise)
+  const iPathLarge = sinPath(60, 360, 200, 46, 2, Math.PI / 3);
+
+  // phasor angle (visual) in degrees (~50-60° lag for inductive)
+  const phasorAngle = 52;
 
   return (
     <>
-      <g className="rlCircuitViz" transform="translate(0,0)">
+      <g className="rlViz" transform="translate(0,0)">
         <defs>
-          {/* Filters for glows */}
-          <filter id="neonOrange" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation={glow} result="b"/>
+          {/* BLOOM / GLOW */}
+          <filter id="bloomCyan" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation={glow} result="b" />
             <feMerge>
-              <feMergeNode in="b"/>
-              <feMergeNode in="SourceGraphic"/>
+              <feMergeNode in="b" />
+              <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
-          <filter id="neonCyan" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation={glow*1.2} result="b"/>
+          <filter id="bloomMag" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation={glow * 1.1} result="m" />
             <feMerge>
-              <feMergeNode in="b"/>
-              <feMergeNode in="SourceGraphic"/>
+              <feMergeNode in="m" />
+              <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
-          <filter id="neonPurple" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation={glow*1.2} result="b"/>
-            <feMerge>
-              <feMergeNode in="b"/>
-              <feMergeNode in="SourceGraphic"/>
-            </feMerge>
+          <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="6" stdDeviation="6" floodColor="#000" floodOpacity="0.6" />
           </filter>
 
-          {/* Gradients */}
-          <linearGradient id="acWaveGrad" x1="0" x2="1">
-            <stop offset="0%" stopColor="#ff7a2d"/>
-            <stop offset="100%" stopColor="#ffb86b"/>
+          {/* GRADIENTS */}
+          <linearGradient id="voltGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#ff00cc" />
+            <stop offset="100%" stopColor="#ff66aa" />
           </linearGradient>
-          <linearGradient id="wireGrad" x1="0" x2="1">
-            <stop offset="0%" stopColor="#00ffee"/>
-            <stop offset="100%" stopColor="#00c4ff"/>
+          <linearGradient id="currGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#00e6ff" />
+            <stop offset="100%" stopColor="#00b8ff" />
           </linearGradient>
-          <linearGradient id="resistorGrad" x1="0" x2="1">
-            <stop offset="0%" stopColor="#00ffee"/>
-            <stop offset="100%" stopColor="#0099ff"/>
+          <linearGradient id="wireGlow" x1="0" x2="1">
+            <stop offset="0%" stopColor="#00ffe6" />
+            <stop offset="100%" stopColor="#ffaa33" />
           </linearGradient>
-          <linearGradient id="inductorGrad" x1="0" x2="1">
-            <stop offset="0%" stopColor="#ff77ff"/>
-            <stop offset="100%" stopColor="#ff33aa"/>
-          </linearGradient>
+
+          {/* PATHS (for particle offset-path) */}
+          <path id="wirePath" d="M 380 200 H 560" />
+          <path id="indPath" d="M 560 200 H 720" />
         </defs>
 
-        {/* Background */}
-        <rect width={svgW} height={svgH} fill="#0a0a0a" />
-        <g opacity="0.05">
-          {Array.from({ length: Math.ceil(svgW/30) }).map((_, i) => (
-            <line key={`v-${i}`} x1={i*30} y1="0" x2={i*30} y2={svgH} stroke="#111"/>
+        {/* BACKGROUND */}
+        <rect width={svgW} height={svgH} fill="url(#bgGrad)" />
+        {/* simple dark gradient backdrop */}
+        <rect width={svgW} height={svgH} fill="#07070a" opacity="0.95" />
+
+        {/* faint grid / blueprint */}
+        <g opacity="0.04">
+          {Array.from({ length: Math.ceil(svgW / 30) }).map((_, i) => (
+            <line key={`v${i}`} x1={i * 30} y1="0" x2={i * 30} y2={svgH} stroke="#111" />
           ))}
-          {Array.from({ length: Math.ceil(svgH/30) }).map((_, i) => (
-            <line key={`h-${i}`} x1="0" y1={i*30} x2={svgW} y2={i*30} stroke="#111"/>
+          {Array.from({ length: Math.ceil(svgH / 30) }).map((_, i) => (
+            <line key={`h${i}`} x1="0" y1={i * 30} x2={svgW} y2={i * 30} stroke="#111" />
           ))}
         </g>
 
-        {/* Labels */}
-        <text x="120" y="60" fill="#ffb86b" fontSize="14" fontWeight="600">AC Input</text>
-        <text x="440" y="60" fill="#00eaff" fontSize="14" fontWeight="600">Resistor (R)</text>
-        <text x="660" y="60" fill="#ff77ff" fontSize="14" fontWeight="600">Inductor (L)</text>
-        <text x="900" y="60" fill="#00ffee" fontSize="14" fontWeight="600">Output AC</text>
+        {/* TITLE / LABELS */}
+        <text x="56" y="34" fill="#e6e6e6" fontSize="16" fontFamily="Orbitron" fontWeight="600">
+          RL Circuit — Transient Response (AC)
+        </text>
+        <text x="56" y="54" fill="#9aa0b1" fontSize="11" fontFamily="Inter">AC Source → R → L → Node</text>
 
-        {/* AC Input Wave */}
-        <motion.path
-          d="M 80 260 C 120 180 160 340 200 260 C 240 180 280 340 320 260"
-          stroke="url(#acWaveGrad)" strokeWidth="3" fill="none" strokeLinecap="round"
-          filter="url(#neonOrange)"
-          animate={{ pathLength:[0,1,0], opacity:[0.4,1,0.4] }}
-          transition={{ duration: loopSec*1.2, repeat: Infinity, ease:"easeInOut" }}
-        />
+        {/* --- Waveform display area (top) --- */}
+        <g transform="translate(40,80)">
+          {/* axes */}
+          <rect x="0" y="0" width="380" height="96" rx="6" fill="#06060a" stroke="#111" />
+          <text x="6" y="14" fontSize="10" fill="#ff9bd8">Voltage (V)</text>
+          <text x="6" y="92" fontSize="10" fill="#9eefff">Current (I)</text>
 
-        {/* Wires */}
-        <line x1="320" y1="260" x2="400" y2="260" stroke="url(#wireGrad)" strokeWidth="3" filter="url(#neonCyan)"/>
-        <line x1="560" y1="260" x2="640" y2="260" stroke="url(#wireGrad)" strokeWidth="3" filter="url(#neonCyan)"/>
-        <line x1="760" y1="260" x2="840" y2="260" stroke="url(#wireGrad)" strokeWidth="3" filter="url(#neonCyan)"/>
-
-        {/* Resistor */}
-        <g transform="translate(400,260)">
-          <rect x="-20" y="-10" width="40" height="20" fill="url(#resistorGrad)" stroke="#00eaff" strokeWidth="1.2" filter="url(#neonCyan)"/>
-        </g>
-
-        {/* Inductor */}
-        <g transform="translate(640,260)">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <ellipse key={`coil-${i}`} cx={i*12-30} cy="0" rx="8" ry="10" fill="url(#inductorGrad)" stroke="#ff66ff" strokeWidth="1.2" filter="url(#neonPurple)"/>
-          ))}
-          {/* Magnetic aura */}
-          <motion.circle
-            cx="0" cy="0" r="20" fill="none" stroke="#ff77ff33" strokeWidth="2"
-            animate={{ scale:[1,1.1,1], opacity:[0.3,0.7,0.3] }}
-            transition={{ duration: loopSec*2, repeat: Infinity, ease:"easeInOut" }}
-            style={{ filter:'url(#neonPurple)' }}
+          {/* voltage waveform (magenta) */}
+          <motion.path
+            d={vPathBase}
+            stroke="url(#voltGrad)"
+            strokeWidth="3"
+            fill="none"
+            strokeLinecap="round"
+            filter="url(#bloomMag)"
+            animate={{ opacity: [0.5, 1, 0.5] }}
+            transition={{ duration: loopSec * 1.0, repeat: Infinity, ease: "easeInOut" }}
           />
+
+          {/* current waveform (cyan) - exponential rise: animate path d from small to large using Framer Motion */}
+          <motion.path
+            d={iPathSmall}
+            stroke="url(#currGrad)"
+            strokeWidth="3"
+            fill="none"
+            strokeLinecap="round"
+            filter="url(#bloomCyan)"
+            initial={{ pathLength: 1 }}
+            animate={{
+              // morph small amplitude -> large amplitude to simulate exponential rise
+              d: [iPathSmall, iPathLarge],
+              opacity: [0.4, 1],
+            }}
+            transition={{
+              // an exponential-like rise: quick at start then slow approach
+              duration: Math.max(1.2, loopSec * 1.8),
+              ease: [0.22, 1, 0.36, 1], // easeOutCubic-ish
+              repeat: Infinity,
+              repeatType: "loop",
+              times: [0, 0.9],
+            }}
+          />
+
+          {/* phase angle indicator (phi) - simple arc + line */}
+          <g transform="translate(420,32)">
+            <circle cx="0" cy="0" r="18" fill="#0000" stroke="#222" />
+            <line x1="0" y1="0" x2="26" y2="0" stroke="#ff00cc" strokeWidth="2" />
+            <line
+              x1="0"
+              y1="0"
+              x2={26 * Math.cos((Math.PI / 180) * -phasorAngle)}
+              y2={-26 * Math.sin((Math.PI / 180) * -phasorAngle)}
+              stroke="#00e6ff"
+              strokeWidth="2"
+            />
+            <text x="-8" y="34" fontSize="11" fill="#9aa0b1">φ ≈ {phasorAngle}°</text>
+          </g>
         </g>
 
-        {/* Output AC Wave */}
-        <motion.path
-          d="M 840 260 C 880 200 920 320 960 260"
-          stroke="url(#wireGrad)" strokeWidth="3" fill="none" strokeLinecap="round"
-          filter="url(#neonCyan)"
-          animate={{ pathLength:[0,1,0], opacity:[0.4,1,0.4] }}
-          transition={{ duration: loopSec*1.2, repeat: Infinity, ease:"easeInOut" }}
-        />
+        {/* CIRCUIT DIAGRAM (middle) */}
+        <g transform="translate(40,200)">
+          {/* AC Source (left): circle with sine symbol */}
+          <g transform="translate(0,0)">
+            <circle cx="60" cy="0" r="28" fill="#06060a" stroke="#222" filter="url(#softShadow)"/>
+            <path d="M 44 0 C 50 -18 70 -18 76 0" stroke="#ff00cc" strokeWidth="2" fill="none" transform="translate(0,0)"/>
+            <text x="60" y="48" fontSize="11" fill="#ff00cc" textAnchor="middle">AC Source</text>
+          </g>
 
-        {/* Particles along wires */}
+          {/* wire to resistor */}
+          <line x1="88" y1="0" x2="240" y2="0" stroke="#2b2b2b" strokeWidth="6" strokeLinecap="round" />
+          {/* resistor block */}
+          <g transform="translate(240,-16)">
+            <rect x="0" y="0" width="72" height="32" rx="6" fill="#120800" stroke="#4a2a00" />
+            <rect x="6" y="6" width="60" height="20" rx="4" fill="#ffaa33" opacity="0.95" filter="url(#bloomMag)"/>
+            <text x="36" y="52" fontSize="12" fill="#ffcc99" textAnchor="middle">R</text>
+            <title>Resistor — dissipates energy as heat</title>
+          </g>
+
+          {/* wire between R and L */}
+          <line x1="312" y1="0" x2="380" y2="0" stroke="#2b2b2b" strokeWidth="6" strokeLinecap="round" />
+
+          {/* straight wire path for particles */}
+          <path id="wireSegment" d="M 380 0 H 560" stroke="transparent" />
+
+          {/* INDUCTOR (coils) */}
+          <g transform="translate(560,0)">
+            {/* coil loops */}
+            {Array.from({ length: 7 }).map((_, i) => (
+              <ellipse key={i} cx={i * 10 - 30} cy="0" rx="10" ry="12" fill="none" stroke="url(#currGrad)" strokeWidth="3" filter="url(#bloomCyan)" />
+            ))}
+            <text x="40" y="48" fontSize="12" fill="#9eefff" textAnchor="middle">L</text>
+            <title>Inductor — stores energy in magnetic field</title>
+
+            {/* magnetic pulsing rings */}
+            <motion.circle
+              cx="-10" cy="0" r="44" stroke="#00ffcc22" strokeWidth="2"
+              animate={{ scale: [1, 1.06, 1], opacity: [0.2, 0.8, 0.2] }}
+              transition={{ duration: loopSec * 1.6, repeat: Infinity, ease: "easeInOut" }}
+              style={{ filter: 'url(#bloomCyan)' }}
+            />
+            <motion.circle
+              cx="-10" cy="0" r="64" stroke="#00ffeebb" strokeWidth="1"
+              animate={{ rotate: [0, 360] }}
+              transition={{ duration: loopSec * 6, repeat: Infinity, ease: "linear" }}
+              style={{ opacity: 0.15, filter: 'url(#bloomCyan)' }}
+            />
+          </g>
+
+          {/* wire to node (output) */}
+          <line x1="640" y1="0" x2="780" y2="0" stroke="#2b2b2b" strokeWidth="6" strokeLinecap="round" />
+          <circle cx="820" cy="0" r="6" fill="#00e6ff" filter="url(#bloomCyan)" style={{ opacity: 0.6 }} />
+          <text x="820" y="36" fontSize="11" fill="#9aa0b1" textAnchor="middle">Output Node</text>
+        </g>
+
+        {/* PARTICLE / PLASMA STREAM along entire wire (visual current) */}
         {Array.from({ length: particleCount }).map((_, i) => {
-          const delay = (i/particleCount)*loopSec;
+          const delay = (i / particleCount) * (loopSec * 0.9);
           return (
-            <circle key={`particle-${i}`} r="3" fill="#00ffee"
+            <circle
+              key={`part-${i}`}
+              r="3.2"
+              fill="#00e6ff"
               style={{
-                offsetPath:"path('M 320 260 H 400')",
-                animationName: running?'particleMove':'none',
-                animationDuration:`${loopSec}s`,
-                animationTimingFunction:'linear',
-                animationIterationCount:'infinite',
-                animationDelay:`-${delay}s`,
-                filter:'url(#neonCyan)', mixBlendMode:'screen'
+                offsetPath: "path('M 88 200 H 720')", // global wire path across R and L region (y=200 in outer svg coords)
+                animationName: running ? 'plasmaFlow' : 'none',
+                animationDuration: `${loopSec * 0.9}s`,
+                animationTimingFunction: 'linear',
+                animationIterationCount: 'infinite',
+                animationDelay: `-${delay}s`,
+                filter: 'url(#bloomCyan)',
+                mixBlendMode: 'screen',
               }}
             />
           );
         })}
+
+        {/* PHASOR / VECTOR (small) to show angle dynamically */}
+        <g transform="translate(920,220)">
+          <circle cx="0" cy="0" r="36" fill="#06060a" stroke="#111" />
+          {/* voltage phasor */
+          }
+          <line x1="0" y1="0" x2="26" y2="0" stroke="#ff00cc" strokeWidth="2" />
+          {/* current phasor rotated by -phasorAngle */}
+          <line x1="0" y1="0" x2={26 * Math.cos((Math.PI / 180) * -phasorAngle)} y2={-26 * Math.sin((Math.PI / 180) * -phasorAngle)} stroke="#00e6ff" strokeWidth="2" />
+          <text x="-8" y="44" fontSize="11" fill="#9aa0b1">φ ≈ {phasorAngle}°</text>
+        </g>
+      </g>
+
+      {/* CSS animations */}
+      <style>{`
+        .rlViz { transform-origin: 0 0; transform: scale(0.65); }
+        
+
+        @keyframes plasmaFlow {
+          0% { offset-distance: 0%; opacity: 0.75; transform: scale(0.9); }
+          60% { opacity: 1; transform: scale(1.15); }
+          100% { offset-distance: 100%; opacity: 0; transform: scale(0.7); }
+        }
+
+        /* particle along specific ledge */
+        @keyframes particleMoveShort {
+          0% { offset-distance: 0%; opacity: 0.8; transform: translateY(0); }
+          80% { opacity: 1; transform: translateY(-1px); }
+          100% { offset-distance: 100%; opacity: 0; transform: translateY(1px); }
+        }
+
+        @keyframes diodeSparkShort {
+          0% { opacity: 0; transform: scale(0.7); }
+          5% { opacity: 1; transform: scale(1.2); }
+          30% { opacity: 0.4; transform: scale(0.9); }
+          100% { opacity: 0; transform: scale(0.8); }
+        }
+      `}</style>
+    </>
+  );
+})()}
+
+{visual?.symbol === "rc_circuit" && (() => {
+  const freq = visual?.waveform?.freq ?? 1.0; // cycles per second
+  const T = Math.max(0.6, 1 / freq); // one cycle duration (s)
+  const running = visual?.running ?? true;
+  const svgW = 980, svgH = 360;
+  const glow = 3;
+  const particleCount = 12;
+
+  // timings: charging 0..T/2, discharging T/2..T
+  const chargeDur = Math.max(0.18, T * 0.48);
+  const dischargeDur = Math.max(0.18, T * 0.48);
+
+  // easing approximating easeOutExpo
+  const expoEase = [0.19, 1, 0.22, 1];
+
+  return (
+    <>
+      <g className="rcViz" transform="translate(0,0)">
+        <defs>
+          {/* Soft neon glows and subtle turbulence for energy distortion */}
+          <filter id="glowCyan" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation={glow} result="b" />
+            <feMerge>
+              <feMergeNode in="b" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+
+          <filter id="glowAmber" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation={glow * 1.1} result="b" />
+            <feMerge>
+              <feMergeNode in="b" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+
+          <filter id="turb" x="-20%" y="-20%" width="140%" height="140%">
+            <feTurbulence baseFrequency="0.6" numOctaves="1" stitchTiles="stitch" result="turb" />
+            <feDisplacementMap in="SourceGraphic" in2="turb" scale="3" xChannelSelector="R" yChannelSelector="G" />
+          </filter>
+
+          {/* Gradients */}
+          <linearGradient id="wireGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#00f5d4" />
+            <stop offset="100%" stopColor="#ffaa33" />
+          </linearGradient>
+
+          <linearGradient id="capFill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#00aaff" />
+            <stop offset="1%" stopColor="#55eeff" />
+            <stop offset="100%" stopColor="#ffdd55" />
+          </linearGradient>
+
+          <linearGradient id="voltGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#00eaff" />
+            <stop offset="100%" stopColor="#00b8ff" />
+          </linearGradient>
+
+          <linearGradient id="currGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#00f5d4" />
+            <stop offset="100%" stopColor="#00e6ff" />
+          </linearGradient>
+
+          {/* Paths for particle offset-path */}
+          <path id="wirePathMain" d="M 160 200 H 420" fill="none" />
+          <path id="wirePathToCap" d="M 420 200 H 560" fill="none" />
+          <path id="wirePathToGnd" d="M 560 200 H 780" fill="none" />
+        </defs>
+
+        {/* Background */}
+        <rect width={svgW} height={svgH} fill="url(#bgGrad)" />
+        <rect width={svgW} height={svgH} fill="#070709" opacity="0.95" />
+
+        {/* faint grid */}
+        <g opacity="0.04">
+          {Array.from({ length: Math.ceil(svgW / 32) }).map((_, i) => (
+            <line key={`v-${i}`} x1={i * 32} y1="0" x2={i * 32} y2={svgH} stroke="#111" />
+          ))}
+          {Array.from({ length: Math.ceil(svgH / 32) }).map((_, i) => (
+            <line key={`h-${i}`} x1="0" y1={i * 32} x2={svgW} y2={i * 32} stroke="#111" />
+          ))}
+        </g>
+
+        {/* Title / labels */}
+        <text x="40" y="32" fill="#e6e6e6" fontSize="16" fontFamily="Orbitron" fontWeight="600">
+          RC Circuit — Charging & Discharging Visualization
+        </text>
+        <text x="40" y="50" fill="#98a0b2" fontSize="11">DC Source → R → C → Ground • Transient (τ = RC)</text>
+
+        {/* Waveform mini-plot (top-left) showing V (source) and I (current) */}
+        <g transform="translate(40,80)">
+          <rect x="0" y="0" width="320" height="90" rx="6" fill="#06060b" stroke="#111"/>
+          <text x="8" y="14" fill="#9ecfff" fontSize="11">Voltage (V)</text>
+          <text x="8" y="82" fill="#a6fff2" fontSize="11">Current (I)</text>
+
+          {/* voltage: simple pulsed DC indicator (brief pulse) */}
+          <motion.path
+            d="M 12 44 L 40 44 L 56 20 L 88 44 L 120 44 L 136 20 L 168 44 L 200 44 L 232 20 L 264 44 L 296 44"
+            stroke="#00eaff"
+            strokeWidth="2.6"
+            fill="none"
+            strokeLinecap="round"
+            animate={{ opacity: [0.45,1,0.45] }}
+            transition={{ duration: T, repeat: Infinity, ease: "easeInOut" }}
+            filter="url(#glowCyan)"
+          />
+
+          {/* current: exponential rise / decay represented by morphing path */}
+          {/* Small -> Large amplitude morph to simulate charging, then back during discharge */}
+          <motion.path
+            d="M 12 72 C 56 72 88 64 136 64 C 184 64 216 60 264 60 C 296 60 296 72 296 72"
+            stroke="#00f5d4"
+            strokeWidth="2.6"
+            fill="none"
+            strokeLinecap="round"
+            filter="url(#glowCyan)"
+            animate={{
+              // morph controls: we approximate exp rise by scaling vertical offsets
+              d: [
+                "M 12 72 C 56 72 88 70 136 68 C 184 66 216 65 264 64 C 296 64 296 72 296 72",
+                "M 12 72 C 56 58 88 50 136 46 C 184 44 216 44 264 44 C 296 44 296 72 296 72"
+              ],
+              opacity: [0.4, 1, 0.4]
+            }}
+            transition={{
+              duration: chargeDur,
+              repeat: Infinity,
+              repeatType: "reverse",
+              ease: expoEase
+            }}
+          />
+        </g>
+
+        {/* --- Circuit diagram (center) --- */}
+        <g transform="translate(120,170)">
+          {/* DC Voltage Source (left): simple block with pulse indicator */}
+          <g transform="translate(0,0)" style={{ cursor: 'default' }}>
+            <circle cx="40" cy="0" r="28" fill="#06060b" stroke="#0f2a2a" filter="url(#softShadow)" />
+            {/* small pulse arc */}
+            <motion.path
+              d="M 26 0 C 34 -22 46 -22 54 0"
+              stroke="#00eaff"
+              strokeWidth="2"
+              fill="none"
+              animate={{ pathLength: [0, 1, 0], opacity: [0.5, 1, 0.5] }}
+              transition={{ duration: T, repeat: Infinity, ease: "easeInOut" }}
+            />
+            <text x="40" y="48" fontSize="11" fill="#00eaff" textAnchor="middle">V</text>
+            <title>DC Voltage Source</title>
+          </g>
+
+          {/* wire to resistor */}
+          <line x1="68" y1="0" x2="220" y2="0" stroke="#1b1b1b" strokeWidth="6" strokeLinecap="round" />
+
+          {/* resistor block */}
+          <g transform="translate(220,-18)">
+            <rect x="0" y="0" width="72" height="36" rx="6" fill="#120800" stroke="#331a00" filter="url(#glowAmber)"/>
+            {/* inner warm resistor fill that glows during conduction (animated) */}
+            <motion.rect
+              x="8"
+              y="6"
+              width="56"
+              height="24"
+              rx="4"
+              fill="#ffb84a"
+              animate={{ opacity: [0.4, 1, 0.4], scale: [1, 1.02, 1] }}
+              transition={{ duration: chargeDur, repeat: Infinity, ease: expoEase }}
+            />
+            <text x="36" y="54" fontSize="12" fill="#ffd8aa" textAnchor="middle">R</text>
+            <title>Resistor — limits current (hover for tooltip)</title>
+          </g>
+
+          {/* wire from R to C */}
+          <line x1="292" y1="0" x2="380" y2="0" stroke="#1b1b1b" strokeWidth="6" strokeLinecap="round" />
+
+          {/* short wire segment (for particle path) */}
+          <path id="toCap" d="M 380 0 H 460" stroke="transparent" />
+
+          {/* Capacitor (parallel plates) at x=460 */}
+          <g transform="translate(460,0)">
+            {/* plates */}
+            <rect x="-6" y="-28" width="12" height="56" fill="#0b1a22" stroke="#123a45" rx="2" />
+            <rect x="26" y="-28" width="12" height="56" fill="#0b1a22" stroke="#123a45" rx="2" />
+            {/* animated fill/hollow between plates to represent charge (mask technique) */}
+            <g transform="translate(0,0)">
+              {/* visual capacitor body */}
+              <rect x="-6" y="-28" width="44" height="56" rx="2" fill="#000" opacity="0" />
+
+              {/* animated charge halo behind plates */}
+              <motion.rect
+                x="-16"
+                y={-28}
+                width="72"
+                height="56"
+                rx="6"
+                fill="url(#capFill)"
+                opacity="0.0"
+                animate={{ opacity: [0.0, 0.8, 0.0], scale: [1, 1.02, 1] }}
+                transition={{ duration: chargeDur + 0.2, repeat: Infinity, repeatType: "reverse", ease: expoEase }}
+                style={{ mixBlendMode: 'screen', filter: 'url(#glowCyan)' }}
+              />
+
+              {/* masking rectangle that grows/shrinks exponentially to simulate charge % visually */}
+              <mask id="capMask">
+                <rect x="-16" y="-28" width="72" height="56" fill="white" />
+                {/* the "empty" part - animated */}
+                <motion.rect
+                  x="-16"
+                  // y animated from top to bottom to reveal fill (charging => smaller empty area)
+                  y={-28}
+                  width="72"
+                  height={56}
+                  fill="black"
+                  animate={{
+                    // animate height to simulate exponential fill/unfill
+                    height: [56, 2, 56],
+                    y: [-28, 26, -28]
+                  }}
+                  transition={{
+                    duration: chargeDur + dischargeDur,
+                    repeat: Infinity,
+                    ease: expoEase
+                  }}
+                />
+              </mask>
+
+              <rect x="-16" y="-28" width="72" height="56" rx="6" fill="url(#capFill)" mask="url(#capMask)" opacity="0.95" filter="url(#glowCyan)" />
+            </g>
+
+            <text x="20" y="68" fontSize="12" fill="#9eefff" textAnchor="middle">C</text>
+            <title>Capacitor — stores charge. Visual charge level matches exponential curve</title>
+          </g>
+
+          {/* wire from capacitor to ground through discharge path */}
+          <line x1="504" y1="0" x2="680" y2="0" stroke="#1b1b1b" strokeWidth="6" strokeLinecap="round" />
+          <line x1="680" y1="0" x2="740" y2="0" stroke="#1b1b1b" strokeWidth="6" strokeLinecap="round" />
+
+          {/* ground node */}
+          <g transform="translate(760,0)">
+            <line x1="0" y1="0" x2="0" y2="36" stroke="#1b1b1b" strokeWidth="3" />
+            <rect x="-12" y="36" width="24" height="4" fill="#b66cff" opacity="0.9" filter="url(#glowAmber)" />
+            <rect x="-8" y="44" width="16" height="4" fill="#b66cff" opacity="0.6" filter="url(#glowAmber)" />
+            <rect x="-4" y="52" width="8" height="4" fill="#b66cff" opacity="0.4" filter="url(#glowAmber)" />
+            <text x="0" y="78" fontSize="10" fill="#b66cff" textAnchor="middle">GND</text>
+          </g>
+        </g>
+
+        {/* Output node indicator (to visually show voltage across C) */}
+        <circle cx="460" cy="200" r="8" fill="#00eaff" filter="url(#glowCyan)" style={{ opacity: 0.6 }} />
+
+        {/* PARTICLES: charge flow from source -> R -> C (forward). direction reverses during discharge */}
         {Array.from({ length: particleCount }).map((_, i) => {
-          const delay = (i/particleCount)*loopSec;
+          const delay = (i / particleCount) * (chargeDur * 0.9);
           return (
-            <circle key={`particle2-${i}`} r="3" fill="#ff77ff"
+            <circle
+              key={`p-${i}`}
+              r="3.2"
+              fill="#00f5d4"
               style={{
-                offsetPath:"path('M 560 260 H 640')",
-                animationName: running?'particleMove':'none',
-                animationDuration:`${loopSec}s`,
-                animationTimingFunction:'linear',
-                animationIterationCount:'infinite',
-                animationDelay:`-${delay}s`,
-                filter:'url(#neonPurple)', mixBlendMode:'screen'
+                // path starts at x=68 -> to capacitor approx x=460 (y=200)
+                offsetPath: "path('M 68 200 H 380 H 460')",
+                animationName: running ? 'chargeFlow' : 'none',
+                animationDuration: `${chargeDur}s`,
+                animationTimingFunction: 'linear',
+                animationIterationCount: 'infinite',
+                animationDelay: `-${delay}s`,
+                filter: 'url(#glowCyan)',
+                mixBlendMode: 'screen'
+              }}
+            />
+          );
+        })}
+
+        {/* small reverse-flow particles for discharge (from cap -> ground) */}
+        {Array.from({ length: Math.max(8, particleCount - 4) }).map((_, i) => {
+          const delay = (i / particleCount) * (dischargeDur * 0.9);
+          return (
+            <circle
+              key={`q-${i}`}
+              r="2.6"
+              fill="#ffdd55"
+              style={{
+                offsetPath: "path('M 504 200 H 740')",
+                animationName: running ? 'dischargeFlow' : 'none',
+                animationDuration: `${dischargeDur}s`,
+                animationTimingFunction: 'linear',
+                animationIterationCount: 'infinite',
+                animationDelay: `-${delay + chargeDur}s`, // start at discharge phase
+                filter: 'url(#glowAmber)',
+                mixBlendMode: 'screen'
               }}
             />
           );
@@ -5449,19 +5869,2171 @@ function TermVisualizer({ visual, running = true, onChange }) {
       </g>
 
       <style>{`
-        @keyframes particleMove {
-          0% { offset-distance:0%; opacity:0.8; transform:scale(1); }
-          80% { opacity:1; transform:scale(1.1); }
-          100% { offset-distance:100%; opacity:0; transform:scale(0.8); }
+        .rcViz { transform-origin: 0 0; transform: scale(0.68); }
+        
+
+        /* charge flow: particles move left->right during charge (repeat cycles) */
+        @keyframes chargeFlow {
+          0% { offset-distance: 0%; opacity: 0.8; transform: scale(0.9); }
+          70% { opacity: 1; transform: scale(1.12); }
+          100% { offset-distance: 100%; opacity: 0; transform: scale(0.7); }
         }
-        .rlCircuitViz { transform-origin:0 0; transform: scale(0.72); }
-        @media (max-width:640px){ .rlCircuitViz{ transform: scale(0.5); } }
+
+        /* discharge flow: particles move left from capacitor to ground */
+        @keyframes dischargeFlow {
+          0% { offset-distance: 0%; opacity: 0.8; transform: scale(0.9); }
+          70% { opacity: 1; transform: scale(1.06); }
+          100% { offset-distance: 100%; opacity: 0; transform: scale(0.6); }
+        }
+
+        /* small helpers for wave morph / capacitor mask via CSS fallback (some browsers) */
+        @keyframes capPulse {
+          0% { opacity: 0.2; transform: scale(0.98); }
+          50% { opacity: 0.95; transform: scale(1.02); }
+          100% { opacity: 0.2; transform: scale(0.98); }
+        }
+      `}</style>
+    </>
+  );
+})()}
+
+{visual?.symbol === "rlc_circuit" && (() => {
+  // Parameters from visual object (with sensible defaults)
+  const freq = visual?.waveform?.freq ?? 1.2; // Hz (base driving frequency)
+  const amp = visual?.waveform?.amp ?? 1.0;
+  const damping = visual?.damping ?? 0.02; // 0..0.2 (higher -> faster decay)
+  const running = visual?.running ?? true;
+  const svgW = 1100;
+  const svgH = 460;
+  // loopSec controls animation pacing; shorter with higher freq
+  const loopSec = Math.max(0.6, 3 / Math.max(0.1, freq));
+  // visual tuning
+  const glow = 3.0;
+  const particleCount = 16;
+
+  // helper: simple bezier-like sinusoidal path generator for waveforms
+  const sinPath = (x0, x1, y, ampLocal = 40, cycles = 2, phase = 0) => {
+    const mid = (x0 + x1) / 2;
+    const third = (x1 - x0) / 6;
+    return `M ${x0} ${y} C ${x0 + third} ${y - ampLocal * Math.cos(phase)} ${mid - third} ${y + ampLocal * Math.cos(phase)} ${mid} ${y}
+            C ${mid + third} ${y - ampLocal * Math.cos(phase)} ${x1 - third} ${y + ampLocal * Math.cos(phase)} ${x1} ${y}`;
+  };
+
+  // Waveforms: voltage (driving) and current (lagging/phase shifted). We'll animate morphing to simulate resonance/damping
+  const vPath = sinPath(60, 420, 86, 48, 2, 0); // magenta voltage
+  const iPathStart = sinPath(60, 420, 138, 6, 2, Math.PI / 3); // small current initially (phase lag ~60°)
+  const iPathPeak = sinPath(60, 420, 138, 46, 2, Math.PI / 3); // steady-state current amplitude
+
+  // phasor angle visual (approx)
+  const phasorAngleDeg = 55; // typical inductive-dominant lag
+
+  return (
+    <>
+      <g className="rlcViz" transform="translate(0,0)">
+        <defs>
+          {/* BLOOM / GLOW FILTERS */}
+          <filter id="bloomCyan" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation={glow} result="b" />
+            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+          <filter id="bloomMag" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation={glow * 1.1} result="m" />
+            <feMerge><feMergeNode in="m" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+          <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="6" stdDeviation="6" floodColor="#000" floodOpacity="0.6" />
+          </filter>
+
+          {/* GRADIENTS */}
+          <linearGradient id="voltGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#ff00cc" />
+            <stop offset="100%" stopColor="#ff66aa" />
+          </linearGradient>
+          <linearGradient id="currGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#00e6ff" />
+            <stop offset="100%" stopColor="#00b8ff" />
+          </linearGradient>
+          <linearGradient id="resGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#ffaa33" />
+            <stop offset="100%" stopColor="#ff7a2d" />
+          </linearGradient>
+          <linearGradient id="capGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#b47bff" />
+            <stop offset="100%" stopColor="#8a4bff" />
+          </linearGradient>
+
+          {/* wire path ids for offset-path particles */}
+          <path id="wireFull" d="M 420 230 H 700" />
+          <path id="wireLeft" d="M 120 230 H 420" />
+          <path id="wireRight" d="M 700 230 H 860" />
+        </defs>
+
+        {/* BACKDROP */}
+        <rect width={svgW} height={svgH} fill="#050507" />
+        <rect width={svgW} height={svgH} fill="url(#bgGrad)" opacity="0.98" />
+
+        {/* faint circuit grid */}
+        <g opacity="0.04">
+          {Array.from({ length: Math.ceil(svgW / 32) }).map((_, i) => (
+            <line key={`v${i}`} x1={i * 32} y1="0" x2={i * 32} y2={svgH} stroke="#0e0e0e" />
+          ))}
+          {Array.from({ length: Math.ceil(svgH / 32) }).map((_, i) => (
+            <line key={`h${i}`} x1="0" y1={i * 32} x2={svgW} y2={i * 32} stroke="#0e0e0e" />
+          ))}
+        </g>
+
+        {/* TITLE */}
+        <text x="56" y="38" fill="#e6e6e6" fontSize="16" fontFamily="Orbitron" fontWeight="600">
+          RLC Circuit — Resonant Oscillation & Damping
+        </text>
+        <text x="56" y="56" fill="#9ca3b2" fontSize="11" fontFamily="Inter">
+          AC Source → R → L → C (series) — visualizing energy exchange and phase shifts
+        </text>
+
+        {/* WAVEFORM PANEL (top-left) */}
+        <g transform="translate(40,80)">
+          <rect x="0" y="0" width="420" height="140" rx="8" fill="#06060a" stroke="#111" />
+          <text x="8" y="14" fontSize="11" fill="#ff79d2">Voltage (V)</text>
+          <text x="8" y="130" fontSize="11" fill="#9eefff">Current (I)</text>
+
+          {/* Voltage waveform (magenta) */}
+          <motion.path
+            d={vPath}
+            stroke="url(#voltGrad)"
+            strokeWidth="3.5"
+            fill="none"
+            strokeLinecap="round"
+            filter="url(#bloomMag)"
+            animate={{ opacity: [0.6, 1, 0.6], transform: ["translateY(0px)", "translateY(-2px)", "translateY(0px)"] }}
+            transition={{ duration: loopSec, repeat: Infinity, ease: "easeInOut" }}
+          />
+
+          {/* Current waveform (cyan) — morphs from small to large amplitude (exponential-like), with phase lag */}
+          <motion.path
+            d={iPathStart}
+            stroke="url(#currGrad)"
+            strokeWidth="3.5"
+            fill="none"
+            strokeLinecap="round"
+            filter="url(#bloomCyan)"
+            initial={{ opacity: 0.6 }}
+            animate={{
+              d: [iPathStart, iPathPeak],
+              opacity: [0.5, 1],
+            }}
+            transition={{
+              duration: Math.max(1.0, loopSec * (1.6 - Math.min(0.9, damping * 4))),
+              ease: [0.25, 0.1, 0.25, 1],
+              repeat: Infinity,
+              repeatType: "mirror",
+            }}
+          />
+
+          {/* Phase indicator arc (shows approximate lag) */}
+          <g transform="translate(460,48)">
+            <circle cx="0" cy="0" r="20" fill="none" stroke="#222" />
+            <line x1="0" y1="0" x2="26" y2="0" stroke="#ff00cc" strokeWidth="2" />
+            <line
+              x1="0" y1="0"
+              x2={26 * Math.cos((Math.PI / 180) * -phasorAngleDeg)}
+              y2={-26 * Math.sin((Math.PI / 180) * -phasorAngleDeg)}
+              stroke="#00e6ff"
+              strokeWidth="2"
+            />
+            <text x="-10" y="38" fill="#9aa0b1" fontSize="10">φ ≈ {phasorAngleDeg}°</text>
+          </g>
+        </g>
+
+        {/* CIRCUIT SCHEMATIC (center) */}
+        <g transform="translate(100,200)">
+          {/* AC Source (left): circle + sine icon */}
+          <g transform="translate(0,0)">
+            <circle cx="24" cy="30" r="28" fill="#06060a" stroke="#111" filter="url(#softShadow)" />
+            <path d="M 10 30 C 18 12 30 12 38 30" stroke="#ff00cc" strokeWidth="2.4" fill="none" transform="translate(0,0)" />
+            <text x="24" y="78" fontSize="11" fill="#ff66aa" textAnchor="middle">AC Source</text>
+          </g>
+
+          {/* left wire to resistor */}
+          <line x1="56" y1="30" x2="220" y2="30" stroke="#121212" strokeWidth="6" strokeLinecap="round" />
+
+          {/* Resistor block */}
+          <g transform="translate(220,12)">
+            <rect x="0" y="0" width="84" height="36" rx="6" fill="#110700" stroke="#3b1f00" />
+            <rect x="6" y="6" width="72" height="24" rx="4" fill="url(#resGrad)" filter="url(#bloomMag)" />
+            <text x="42" y="62" fontSize="12" fill="#ffd9b3" textAnchor="middle">R</text>
+
+            {/* resistor heat shimmer (animated) */}
+            <rect
+              x="6"
+              y="6"
+              width="72"
+              height="24"
+              rx="4"
+              fill="url(#resGrad)"
+              style={{
+                mixBlendMode: "screen",
+                opacity: 0.5,
+                animationName: running ? "resHeatPulse" : "none",
+                animationDuration: `${Math.max(0.9, loopSec * (1 - damping))}s`,
+                animationIterationCount: "infinite",
+                animationTimingFunction: "ease-in-out",
+              }}
+            />
+            <title>Resistor — dissipates energy as heat</title>
+          </g>
+
+          {/* wire between R and L */}
+          <line x1="304" y1="30" x2="380" y2="30" stroke="#121212" strokeWidth="6" strokeLinecap="round" />
+
+          {/* INDUCTOR (coils) */}
+          <g transform="translate(380,30)">
+            {/* coils */}
+            {Array.from({ length: 7 }).map((_, i) => (
+              <ellipse
+                key={i}
+                cx={i * 12 - 36}
+                cy="0"
+                rx="10"
+                ry="12"
+                fill="none"
+                stroke="url(#currGrad)"
+                strokeWidth="3"
+                filter="url(#bloomCyan)"
+              />
+            ))}
+
+            <text x="40" y="56" fontSize="12" fill="#9eefff" textAnchor="middle">L</text>
+
+            {/* magnetic pulsing halo */}
+            <motion.circle
+              cx="-10"
+              cy="0"
+              r="46"
+              fill="none"
+              stroke="#00ffcc22"
+              strokeWidth="2"
+              animate={{ scale: [1, 1.06, 1], opacity: [0.25, 0.9, 0.25] }}
+              transition={{ duration: loopSec * 1.6, repeat: Infinity, ease: "easeInOut" }}
+              style={{ filter: "url(#bloomCyan)" }}
+            />
+
+            {/* slight rotation to suggest swirling field */}
+            <motion.g
+              animate={{ rotate: [0, 15, 0, -15, 0] }}
+              transition={{ duration: loopSec * 6, repeat: Infinity, ease: "linear" }}
+            >
+              <circle cx="-10" cy="0" r="72" stroke="#00e6ff08" strokeWidth="1" fill="none" />
+            </motion.g>
+
+            <title>Inductor — stores energy in magnetic field</title>
+          </g>
+
+          {/* wire between L and C */}
+          <line x1="444" y1="30" x2="560" y2="30" stroke="#121212" strokeWidth="6" strokeLinecap="round" />
+
+          {/* CAPACITOR */}
+          <g transform="translate(560,2)">
+            <line x1="0" y1="0" x2="0" y2="56" stroke="#000" strokeWidth="0" />
+            {/* plates */}
+            <rect x="0" y="6" width="8" height="44" fill="url(#capGrad)" filter="url(#bloomMag)" rx="2" />
+            <rect x="26" y="6" width="8" height="44" fill="url(#capGrad)" filter="url(#bloomMag)" rx="2" />
+            <text x="16" y="70" fontSize="12" fill="#d6c3ff" textAnchor="middle">C</text>
+
+            {/* plate charge shimmer (alternating) */}
+            <rect
+              x="0" y="6" width="8" height="44" fill="url(#capGrad)"
+              style={{
+                mixBlendMode: "screen",
+                opacity: 0.6,
+                animationName: running ? "capCharge" : "none",
+                animationDuration: `${Math.max(1.2, loopSec * 1.2)}s`,
+                animationIterationCount: "infinite",
+                animationDirection: "alternate",
+                animationTimingFunction: "ease-in-out",
+              }}
+            />
+            <rect
+              x="26" y="6" width="8" height="44" fill="url(#capGrad)"
+              style={{
+                mixBlendMode: "screen",
+                opacity: 0.6,
+                animationName: running ? "capChargeReverse" : "none",
+                animationDuration: `${Math.max(1.2, loopSec * 1.2)}s`,
+                animationIterationCount: "infinite",
+                animationDirection: "alternate",
+                animationTimingFunction: "ease-in-out",
+              }}
+            />
+            <title>Capacitor — stores energy electrostatically</title>
+          </g>
+
+          {/* right wire to output */}
+          <line x1="624" y1="30" x2="820" y2="30" stroke="#121212" strokeWidth="6" strokeLinecap="round" />
+          <circle cx="860" cy="30" r="6" fill="#a066ff" filter="url(#bloomMag)" opacity="0.8" />
+          <text x="860" y="66" fontSize="11" fill="#9ca3b2" textAnchor="middle">Output Node</text>
+        </g>
+
+        {/* PARTICLES / CURRENT FLOW (plasma stream) along the whole series path */}
+        {Array.from({ length: particleCount }).map((_, i) => {
+          const delay = (i / particleCount) * (loopSec * 0.9);
+          return (
+            <circle
+              key={`pl-${i}`}
+              r="3.4"
+              fill="#00e6ff"
+              style={{
+                offsetPath: "path('M 120 230 H 860')",
+                animationName: running ? 'plasmaFlow' : 'none',
+                animationDuration: `${loopSec * (1 + damping * 4)}s`,
+                animationTimingFunction: 'linear',
+                animationIterationCount: 'infinite',
+                animationDelay: `-${delay}s`,
+                filter: "url(#bloomCyan)",
+                mixBlendMode: 'screen',
+                opacity: 0.9,
+              }}
+            />
+          );
+        })}
+
+        {/* small waveform legend on right */}
+        <g transform="translate(920,96)">
+          <rect x="-12" y="-12" width="160" height="110" rx="8" fill="#06060a" stroke="#111" />
+          <text x="0" y="6" fontSize="12" fill="#ff79d2">Voltage (V)</text>
+          <path d={vPath} transform="translate(-10,18) scale(0.18)" stroke="url(#voltGrad)" strokeWidth="5" fill="none" strokeLinecap="round" filter="url(#bloomMag)" />
+          <text x="0" y="70" fontSize="12" fill="#9eefff">Current (I)</text>
+          <path d={iPathPeak} transform="translate(-10,78) scale(0.18)" stroke="url(#currGrad)" strokeWidth="5" fill="none" strokeLinecap="round" filter="url(#bloomCyan)" />
+        </g>
+      </g>
+
+      {/* CSS animations */}
+      <style>{`
+        .rlcViz { transform-origin: 0 0; transform: scale(0.60); }
+        
+
+        @keyframes plasmaFlow {
+          0% { offset-distance: 0%; opacity: 0.7; transform: scale(0.9); }
+          60% { opacity: 1; transform: scale(1.12); }
+          100% { offset-distance: 100%; opacity: 0; transform: scale(0.7); }
+        }
+
+        @keyframes resHeatPulse {
+          0% { opacity: 0.55; transform: scaleX(1); filter: blur(0px); }
+          50% { opacity: 0.95; transform: scaleX(1.02); filter: blur(1px); }
+          100% { opacity: 0.55; transform: scaleX(1); filter: blur(0px); }
+        }
+
+        @keyframes capCharge {
+          0% { opacity: 0.2; transform: translateY(0) scale(0.98); }
+          50% { opacity: 1; transform: translateY(-2px) scale(1.06); }
+          100% { opacity: 0.2; transform: translateY(0) scale(0.98); }
+        }
+        @keyframes capChargeReverse {
+          0% { opacity: 1; transform: translateY(0) scale(1.06); }
+          50% { opacity: 0.2; transform: translateY(2px) scale(0.98); }
+          100% { opacity: 1; transform: translateY(0) scale(1.06); }
+        }
+
+        @keyframes diodeSparkShort {
+          0% { opacity: 0; transform: scale(0.6); }
+          8% { opacity: 1; transform: scale(1); }
+          30% { opacity: 0.2; transform: scale(0.8); }
+          100% { opacity: 0; transform: scale(0.6); }
+        }
+      `}</style>
+    </>
+  );
+})()}
+{visual?.symbol === "phasor" && (() => {
+  // phasor params (from visual props, with sensible defaults)
+  const amp = Number(visual?.amp ?? 1.0); // amplitude (pu)
+  const freq = Number(visual?.freq ?? 1.6); // Hz
+  const phase = Number(visual?.phase ?? 0); // radians
+  const running = visual?.running ?? true;
+
+  // derived
+  const period = Math.max(0.001, 1 / Math.max(0.01, freq)); // seconds per revolution
+  const phaseDeg = (phase * 180) / Math.PI; // radians -> degrees
+  const svgW = 1000;
+  const svgH = 520;
+  const centerX = 380;
+  const centerY = 220;
+  const phasorLen = 140 * Math.max(0.4, Math.min(1.6, amp)); // visual scaling of amplitude
+  const waveformX = 40;
+  const waveformY = 380;
+  const waveformW = 720;
+  const waveformH = 80;
+
+  // a compact sinusoid path for the waveform panel (we animate a marker along it)
+  // simple parametric-bezier-like path for visual smoothness (not exact analytic sine)
+  const waveformPath = `M ${waveformX} ${waveformY + waveformH / 2}
+    C ${waveformX + waveformW * 0.15} ${waveformY + waveformH / 2 - 0.9 * waveformH},
+      ${waveformX + waveformW * 0.35} ${waveformY + waveformH / 2 + 0.9 * waveformH},
+      ${waveformX + waveformW * 0.5} ${waveformY + waveformH / 2}
+    C ${waveformX + waveformW * 0.65} ${waveformY + waveformH / 2 - 0.9 * waveformH},
+      ${waveformX + waveformW * 0.85} ${waveformY + waveformH / 2 + 0.9 * waveformH},
+      ${waveformX + waveformW} ${waveformY + waveformH / 2}`;
+
+  // marker animation offset delay to sync with phase (we advance the marker along waveform by phase fraction)
+  const phaseOffsetSec = (phase / (2 * Math.PI)) * period; // can be negative or positive
+
+  return (
+    <>
+      <g className="phasorViz" transform="translate(0,0)">
+        <defs>
+          {/* Bloom & glow */}
+          <filter id="glowLarge" x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur stdDeviation="6" result="g" />
+            <feMerge>
+              <feMergeNode in="g" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+
+          <filter id="glowSmall" x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur stdDeviation="3" result="s" />
+            <feMerge>
+              <feMergeNode in="s" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+
+          {/* subtle turbulence for shimmer */}
+          <filter id="turb" x="-20%" y="-20%" width="140%" height="140%">
+            <feTurbulence baseFrequency="0.0035" numOctaves="2" stitchTiles="stitch" result="t" />
+            <feDisplacementMap in="SourceGraphic" in2="t" scale="0.4" />
+          </filter>
+
+          {/* gradients */}
+          <linearGradient id="vecGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#00f0ff" />
+            <stop offset="100%" stopColor="#bb86fc" />
+          </linearGradient>
+
+          <linearGradient id="waveGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#ffb84a" />
+            <stop offset="100%" stopColor="#ffd68a" />
+          </linearGradient>
+
+          <linearGradient id="gridGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#113344" stopOpacity="0.6" />
+            <stop offset="1" stopColor="#0b2a33" stopOpacity="0.3" />
+          </linearGradient>
+
+          {/* path id for waveform marker offset-path */}
+          <path id="wavePath" d={waveformPath} />
+        </defs>
+
+        {/* background block */}
+        <rect x="0" y="0" width={svgW} height={svgH} fill="url(#gridGrad)" />
+
+        {/* complex plane area */}
+        <g transform={`translate(${centerX}, ${centerY})`}>
+          {/* magnitude concentric circles */}
+          {[0.25, 0.5, 0.75, 1].map((s, i) => (
+            <circle
+              key={i}
+              cx="0"
+              cy="0"
+              r={phasorLen * s}
+              fill="none"
+              stroke="#08222b"
+              strokeWidth={1}
+              opacity={0.8}
+            />
+          ))}
+
+          {/* axes */}
+          <line x1={-phasorLen * 1.2} y1="0" x2={phasorLen * 1.2} y2="0" stroke="#123a3e" strokeWidth="1" />
+          <line x1="0" y1={-phasorLen * 1.2} x2="0" y2={phasorLen * 1.2} stroke="#123a3e" strokeWidth="1" />
+          <text x={phasorLen * 1.25} y="-6" fill="#dfeff3" fontSize="11">Real</text>
+          <text x="-26" y={-phasorLen * 1.25} fill="#dfeff3" fontSize="11">Imag</text>
+
+          {/* phasor rotating group. animate rotation around origin; initial rotation is phaseDeg */}
+          <motion.g
+            style={{ originX: "0px", originY: "0px", transformBox: "fill-box" }}
+            animate={{ rotate: running ? [phaseDeg, phaseDeg + 360] : phaseDeg }}
+            transition={{ duration: period, repeat: Infinity, ease: "linear" }}
+          >
+            {/* trailing glow ring */}
+            <path
+              d={`M 0 ${-phasorLen - 6} A ${phasorLen + 6} ${phasorLen + 6} 0 1 1 0 ${phasorLen + 6}`}
+              fill="none"
+              stroke="url(#vecGrad)"
+              strokeWidth={0.6}
+              opacity={0.08}
+              style={{ filter: "url(#glowSmall)" }}
+            />
+
+            {/* rotating vector arrow */}
+            <line
+              x1="0"
+              y1="0"
+              x2={phasorLen}
+              y2="0"
+              stroke="url(#vecGrad)"
+              strokeWidth={3.5}
+              strokeLinecap="round"
+              style={{ filter: "url(#glowLarge)", mixBlendMode: "screen" }}
+            />
+
+            {/* arrow head */}
+            <polygon
+              points={`${phasorLen + 10},-6 ${phasorLen + 18},0 ${phasorLen + 10},6`}
+              fill="url(#vecGrad)"
+              style={{ filter: "url(#glowSmall)" }}
+            />
+
+            {/* motion blur trail: several faded lines behind vector */}
+            {[0.14, 0.28, 0.42].map((t, i) => (
+              <line
+                key={i}
+                x1={-t * 8}
+                y1="0"
+                x2={phasorLen - t * 40}
+                y2="0"
+                stroke="url(#vecGrad)"
+                strokeWidth={2 - i * 0.5}
+                strokeOpacity={0.14 - i * 0.04}
+                transform={`translate(${-i * 2}, 0)`}
+                style={{ filter: "url(#glowSmall)", mixBlendMode: "screen" }}
+              />
+            ))}
+
+            {/* tip particle (glowing) - gives trailing effect */}
+            <circle
+              cx={phasorLen}
+              cy="0"
+              r="6"
+              fill="#00f0ff"
+              style={{ filter: "url(#glowLarge)", mixBlendMode: "screen" }}
+            />
+          </motion.g>
+
+          {/* phasor triangle (real & imag projections) - drawn as lines that rotate with the vector but then fade lightly */}
+          <motion.g
+            style={{ originX: "0px", originY: "0px", transformBox: "fill-box" }}
+            animate={{ rotate: running ? [phaseDeg, phaseDeg + 360] : phaseDeg }}
+            transition={{ duration: period, repeat: Infinity, ease: "linear" }}
+            opacity={0.9}
+          >
+            {/* projection to real axis (dashed) */}
+            <line x1={phasorLen} y1="0" x2={phasorLen} y2="-0" stroke="#9eefff" strokeWidth="1.2" strokeDasharray="4 4" opacity="0.6" />
+            {/* vertical projection */}
+            <line x1={phasorLen} y1="0" x2="0" y2="0" stroke="#ffdca6" strokeWidth="1.2" strokeDasharray="2 3" opacity="0.25" />
+          </motion.g>
+
+          {/* center hub */}
+          <circle cx="0" cy="0" r="10" fill="#071217" stroke="#00f0ff" strokeWidth="1.2" style={{ filter: "url(#glowSmall)" }} />
+        </g>
+
+        {/* waveform panel (synchronized) */}
+       
+
+        {/* HUD panels / readouts */}
+        <g transform={`translate(${centerX + phasorLen + 80}, ${centerY - 40})`}>
+          <rect x="-14" y="-18" width="180" height="120" rx="10" fill="#071018" stroke="#0e1014" />
+          <text x="6" y="6" fill="#ffd68a" fontSize="12">Phasor Readouts</text>
+          <text x="6" y="28" fill="#dfeff3" fontSize="12">Amplitude: <tspan fill="#00f0ff">{amp.toFixed(2)} pu</tspan></text>
+          <text x="6" y="50" fill="#dfeff3" fontSize="12">Frequency: <tspan fill="#ffb84a">{freq.toFixed(2)} Hz</tspan></text>
+          <text x="6" y="72" fill="#dfeff3" fontSize="12">Phase: <tspan fill="#bb86fc">{(phaseDeg).toFixed(1)}°</tspan></text>
+          <text x="6" y="94" fill="#9aa0b1" fontSize="11">ωt rotating reference</text>
+        </g>
+      </g>
+
+      {/* animations (CSS keyframes for marker and optional subtle effects) */}
+      <style>{`
+        .phasorViz { transform-origin: 0 0; transform: scale(0.76); }
+        @media (max-width: 640px) { .phasorViz { transform: scale(0.52); } }
+
+        @keyframes waveMarker {
+          0% { offset-distance: 0%; transform: translateY(0) scale(1); opacity: 1; }
+          50% { offset-distance: 50%; transform: translateY(-1px) scale(1.08); opacity: 1; }
+          100% { offset-distance: 100%; transform: translateY(0) scale(0.9); opacity: 0.0; }
+        }
+
+        /* subtle pulse on the center hub */
+        @keyframes hubPulse {
+          0% { transform: scale(1); opacity: 0.9; }
+          50% { transform: scale(1.08); opacity: 1; }
+          100% { transform: scale(1); opacity: 0.9; }
+        }
+
+      `}</style>
+    </>
+  );
+})()}
+{visual?.symbol === "impedance" && (() => {
+  const freq = visual?.waveform?.freq ?? 1.2; // Hz
+  const amp = visual?.waveform?.amp ?? 0.8;
+  const running = visual?.running ?? true;
+  const theta = visual?.phase ?? 0.3; // radians (≈0.3 per your spec)
+  const thetaDeg = (theta * 180) / Math.PI;
+  const loopSec = Math.max(0.5, 4 / freq);
+  const svgW = 1100, svgH = 520;
+  const glow = 3.2;
+  const particleCount = 14;
+
+  // simple helper to build a smooth-looking sine-like path across a given horizontal span
+  const sinePath = (x0, x1, y, ampPx = 40, cycles = 2, phase = 0) => {
+    const w = x1 - x0;
+    const cx = x0 + w * 0.5;
+    // Use two cubic Beziers for smoothness
+    const cp1x = x0 + w * 0.25;
+    const cp2x = x0 + w * 0.75;
+    return `M ${x0} ${y} C ${cp1x} ${y - ampPx * Math.cos(phase)} ${cp2x} ${y + ampPx * Math.cos(phase)} ${x1} ${y}`;
+  };
+
+  const vPath = sinePath(80, 460, 120, 46, 2, 0);
+  const iPath = sinePath(80, 460, 180, 46 * amp, 2, theta); // current lags by theta
+
+  return (
+    <>
+      <g className="impedanceViz" transform="translate(0,0)">
+        <defs>
+          {/* glow filters */}
+          <filter id="neonGlowC" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation={glow} result="b" />
+            <feMerge>
+              <feMergeNode in="b" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <filter id="neonGlowM" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation={glow * 1.2} result="m" />
+            <feMerge>
+              <feMergeNode in="m" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+
+          {/* gradients */}
+          <linearGradient id="voltGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#ffe066" />
+            <stop offset="100%" stopColor="#ffd24a" />
+          </linearGradient>
+          <linearGradient id="currGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#00f0ff" />
+            <stop offset="100%" stopColor="#00b8ff" />
+          </linearGradient>
+          <linearGradient id="rGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#ff8c42" />
+            <stop offset="100%" stopColor="#ffb07a" />
+          </linearGradient>
+          <linearGradient id="xGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#8a2be2" />
+            <stop offset="100%" stopColor="#5b2be2" />
+          </linearGradient>
+          <linearGradient id="zGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#ff00cc" />
+            <stop offset="100%" stopColor="#ff66aa" />
+          </linearGradient>
+
+          {/* wire gradients (flow visual) */}
+          <linearGradient id="flowGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#00f0ff" />
+            <stop offset="50%" stopColor="#ffaa33" />
+            <stop offset="100%" stopColor="#00f0ff" />
+          </linearGradient>
+
+          {/* guide paths for particle offset-path */}
+          <path id="wirePath" d="M 480 200 H 760" fill="none" />
+          <path id="rPath" d="M 220 200 H 380" fill="none" />
+          <path id="lPath" d="M 380 200 H 480" fill="none" />
+        </defs>
+
+        {/* Background */}
+        <rect width={svgW} height={svgH} fill="#050509" />
+        <rect width={svgW} height={svgH} fill="url(#bgGrad)" opacity="0.06" />
+
+        {/* soft grid */}
+        <g opacity="0.05" stroke="#0b3240">
+          {Array.from({ length: 22 }).map((_, i) => (
+            <line key={`v${i}`} x1={i * 50} y1="0" x2={i * 50} y2={svgH} />
+          ))}
+          {Array.from({ length: 12 }).map((_, i) => (
+            <line key={`h${i}`} x1="0" y1={i * 40} x2={svgW} y2={i * 40} />
+          ))}
+        </g>
+
+        {/* Title */}
+        <text x="56" y="36" fill="#dfe7ff" fontFamily="Orbitron" fontSize="16" fontWeight="600">
+          Impedance (Z) — Vectorial Combination of R & X
+        </text>
+        <text x="56" y="56" fill="#9fb2c7" fontSize="11">AC source → R → L → C → Measurement Node (Z)</text>
+
+        {/* Waveform display */}
+        <g transform="translate(60,80)">
+          <rect x="0" y="0" width="420" height="120" rx="8" fill="#070719" stroke="#0d2230" />
+          <text x="8" y="14" fontSize="11" fill="#ffd98a">Voltage (V)</text>
+          <text x="8" y="110" fontSize="11" fill="#9fefff">Current (I)</text>
+
+          {/* Voltage (yellow) */}
+          <motion.path
+            d={vPath}
+            stroke="url(#voltGrad)"
+            strokeWidth="3.6"
+            fill="none"
+            strokeLinecap="round"
+            filter="url(#neonGlowM)"
+            animate={{ opacity: [0.6, 1, 0.6] }}
+            transition={{ duration: loopSec * 1.0, repeat: Infinity, ease: "easeInOut" }}
+          />
+
+          {/* Current (cyan) lags by theta. To illustrate transient/exponential behavior we'll animate amplitude slightly */}
+          <motion.path
+            d={iPath}
+            stroke="url(#currGrad)"
+            strokeWidth="3.4"
+            fill="none"
+            strokeLinecap="round"
+            filter="url(#neonGlowC)"
+            animate={{
+              // gentle amplitude breathing to simulate dynamic energy & slight exponential settling visual
+              opacity: [0.5, 1, 0.5],
+              strokeWidth: [2.8, 3.8, 2.8]
+            }}
+            transition={{ duration: loopSec * 1.1, repeat: Infinity, ease: "easeInOut" }}
+          />
+
+          {/* dynamic phase label */}
+          <g transform="translate(440,40)">
+            <text x="0" y="0" fill="#ffcc66" fontSize="12">θ ≈ {theta.toFixed(2)} rad</text>
+            <text x="0" y="16" fill="#9fb2c7" fontSize="11">≈ {Math.round(thetaDeg)}° lag (I behind V)</text>
+          </g>
+        </g>
+
+        {/* Circuit diagram horizontally below waveform */}
+        <g transform="translate(60,240)">
+          {/* AC Source (left) */}
+          <g transform="translate(0,0)">
+            <circle cx="36" cy="0" r="28" fill="#06060a" stroke="#111" />
+            <path d="M 22 0 C 28 -16 44 -16 50 0" stroke="#ffe066" strokeWidth="2" fill="none" />
+            <text x="36" y="48" fontSize="11" fill="#ffe066" textAnchor="middle">AC Source</text>
+          </g>
+
+          {/* wire to R */}
+          <line x1="64" y1="0" x2="220" y2="0" stroke="#111827" strokeWidth="6" strokeLinecap="round" />
+
+          {/* Resistor R */}
+          <g transform="translate(220,-18)">
+            <rect x="0" y="0" width="72" height="36" rx="6" fill="#1c0b02" stroke="#3b1d05" />
+            <rect x="6" y="6" width="60" height="24" rx="4" fill="url(#rGrad)" filter="url(#neonGlowM)"/>
+            <text x="36" y="56" fontSize="12" fill="#ffcb9a" textAnchor="middle">R</text>
+          </g>
+
+          {/* short wire */}
+          <line x1="292" y1="0" x2="380" y2="0" stroke="#111827" strokeWidth="6" strokeLinecap="round" />
+
+          {/* Inductor L (coil) */}
+          <g transform="translate(380,0)">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <ellipse key={i} cx={i * 12 - 30} cy="0" rx="12" ry="12" fill="none" stroke="url(#currGrad)" strokeWidth="3" filter="url(#neonGlowC)"/>
+            ))}
+            <text x="40" y="48" fontSize="12" fill="#9fefff">L</text>
+
+            {/* magnetic rings */}
+            <motion.circle cx="-10" cy="0" r="44" stroke="#00f0ff22" strokeWidth="2"
+              animate={{ scale: [1, 1.06, 1], opacity: [0.25, 0.8, 0.25] }}
+              transition={{ duration: loopSec * 1.6, repeat: Infinity, ease: "easeInOut" }}
+              style={{ filter: 'url(#neonGlowC)' }}
+            />
+          </g>
+
+          {/* wire to capacitor */}
+          <line x1="452" y1="0" x2="560" y2="0" stroke="#111827" strokeWidth="6" strokeLinecap="round" />
+
+          {/* Capacitor (C) */}
+          <g transform="translate(560,-18)">
+            <rect x="0" y="0" width="14" height="36" rx="2" fill="#2b0830" stroke="#3a103f" />
+            <rect x="28" y="0" width="14" height="36" rx="2" fill="#2b0830" stroke="#3a103f" />
+            {/* electric field pulse (between plates) */}
+            <motion.rect x="16" y="6" width="8" height="24" rx="2" fill="#8a2be2" opacity="0.0"
+              animate={{ opacity: [0.0, 0.9, 0.0], scale: [1.0, 1.06, 1.0] }}
+              transition={{ duration: loopSec * 0.6, repeat: Infinity, ease: "easeInOut" }}
+              style={{ mixBlendMode: 'screen', filter: 'url(#neonGlowM)' }}
+            />
+            <text x="22" y="56" fontSize="12" fill="#caaaff" textAnchor="middle">C</text>
+          </g>
+
+          {/* wire to node (Z) */}
+          <line x1="606" y1="0" x2="760" y2="0" stroke="#111827" strokeWidth="6" strokeLinecap="round" />
+          <circle cx="800" cy="0" r="10" fill="url(#zGrad)" filter="url(#neonGlowM)" />
+          <text x="800" y="36" fontSize="12" fill="#ff99dd" textAnchor="middle">Z (Impedance)</text>
+        </g>
+
+        {/* Flowing energy pulse along main wire (particles) */}
+        {Array.from({ length: particleCount }).map((_, i) => {
+          const delay = (i / particleCount) * (loopSec * 0.9);
+          return (
+            <circle
+              key={`p-${i}`}
+              r="3.2"
+              fill="#00f0ff"
+              style={{
+                offsetPath: "path('M 64 200 H 760')", // a broad path across R-L-C region
+                animationName: running ? 'flowPulse' : 'none',
+                animationDuration: `${loopSec * 0.9}s`,
+                animationTimingFunction: 'linear',
+                animationIterationCount: 'infinite',
+                animationDelay: `-${delay}s`,
+                filter: 'url(#neonGlowC)',
+                mixBlendMode: 'screen',
+              }}
+            />
+          );
+        })}
+
+        {/* Phasor diagram (right side) — triangle R (horizontal), X (vertical), Z (resultant) */}
+        <g transform="translate(900,220)">
+          <rect x="-84" y="-84" width="168" height="168" rx="10" fill="#060612" stroke="#0d2030" />
+          <text x="0" y="-56" fill="#cfe9ff" fontSize="12" textAnchor="middle">Phasor Space</text>
+
+          {/* R vector (real axis) */}
+          <line x1="0" y1="0" x2="56" y2="0" stroke="url(#rGrad)" strokeWidth="4" strokeLinecap="round" />
+          <text x="62" y="-6" fill="#ffb989" fontSize="11">R</text>
+
+          {/* X (reactance) vector - we'll show inductive positive jX upward */}
+          <line x1="56" y1="0" x2="56" y2="-44" stroke="url(#xGrad)" strokeWidth="4" strokeLinecap="round" />
+          <text x="64" y="-46" fill="#cfc0ff" fontSize="11">jX</text>
+
+          {/* Resultant Z */}
+          <line x1="0" y1="0" x2="72" y2="-36" stroke="url(#zGrad)" strokeWidth="4" strokeLinecap="round" />
+          <text x="72" y="-44" fill="#ff99dd" fontSize="11">|Z|</text>
+
+          {/* rotating phasors: show small rotation to imply time evolution */}
+          <g className="rotatePhasors" transform={`rotate(0)`}>
+            <motion.g animate={{ rotate: 360 }} transition={{ duration: 6, repeat: Infinity, ease: "linear" }}>
+              {/* Visual trail / arrowheads */}
+              <defs>
+                <marker id="arrow" markerWidth="6" markerHeight="6" refX="6" refY="3" orient="auto">
+                  <path d="M0,0 L6,3 L0,6 z" fill="#fff" />
+                </marker>
+              </defs>
+            </motion.g>
+          </g>
+        </g>
+      </g>
+
+      <style>{`
+        .impedanceViz { transform-origin: 0 0; transform: scale(0.62); }
+        @media (max-width: 640px) { .impedanceViz { transform: scale(0.5); } }
+
+        /* traveling flow pulse */
+        @keyframes flowPulse {
+          0% { offset-distance: 0%; opacity: 0.7; transform: scale(0.9); }
+          50% { opacity: 1; transform: scale(1.15); }
+          100% { offset-distance: 100%; opacity: 0; transform: scale(0.7); }
+        }
+
+        /* subtle wire flicker */
+        @keyframes wireFlicker {
+          0% { opacity: 0.95; }
+          50% { opacity: 1; }
+          100% { opacity: 0.95; }
+        }
+
+        /* phasor rotate helper (if you want CSS rotation instead of Framer Motion) */
+        @keyframes slowRotate {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
+    </>
+  );
+})()}
+
+{visual?.symbol === "admittance" && (() => {
+  // Parameters (from visual or defaults)
+  const freq = visual?.waveform?.freq ?? 1.2; // Hz
+  const mag = visual?.waveform?.amp ?? 0.8; // admittance magnitude (0..1)
+  const phase = visual?.waveform?.phase ?? 0.3; // radians (G + jB angle)
+  const running = visual?.running ?? true;
+
+  // Derived
+  const loopSec = Math.max(0.45, 2 / freq); // animation base period (s)
+  const svgW = 1000, svgH = 520;
+  const glow = 3.2;
+  const phasorAngleDeg = (phase * 180) / Math.PI;
+  const G = (mag * Math.cos(phase)).toFixed(3);
+  const B = (mag * Math.sin(phase)).toFixed(3);
+
+  // helper: phasor endpoint coordinates on the small phasor plane (radius scaled)
+  const phasorR = 120 * Math.min(1.4, Math.max(0.2, mag)); // visual scaling
+  const phasorX = phasorR * Math.cos(-phase + Math.PI / 2); // rotate so 0deg up
+  const phasorY = phasorR * Math.sin(-phase + Math.PI / 2);
+
+  // particle counts
+  const particleCount = 10;
+
+  return (
+    <>
+      <g className="admittanceViz" transform="translate(0,0)">
+        <defs>
+          {/* Glow filters */}
+          <filter id="glowBlue" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation={glow} result="b" />
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="glowOrange" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation={glow * 1.1} result="b" />
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+
+          {/* subtle turbulence for reactive shimmer */}
+          <filter id="turb" x="-25%" y="-25%" width="150%" height="150%">
+            <feTurbulence baseFrequency="0.6" numOctaves="1" stitchTiles="stitch" result="t" />
+            <feDisplacementMap in="SourceGraphic" in2="t" scale="2" xChannelSelector="R" yChannelSelector="G"/>
+          </filter>
+
+          {/* gradients */}
+          <linearGradient id="voltGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#00eaff"/>
+            <stop offset="100%" stopColor="#0078ff"/>
+          </linearGradient>
+          <linearGradient id="currGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#ffb84a"/>
+            <stop offset="100%" stopColor="#ff8a00"/>
+          </linearGradient>
+          <linearGradient id="gPath" x1="0" x2="1">
+            <stop offset="0%" stopColor="#ffaa00"/>
+            <stop offset="100%" stopColor="#ffd27a"/>
+          </linearGradient>
+          <linearGradient id="bPath" x1="0" x2="1">
+            <stop offset="0%" stopColor="#00ffe6"/>
+            <stop offset="100%" stopColor="#00b8ff"/>
+          </linearGradient>
+
+          {/* phasor plane path for particle offsets */}
+          <path id="phasorCircle" d={`M ${200} ${200} m -120,0 a 120,120 0 1,0 240,0 a 120,120 0 1,0 -240,0`} fill="none"/>
+          <path id="gPathLine" d="M 200 80 H 380" fill="none" />
+          <path id="bPathLine" d="M 200 80 V 200" fill="none" />
+          <path id="circuitWire" d="M 460 260 H 740" fill="none" />
+        </defs>
+
+        {/* background */}
+        <rect width={svgW} height={svgH} fill="#050505"/>
+        <rect width={svgW} height={svgH} fill="url(#bgGrad)" opacity="0.04"/>
+
+        {/* title + numeric readouts */}
+        <text x="36" y="36" fill="#e6e6e6" fontSize="16" fontFamily="Orbitron" fontWeight="600">Admittance (Y) — Holographic Phasor Visualization</text>
+        <g transform="translate(36,46)">
+          <text x="0" y="18" fill="#9aa0b1" fontSize="11">Y = G + jB</text>
+          <text x="0" y="36" fill="#ffb84a" fontSize="12">G (conductance): <tspan fill="#ffaa00">{G}</tspan></text>
+          <text x="0" y="54" fill="#00eaff" fontSize="12">B (susceptance): <tspan fill="#00ffe6">{B}</tspan></text>
+          <text x="0" y="72" fill="#9aa0b1" fontSize="11">|Y|: <tspan fill="#ffd27a">{mag.toFixed(3)}</tspan>  ∠ {phasorAngleDeg.toFixed(1)}°</text>
+        </g>
+
+        {/* --- CIRCUIT PATH / WIRING (right side) --- */}
+        <g transform="translate(420,220)">
+          {/* simple wire from source to branch */}
+          <line x1="-340" y1="40" x2="-200" y2="40" stroke="#222" strokeWidth="6" strokeLinecap="round"/>
+          {/* branching node */}
+          <circle cx="-160" cy="40" r="6" fill="#ffd27a" filter="url(#glowOrange)" opacity="0.9"/>
+          <text x="-170" y="-4" fill="#9aa0b1" fontSize="11">Circuit</text>
+
+          {/* Conductance branch (G) horizontal */}
+          <g transform="translate(-160,40)">
+            <line x1="0" y1="0" x2="140" y2="0" stroke="url(#gPath)" strokeWidth="8" strokeLinecap="round" filter="url(#glowOrange)"/>
+            <rect x="146" y="-14" width="36" height="28" rx="6" fill="#140900" stroke="#4a2a00"/>
+            <rect x="150" y="-10" width="28" height="20" rx="4" fill="#ffaa00" filter="url(#glowOrange)"/>
+            <text x="170" y="36" fill="#ffd27a" fontSize="11" textAnchor="middle">G</text>
+            <title>G — Conductance: real current path (power dissipation)</title>
+          </g>
+
+          {/* Susceptance branch (B) vertical */}
+          <g transform="translate(-160,40)">
+            <line x1="0" y1="0" x2="0" y2="-120" stroke="url(#bPath)" strokeWidth="8" strokeLinecap="round" filter="url(#glowBlue)"/>
+            <g transform="translate(-24,-156)">
+              <rect x="24" y="0" width="28" height="28" rx="6" fill="#00121a" stroke="#00334d"/>
+              <rect x="28" y="4" width="20" height="20" rx="4" fill="#00ffe6" filter="url(#glowBlue)"/>
+              <text x="38" y="44" fill="#9eefff" fontSize="11" textAnchor="middle">B</text>
+              <title>B — Susceptance: reactive path (energy storage / return)</title>
+            </g>
+          </g>
+
+          {/* particles along paths: G */}
+          {Array.from({ length: particleCount }).map((_, i) => {
+            const delay = (i / particleCount) * loopSec;
+            return (
+              <circle key={`pg-${i}`} r="3.2" fill="#ffd27a" style={{
+                offsetPath: "path('M -160 40 H -20')",
+                animationName: running ? 'particleG' : 'none',
+                animationDuration: `${loopSec}s`,
+                animationTimingFunction: 'linear',
+                animationIterationCount: 'infinite',
+                animationDelay: `-${delay}s`,
+                filter: 'url(#glowOrange)',
+                mixBlendMode: 'screen'
+              }}/>
+            );
+          })}
+
+          {/* particles along B (vertical) */}
+          {Array.from({ length: Math.ceil(particleCount * 0.8) }).map((_, i) => {
+            const delay = (i / particleCount) * loopSec;
+            return (
+              <circle key={`pb-${i}`} r="2.8" fill="#00ffe6" style={{
+                offsetPath: "path('M -160  -120 V -40')",
+                animationName: running ? 'particleB' : 'none',
+                animationDuration: `${loopSec * 0.9}s`,
+                animationTimingFunction: 'linear',
+                animationIterationCount: 'infinite',
+                animationDelay: `-${delay}s`,
+                filter: 'url(#glowBlue)',
+                mixBlendMode: 'screen'
+              }}/>
+            );
+          })}
+        </g>
+
+        {/* --- PHASOR PLANE (left side) --- */}
+        <g transform="translate(160,160)">
+          {/* circular grid */}
+          <circle cx="200" cy="120" r="126" fill="none" stroke="#111" strokeWidth="1"/>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <circle key={i} cx="200" cy="120" r={20 + i * 20} fill="none" stroke="#111" opacity="0.06"/>
+          ))}
+
+          {/* axes */}
+          <line x1="74" y1="120" x2="326" y2="120" stroke="#333" strokeWidth="1"/>
+          <line x1="200" y1="-6" x2="200" y2="246" stroke="#333" strokeWidth="1"/>
+          <text x="330" y="120" fill="#9aa0b1" fontSize="11">Re (G)</text>
+          <text x="200" y="-18" fill="#9aa0b1" fontSize="11" textAnchor="middle">Im (B)</text>
+
+          {/* rotating phasor group: rotate at frequency (counterclockwise) */}
+          <g transform={`translate(200,120)`}>
+            {/* voltage phasor (reference) - rotates at constant speed */}
+            <g style={{ transformOrigin: "0px 0px", animation: running ? `rotateV ${loopSec}s linear infinite` : "none" }}>
+              <line x1="0" y1="0" x2="0" y2="-96" stroke="url(#voltGrad)" strokeWidth="3" filter="url(#glowBlue)" strokeLinecap="round"/>
+              <circle cx="0" cy="-96" r="4" fill="#00eaff" filter="url(#glowBlue)"/>
+            </g>
+
+            {/* admittance phasor (Y) - rotates synchronized, keeps its own angle relative to V.
+                We render it by rotating overall at same speed, but the phasor vector has a fixed angle offset (phase).
+            */}
+            <g style={{ transformOrigin: "0px 0px", animation: running ? `rotateV ${loopSec}s linear infinite` : "none" }}>
+              <g transform={`rotate(${-(phasorAngleDeg)})`}> 
+                {/* vector magnitude scaled by 'mag' */}
+                <line x1="0" y1="0" x2="0" y2={-phasorR} stroke="url(#currGrad)" strokeWidth="3.5" strokeLinecap="round" filter="url(#glowOrange)"/>
+                <circle cx="0" cy={-phasorR} r="5.2" fill="#ffb84a" filter="url(#glowOrange)"/>
+                {/* projections to axes: shadow lines */}
+                <line x1="0" y1="0" x2="0" y2="0" stroke="#fff" opacity="0"/>
+              </g>
+            </g>
+
+            {/* trailing phasor glow / path */}
+            <path d={`M 0 -${phasorR} Q ${-40} ${-phasorR/2} ${-phasorR/2} 0`} stroke="#ffb84a22" strokeWidth="2" fill="none" opacity="0.8" filter="url(#glowOrange)"/>
+          </g>
+
+          {/* numeric center */}
+          <g transform="translate(200,280)">
+            <rect x="-80" y="-26" width="160" height="52" rx="8" fill="#08080a" stroke="#111"/>
+            <text x="0" y="-2" fontSize="12" fill="#ffd27a" textAnchor="middle">Admittance |Y|</text>
+            <text x="0" y="16" fontSize="13" fill="#e6e6e6" textAnchor="middle">{mag.toFixed(3)} ∠ {phasorAngleDeg.toFixed(1)}°</text>
+          </g>
+
+          {/* phasor trails (faded) */}
+          <g style={{ opacity: 0.12 }}>
+            <path d={`M 200 24 L 200 -96`} stroke="#00eaff" strokeWidth="6" strokeLinecap="round" />
+          </g>
+        </g>
+
+        {/* --- PHASOR-TO-CIRCUIT LINK (visual guide lines) --- */}
+        <line x1="280" y1="240" x2="420" y2="240" stroke="#222" strokeWidth="1" strokeDasharray="4 4" opacity="0.35"/>
+
+        {/* explanatory labels (hoverable via title) */}
+        <g transform="translate(36,340)">
+          <text x="0" y="0" fontSize="12" fill="#9aa0b1">Hover elements to see descriptions</text>
+        </g>
+      </g>
+
+      {/* CSS Animations */}
+      <style>{`
+        .admittanceViz { transform-origin: 0 0; transform: scale(0.82); }
+        @media (max-width: 640px) { .admittanceViz { transform: scale(0.52); } }
+
+        @keyframes rotateV {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        @keyframes particleG {
+          0% { offset-distance: 0%; opacity: 0.6; transform: scale(0.9); }
+          80% { opacity: 1; transform: scale(1.05); }
+          100% { offset-distance: 100%; opacity: 0; transform: scale(0.8); }
+        }
+        @keyframes particleB {
+          0% { offset-distance: 0%; opacity: 0.5; transform: scale(0.85); }
+          50% { opacity: 1; transform: scale(1.1); }
+          100% { offset-distance: 100%; opacity: 0; transform: scale(0.7); }
+        }
+      `}</style>
+    </>
+  );
+})()}
+{visual?.symbol === "pf_meter" && (() => {
+  // Inputs (from visual object)
+  const phaseDeg = typeof visual?.phaseDeg === "number" ? visual.phaseDeg : 0; // degrees, +ve = current lags (inductive)
+  const running = visual?.running ?? true;
+  const freq = visual?.freq ?? 1.0; // Hz for voltage
+  const loopSec = Math.max(0.5, 1 / Math.max(0.2, freq)); // base period for 1 cycle
+  const svgW = 1100, svgH = 520;
+  const glow = 3.2;
+  const particleCount = 18;
+
+  // derived
+  const phaseRad = (phaseDeg * Math.PI) / 180;
+  const pf = Math.cos(phaseRad); // power factor
+  const pfClamped = Math.max(0, Math.min(1, pf)); // for gauge fill
+  const waveAmp = 42;
+
+  // helper to produce a smooth 2-cycle bezier-style sine-ish path
+  const sinePath = (x0, x1, y, amp = waveAmp, phase = 0) => {
+    const mx = (x0 + x1) / 2;
+    const c1 = x0 + (x1 - x0) * 0.25;
+    const c2 = x0 + (x1 - x0) * 0.75;
+    // two-segment cubic bezier approximating two cycles
+    return `M ${x0} ${y} C ${c1} ${y - amp * Math.sin(phase)} ${c1 + (mx - c1) * 0.9} ${y + amp * Math.sin(phase)} ${mx} ${y}
+            C ${mx + (c2 - mx) * 0.9} ${y - amp * Math.sin(phase)} ${c2} ${y + amp * Math.sin(phase)} ${x1} ${y}`;
+  };
+
+  const vPath = sinePath(80, 420, 120, waveAmp, 0);
+  const iPath = sinePath(80, 420, 180, waveAmp * 0.95, phaseRad); // phase-shifted current path
+
+  // phasor vector endpoints
+  const phasorRadius = 56;
+  // voltage phasor points (angle 0)
+  const Vx = phasorRadius;
+  const Vy = 0;
+  // current phasor points rotated by -phaseDeg (SVG Y negative up)
+  const Ix = phasorRadius * Math.cos(-phaseRad);
+  const Iy = phasorRadius * Math.sin(-phaseRad);
+
+  return (
+    <>
+      <g className="pfViz" transform="translate(0,0)">
+        <defs>
+          {/* glow filters */}
+          <filter id="pfGlowBlue" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation={glow} result="b" />
+            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+
+          <filter id="pfGlowGold" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation={glow * 1.05} result="g" />
+            <feMerge><feMergeNode in="g" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+
+          <linearGradient id="voltGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#00eaff" />
+            <stop offset="100%" stopColor="#0077ff" />
+          </linearGradient>
+
+          <linearGradient id="currGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#ffb84a" />
+            <stop offset="100%" stopColor="#ff8a3c" />
+          </linearGradient>
+
+          <radialGradient id="nodeBloom">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.9" />
+            <stop offset="30%" stopColor="#00eaff" stopOpacity="0.6" />
+            <stop offset="100%" stopColor="#000000" stopOpacity="0" />
+          </radialGradient>
+
+          {/* path IDs for particle offset-path */}
+          <path id="tracePath" d="M 460 240 H 840" fill="none" />
+          <path id="inTrace" d="M 460 240 H 580" fill="none" />
+        </defs>
+
+        {/* background gradient */}
+        <rect width={svgW} height={svgH} fill="url(#bgGrad)" />
+        <rect width={svgW} height={svgH} fill="#020208" opacity="0.96" />
+
+        {/* faint grid for HUD feel */}
+        <g opacity="0.04">
+          {Array.from({ length: Math.ceil(svgW / 36) }).map((_, i) => (
+            <line key={`v${i}`} x1={i * 36} y1="0" x2={i * 36} y2={svgH} stroke="#111" />
+          ))}
+          {Array.from({ length: Math.ceil(svgH / 36) }).map((_, i) => (
+            <line key={`h${i}`} x1="0" y1={i * 36} x2={svgW} y2={i * 36} stroke="#111" />
+          ))}
+        </g>
+
+        {/* Title & labels */}
+        <text x="56" y="36" fill="#cfefff" fontSize="16" fontFamily="Orbitron" fontWeight="600">
+          Power Factor — Phase Visualization
+        </text>
+        <text x="56" y="56" fill="#97a6b8" fontSize="11">Voltage (V) vs Current (I) — adjust phase (ϕ)</text>
+
+        {/* LEFT: AC SOURCE schematic */}
+        <g transform="translate(56,120)">
+          <circle cx="0" cy="52" r="34" fill="#02101a" stroke="#052d3b" strokeWidth="1.4" filter="url(#pfGlowBlue)" />
+          <path d="M -8 52 C 0 28 20 28 28 52" stroke="url(#voltGrad)" strokeWidth="2.6" fill="none" strokeLinecap="round" />
+          <text x="0" y="108" textAnchor="middle" fontSize="11" fill="#9edcff">AC Source</text>
+        </g>
+
+        {/* CENTER: circuit traces */}
+        <g transform="translate(180,220)">
+          {/* trace to load */}
+          <path d="M 0 0 H 300" stroke="#0b0b0b" strokeWidth="8" strokeLinecap="round" />
+          {/* load blocks (R / L / C icons) - show three small blocks selectable by visual.mode */}
+          <g transform="translate(320,-24)">
+            {/* resistor block */}
+            <rect x="0" y="0" width="64" height="48" rx="8" fill="#120700" stroke="#3a1f00" />
+            <rect x="8" y="8" width="48" height="32" rx="6" fill="#ffaa33" opacity={visual?.mode === "R" ? 1 : 0.28} style={{ filter: visual?.mode === "R" ? "url(#pfGlowGold)" : "none" }} />
+            <text x="32" y="72" fontSize="11" textAnchor="middle" fill="#ffd9b8">R</text>
+
+            {/* inductor block placed slightly right */}
+            <g transform="translate(88,0)">
+              <rect x="0" y="0" width="64" height="48" rx="8" fill="#04101a" stroke="#002232" />
+              {Array.from({ length: 6 }).map((_, i) => (
+                <ellipse key={i} cx={8 + i * 9} cy={24} rx="6" ry="10" fill="none" stroke="url(#currGrad)" strokeWidth="3" style={{ filter: 'url(#pfGlowBlue)' }} />
+              ))}
+              <text x="32" y="72" fontSize="11" textAnchor="middle" fill="#9edcff">L</text>
+            </g>
+
+            {/* capacitor block */}
+            <g transform="translate(176,0)">
+              <rect x="0" y="0" width="64" height="48" rx="8" fill="#041018" stroke="#20104a" />
+              <rect x="20" y="10" width="6" height="28" fill="#00eaff" />
+              <rect x="38" y="10" width="6" height="28" fill="#00eaff" />
+              <text x="32" y="72" fontSize="11" textAnchor="middle" fill="#c2b8ff">C</text>
+            </g>
+          </g>
+        </g>
+
+        {/* RIGHT: output and phasor display */}
+        <g transform="translate(540,160)">
+          {/* phasor circle */}
+          <circle cx="220" cy="64" r="76" fill="#041218" stroke="#0d222b" />
+          {/* voltage phasor (blue) */}
+          <line x1="220" y1="64" x2={220 + Vx} y2={64 + Vy} stroke="url(#voltGrad)" strokeWidth="3" strokeLinecap="round" filter="url(#pfGlowBlue)" />
+          {/* current phasor (gold) */}
+          <line x1="220" y1="64" x2={220 + Ix} y2={64 + Iy} stroke="url(#currGrad)" strokeWidth="3" strokeLinecap="round" filter="url(#pfGlowGold)" />
+          {/* angle arc */}
+          <path d={`
+            M ${220 + 22} ${64}
+            A 22 22 0 ${phaseDeg > 180 ? 1 : 0} 0 ${220 + 22 * Math.cos(-phaseRad)} ${64 + 22 * Math.sin(-phaseRad)}
+          `} stroke="#9aa8b8" strokeWidth="1.2" fill="none" />
+          <text x="220" y="156" fontSize="12" fill="#dfefff" textAnchor="middle">Phasor: V (blue) • I (amber)</text>
+          <text x="220" y="174" fontSize="11" fill="#9aa8b8" textAnchor="middle">ϕ = {Math.round(phaseDeg)}°</text>
+        </g>
+
+
+
+        {/* center horizontal animated energy flow (trace with particles) */}
+        <g transform="translate(460,240)">
+          <path d="M 0 0 H 380" stroke="#0b0b0b" strokeWidth="10" strokeLinecap="round" />
+          {/* particles colored based on PF (green = efficient, magenta = reactive) */}
+          {Array.from({ length: particleCount }).map((_, i) => {
+            // vary color by pf: interpolate between green and magenta
+            const greenR = Math.round(0 + (1 - pfClamped) * 255);
+            const greenG = Math.round(255 * pfClamped);
+            const greenB = Math.round(157 * pfClamped);
+            const color = pfClamped > 0.01 ? `rgb(${Math.round(255*(1-pfClamped))}, ${greenG}, ${greenB})` : '#ff3b6b';
+            const delay = (i / particleCount) * (loopSec * 0.9);
+            return (
+              <circle
+                key={`pfpart-${i}`}
+                r="3.6"
+                fill={color}
+                style={{
+                  offsetPath: "path('M 0 0 H 380')",
+                  animationName: running ? 'pfParticle' : 'none',
+                  animationDuration: `${loopSec * 1.0}s`,
+                  animationTimingFunction: 'linear',
+                  animationIterationCount: 'infinite',
+                  animationDelay: `-${delay}s`,
+                  filter: 'url(#pfGlowBlue)',
+                  mixBlendMode: 'screen',
+                }}
+              />
+            );
+          })}
+        </g>
+
+        {/* RIGHT-BOTTOM: Power Factor radial gauge */}
+        <g transform="translate(760,300)">
+          <circle cx="120" cy="60" r="72" fill="#041018" stroke="#0b2630" />
+          {/* gauge arc background */}
+          <path d="M 48 60 A 72 72 0 1 1 192 60" stroke="#1b2730" strokeWidth="12" fill="none" strokeLinecap="round" />
+          {/* gauge fill based on PF: compute stroke-dashoffset via inline style */}
+          {/* stroke-dasharray for half-circle circumference = PI * R */}
+          <path
+            d="M 48 60 A 72 72 0 1 1 192 60"
+            stroke="url(#voltGrad)"
+            strokeWidth="12"
+            fill="none"
+            strokeLinecap="round"
+            style={{
+              strokeDasharray: Math.PI * 72,
+              strokeDashoffset: Math.PI * 72 * (1 - pfClamped),
+              filter: 'url(#pfGlowGold)',
+              transition: 'stroke-dashoffset 0.6s ease-out',
+            }}
+          />
+          {/* numeric PF */}
+          <text x="120" y="60" textAnchor="middle" fontSize="20" fill="#e8fff5">{pfClamped.toFixed(2)}</text>
+          <text x="120" y="84" textAnchor="middle" fontSize="11" fill="#9aa8b8">Power Factor</text>
+        </g>
+
+        {/* HUD readouts (top-right) */}
+        <g transform="translate(760,40)">
+          <rect x="0" y="0" width="300" height="96" rx="8" fill="#04101a" stroke="#06202a" />
+          <text x="12" y="18" fill="#9edcff" fontSize="12">Voltage</text>
+          <text x="12" y="36" fill="#e6f9ff" fontSize="14">V (rms): —</text>
+
+          <text x="12" y="56" fill="#ffcf9e" fontSize="12">Current</text>
+          <text x="12" y="74" fill="#fff3d8" fontSize="14">I (rms): —</text>
+
+          <text x="160" y="18" fill="#9edcff" fontSize="12">Phase</text>
+          <text x="160" y="36" fill="#e6f9ff" fontSize="14">{Math.round(phaseDeg)}°</text>
+
+          <text x="160" y="56" fill="#9edcff" fontSize="12">PF</text>
+          <text x="160" y="74" fill="#e6f9ff" fontSize="14">{pfClamped.toFixed(2)}</text>
+        </g>
+      </g>
+
+      <style>{`
+        .pfViz { transform-origin: 0 0; transform: scale(0.58); }
+        @media (max-width: 640px) { .pfViz { transform: scale(0.5); } }
+
+        @keyframes pfParticle {
+          0% { offset-distance: 0%; opacity: 0.75; transform: scale(0.9); filter: blur(0px); }
+          60% { opacity: 1; transform: scale(1.15); filter: blur(0.6px); }
+          100% { offset-distance: 100%; opacity: 0; transform: scale(0.6); filter: blur(1px); }
+        }
+
+        /* subtle phasor motion to suggest rotation (slow) */
+        @keyframes phasorSpin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        /* waveform vertical breathing for realism */
+        path { vector-effect: non-scaling-stroke; }
+      `}</style>
+    </>
+  );
+})()}
+{visual?.symbol === "motor_torque" && (() => {
+  // Visual control params
+  const wf = visual?.waveform ?? { type: "sine", amp: 1.0, freq: 1.0, phase: 0.2 };
+  const amp = wf.amp ?? 1.0;
+  const freq = wf.freq ?? 1.0; // Hz
+  const phase = wf.phase ?? 0.2;
+  const running = visual?.running ?? true;
+
+  // timing derived from frequency
+  const period = 1 / Math.max(0.01, freq); // seconds per cycle
+  const statorRotateSec = Math.max(4, 2 * period); // stator rotation duration
+  const rotorRotateSec = Math.max(4, 2 * period); // rotor opposite direction
+  const pulseSec = Math.max(0.6, period / 2);
+
+  // scene dims (scales inside a containing SVG; we'll scale whole group)
+  const svgW = 980;
+  const svgH = 520;
+
+  // nominal educational numbers
+  const nominalTorque = (12.4 * (amp || 1)).toFixed(1); // simplified display
+  const nominalSpeed = Math.round(1450 * (amp || 1)); // display speed scaled by amp
+  const fieldFreqDisplay = Math.round(freq * 50); // relative display (example)
+
+  // particle counts
+  const fluxParticleCount = 12;
+
+  return (
+    <>
+      <g className="motorTorqueViz" transform="translate(0,0)">
+        <defs>
+          {/* BLOOM / GLOW */}
+          <filter id="glowSoft" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+
+          {/* DISPLACEMENT for subtle turbulence on field lines */}
+          <filter id="turbField" x="-20%" y="-20%" width="140%" height="140%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.002" numOctaves="2" result="turb" />
+            <feDisplacementMap in="SourceGraphic" in2="turb" scale="6" xChannelSelector="R" yChannelSelector="G" />
+          </filter>
+
+          {/* gradients */}
+          <radialGradient id="bgRad" cx="50%" cy="30%">
+            <stop offset="0%" stopColor="#071219" />
+            <stop offset="60%" stopColor="#040408" />
+            <stop offset="100%" stopColor="#020203" />
+          </radialGradient>
+
+          <linearGradient id="statorFlux" x1="0" x2="1">
+            <stop offset="0%" stopColor="#00eaff" />
+            <stop offset="50%" stopColor="#0077ff" />
+            <stop offset="100%" stopColor="#a855f7" />
+          </linearGradient>
+
+          <linearGradient id="torqueGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#fff7e6" />
+            <stop offset="50%" stopColor="#ffb84a" />
+            <stop offset="100%" stopColor="#ff6a2d" />
+          </linearGradient>
+
+          <linearGradient id="coilWire" x1="0" x2="1">
+            <stop offset="0%" stopColor="#00ffe6" />
+            <stop offset="100%" stopColor="#00a0ff" />
+          </linearGradient>
+
+          <linearGradient id="coilWireRotor" x1="0" x2="1">
+            <stop offset="0%" stopColor="#ffd7ff" />
+            <stop offset="100%" stopColor="#ff66ff" />
+          </linearGradient>
+
+          {/* a path for flux particle offset usage */}
+          <path id="fluxArc1" d="M 490 120 A 180 180 0 0 1 770 260" fill="none" />
+          <path id="fluxArc2" d="M 210 260 A 180 180 0 0 1 490 400" fill="none" />
+        </defs>
+
+        {/* BACKGROUND */}
+        <rect width={svgW} height={svgH} fill="url(#bgRad)" />
+        <g opacity="0.04">
+          {Array.from({ length: 18 }).map((_, i) => (
+            <line key={i} x1={i * (svgW / 18)} y1="0" x2={i * (svgW / 18)} y2={svgH} stroke="#0e0e12" />
+          ))}
+        </g>
+
+        {/* HUD overlays (top-right) */}
+        <g transform={`translate(${svgW - 260}, 18)`}>
+          <rect x="0" y="0" width="240" height="96" rx="10" fill="#041018" stroke="#0f0f12" />
+          <text x="12" y="22" fill="#cde9ff" fontSize="12" fontFamily="Orbitron">Electromagnetic Torque</text>
+          <text x="12" y="42" fill="#ffd79a" fontSize="11">Torque: <tspan fill="#ffb84a">{nominalTorque} N·m</tspan></text>
+          <text x="12" y="60" fill="#9edfff" fontSize="11">Speed: <tspan fill="#9edfff">{nominalSpeed} rpm</tspan></text>
+          <text x="12" y="78" fill="#9aaac1" fontSize="11">Field freq: <tspan fill="#9aaac1">{fieldFreqDisplay} Hz</tspan></text>
+        </g>
+
+        {/* SCENE CENTER: stator + rotor */}
+        <g transform={`translate(${svgW / 2}, ${svgH / 2})`}>
+          {/* stator rings & rotating flux lines group */}
+          <g className="statorGroup" style={{ transformOrigin: "0px 0px" }}>
+            <motion.g
+              animate={ running ? { rotate: 360 } : { rotate: 0 } }
+              transition={{ repeat: Infinity, duration: statorRotateSec, ease: "linear" }}
+            >
+              {/* several concentric flux rings (animated stroke dash & pulse) */}
+              {[0, 1, 2, 3].map((r, i) => {
+                const radius = 110 + i * 18;
+                return (
+                  <g key={i}>
+                    <circle
+                      cx="0"
+                      cy="0"
+                      r={radius}
+                      fill="none"
+                      stroke="url(#statorFlux)"
+                      strokeWidth={1.6}
+                      strokeOpacity={0.22 - i * 0.04}
+                      strokeDasharray="8 280"
+                      style={{
+                        filter: "url(#glowSoft)",
+                        animation: running ? `fluxPulse ${pulseSec * (1 + i * 0.12)}s ease-in-out infinite` : "none"
+                      }}
+                    />
+                    {/* short animated arc segments to suggest moving flux */}
+                    <path
+                      d={`M ${radius} 0 A ${radius} ${radius} 0 0 1 ${-radius} 0`}
+                      fill="none"
+                      stroke="url(#statorFlux)"
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                      strokeDasharray="30 180"
+                      strokeOpacity={0.55}
+                      style={{
+                        transformOrigin: "0px 0px",
+                        animation: running ? `arcRotate ${statorRotateSec}s linear infinite` : "none"
+                      }}
+                    />
+                  </g>
+                );
+              })}
+            </motion.g>
+
+            {/* small particles following flux arcs (indicate rotating field) */}
+            {Array.from({ length: fluxParticleCount }).map((_, i) => {
+              const delay = (i / fluxParticleCount) * (statorRotateSec);
+              return (
+                <circle
+                  key={`fluxp-${i}`}
+                  r="3"
+                  fill="#00eaff"
+                  style={{
+                    offsetPath: `path('M 0 -110 A 110 110 0 0 1 0 110')`,
+                    animationName: running ? 'fluxParticle' : 'none',
+                    animationDuration: `${statorRotateSec}s`,
+                    animationTimingFunction: 'linear',
+                    animationDelay: `-${delay}s`,
+                    animationIterationCount: 'infinite',
+                    filter: 'url(#glowSoft)',
+                    mixBlendMode: 'screen'
+                  }}
+                />
+              );
+            })}
+          </g>
+
+          {/* rotor (center) - rotates opposite to stator group */}
+          <motion.g
+            className="rotorGroup"
+            animate={ running ? { rotate: -360 } : { rotate: 0 } }
+            transition={{ repeat: Infinity, duration: rotorRotateSec, ease: "linear" }}
+            style={{ transformOrigin: "0px 0px" }}
+          >
+            {/* rotor metallic disk */}
+            <circle cx="0" cy="0" r="56" fill="#0b0b0d" stroke="#1b1b1f" strokeWidth="1.6" filter="url(#softShadow)"/>
+            <radialGradient id="rotorMetalGrad">
+              <stop offset="0%" stopColor="#1b1b1f" />
+              <stop offset="60%" stopColor="#2b2b33" />
+              <stop offset="100%" stopColor="#0a0a0a" />
+            </radialGradient>
+            <circle cx="0" cy="0" r="52" fill="url(#rotorMetalGrad)" stroke="#333" />
+
+            {/* rotor coils / poles - 4 pole pairs */}
+            {[-1, 1, 3, -3].map((ang, idx) => {
+              const theta = (ang * Math.PI) / 4;
+              const x = Math.cos(theta) * 34;
+              const y = -Math.sin(theta) * 34;
+              return (
+                <g key={idx} transform={`translate(${x},${y}) rotate(${(ang * 45)})`}>
+                  <rect x="-10" y="-6" width="20" height="12" rx="3" fill="url(#coilWireRotor)" stroke="#ff77ff" opacity="0.95" />
+                </g>
+              );
+            })}
+
+            {/* central shaft */}
+            <rect x="-6" y="-80" width="12" height="160" rx="6" fill="#08080a" stroke="#222" transform="rotate(0)" />
+
+            {/* torque vector arrow overlay (curved arrow) */}
+            <g transform="translate(0,-16)">
+              <path
+                d="M -90 74 A 110 110 0 0 0 90 74"
+                fill="none"
+                stroke="url(#torqueGrad)"
+                strokeWidth="10"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ filter: 'url(#glowSoft)', strokeOpacity: 0.95 }}
+              />
+              {/* arrow tip */}
+              <path d="M 88 72 L 100 82 L 80 86 Z" fill="url(#torqueGrad)" style={{ filter: 'url(#glowSoft)' }} />
+              {/* subtle pulsation on torque arrow */}
+              <g style={{ transformOrigin: "0px 0px", animation: running ? `torquePulse ${pulseSec}s ease-in-out infinite` : 'none' }}>
+                <circle cx="0" cy="86" r="6" fill="#ffb84a" opacity="0.95" style={{ filter: 'url(#glowSoft)' }} />
+              </g>
+            </g>
+          </motion.g>
+
+          {/* magnetic field vectors between stator and rotor - animated arrows */}
+          <g>
+            {Array.from({ length: 8 }).map((_, i) => {
+              const angle = (i / 8) * Math.PI * 2;
+              const rx = Math.cos(angle) * 92;
+              const ry = Math.sin(angle) * 92;
+              const tx = Math.cos(angle) * 44;
+              const ty = Math.sin(angle) * 44;
+              const delay = (i / 8) * pulseSec;
+              return (
+                <g key={`vec-${i}`} transform={`translate(${tx},${ty}) rotate(${(angle * 180 / Math.PI)})`}>
+                  <path d="M -6 0 L 6 0 L 2 -6 M 6 0 L 2 6" fill="none" stroke="#00eaff" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"
+                    style={{ opacity: 0.85, filter: 'url(#glowSoft)', animation: running ? `fieldVector ${pulseSec}s ease-in-out infinite` : 'none', animationDelay: `-${delay}s` }} />
+                </g>
+              );
+            })}
+          </g>
+
+          {/* small HUD gauge below center showing instantaneous torque (animated needle) */}
+          <g transform="translate(-120, 140)">
+            <rect x="-6" y="6" width="240" height="44" rx="8" fill="#041018" stroke="#0f0f12" />
+            <text x="6" y="30" fill="#9edfff" fontSize="11">Torque (N·m)</text>
+            {/* gauge arc */}
+            <path d="M -70 42 A 70 70 0 0 1 70 42" fill="none" stroke="#203040" strokeWidth="6" />
+            <path d="M -70 42 A 70 70 0 0 1 70 42" fill="none" stroke="#ffb84a" strokeWidth="4" strokeDasharray="44 400" strokeDashoffset={200 - (amp * 44)} style={{ filter: 'url(#glowSoft)' }} />
+            {/* needle - simple rotation tied to amp & phase (visual only) */}
+            <g transform={`translate(0,42)`}>
+              <line x1="0" y1="0" x2="0" y2="-58" stroke="#ffb84a" strokeWidth="3" strokeLinecap="round" transform={`rotate(${(amp * 32)})`} style={{ filter: 'url(#glowSoft)' }} />
+            </g>
+            <text x="120" y="28" fill="#ffd79a" fontSize="12">{(nominalTorque)} N·m</text>
+          </g>
+        </g>
+
+        {/* explanatory labels around scene */}
+        <g transform={`translate(40, ${svgH - 96})`}>
+          <text x="0" y="0" fill="#9aaac1" fontSize="11">Stator Field Rotation — creates rotating magnetic field</text>
+          <text x="0" y="18" fill="#9aaac1" fontSize="11">Rotor Interaction — field coupling generates torque</text>
+          <text x="0" y="36" fill="#9aaac1" fontSize="11">Torque Direction — follows field orientation & phase relation</text>
+        </g>
+      </g>
+
+      {/* CSS animations / keyframes */}
+      <style>{`
+        .motorTorqueViz { transform-origin: 0 0; transform: scale(0.82); pointer-events: none; }
+        @media (max-width: 640px) { .motorTorqueViz { transform: scale(0.54); } }
+
+        @keyframes fluxPulse {
+          0% { stroke-opacity: 0.12; transform: scale(1); }
+          50% { stroke-opacity: 0.95; transform: scale(1.02); }
+          100% { stroke-opacity: 0.12; transform: scale(1); }
+        }
+
+        @keyframes arcRotate {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        @keyframes fluxParticle {
+          0% { offset-distance: 0%; opacity: 0.6; transform: scale(0.9); }
+          50% { opacity: 1; transform: scale(1.1); }
+          100% { offset-distance: 100%; opacity: 0; transform: scale(0.8); }
+        }
+
+        @keyframes fieldVector {
+          0% { opacity: 0.35; transform: translateY(0) scale(0.9); }
+          50% { opacity: 1; transform: translateY(-4px) scale(1.05); }
+          100% { opacity: 0.35; transform: translateY(0) scale(0.9); }
+        }
+
+        @keyframes torquePulse {
+          0% { transform: scale(1) rotate(0deg); filter: drop-shadow(0 0 6px rgba(255,184,74,0.25)); }
+          50% { transform: scale(1.03) rotate(0deg); filter: drop-shadow(0 0 12px rgba(255,110,45,0.35)); }
+          100% { transform: scale(1) rotate(0deg); filter: drop-shadow(0 0 6px rgba(255,184,74,0.25)); }
+        }
+      `}</style>
+    </>
+  );
+})()}
+{visual?.symbol === "motor" && (() => {
+  // Config from visual props
+  const wf = visual?.waveform || { type: "sine", amp: 1.0, freq: 1.0, phase: 0 };
+  const amp = Math.max(0.1, wf.amp ?? 1.0);
+  const freq = Math.max(0.1, wf.freq ?? 1.0);
+  const running = visual?.running ?? true;
+
+  // Derived timings (seconds)
+  const revSec = Math.max(0.6, 1.0 / freq); // rotor rev time (s)
+  const pulseSec = Math.max(0.6, Math.max(0.2, 1 / (freq * 2))); // coil pulse timing
+  const glow = Math.min(3.2, 0.6 + amp * 1.2);
+
+  // Layout
+  const svgW = 980;
+  const svgH = 360;
+
+  return (
+    <>
+      <svg viewBox={`0 0 ${svgW} ${svgH}`} width="100%" height="360" role="img" aria-label="Electric Motor Visualization">
+        <defs>
+          {/* glow filters */}
+          <filter id="neon" x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur stdDeviation={2.6 * glow} result="b" />
+            <feMerge>
+              <feMergeNode in="b" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+
+          <filter id="soft" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation={1.6 * glow} result="s" />
+            <feMerge><feMergeNode in="s"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+
+          {/* gradients */}
+          <linearGradient id="acIn" x1="0" x2="1">
+            <stop offset="0%" stopColor="#00eaff" />
+            <stop offset="100%" stopColor="#00bfff" />
+          </linearGradient>
+          <linearGradient id="dcIn" x1="0" x2="1">
+            <stop offset="0%" stopColor="#ffb84a" />
+            <stop offset="100%" stopColor="#ff7a2d" />
+          </linearGradient>
+
+          <linearGradient id="coilGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#ff9a4a" />
+            <stop offset="100%" stopColor="#ffd24a" />
+          </linearGradient>
+
+          <linearGradient id="fieldGrad" x1="0" x2="1">
+            <stop offset="0%" stopColor="#ff3366" />
+            <stop offset="50%" stopColor="#8f6fff" />
+            <stop offset="100%" stopColor="#00f0ff" />
+          </linearGradient>
+
+          <radialGradient id="spark" cx="50%" cy="50%">
+            <stop offset="0%" stopColor="#fff" stopOpacity="1" />
+            <stop offset="40%" stopColor="#ffd24a" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="#000" stopOpacity="0" />
+          </radialGradient>
+
+          {/* small symbol for particle */}
+          <symbol id="part">
+            <circle cx="0" cy="0" r="3" fill="#fff7d1" />
+          </symbol>
+        </defs>
+
+        {/* background subtle */}
+        <rect x="0" y="0" width={svgW} height={svgH} fill="#050509" />
+        <g opacity="0.06">
+          {Array.from({ length: 10 }).map((_, i) => (
+            <line key={i} x1="0" y1={i * 36 + 8} x2={svgW} y2={i * 36 + 8} stroke="#0e1114" strokeWidth="1" />
+          ))}
+        </g>
+
+        {/* Header labels */}
+        <text x="36" y="28" fill="#9ee6ff" fontSize="13" fontWeight="700">Power Input</text>
+        <text x={svgW / 2 - 90} y="28" fill="#ffd24a" fontSize="13" fontWeight="700">Stator & Rotor (Motor)</text>
+        <text x={svgW - 160} y="28" fill="#ffb347" fontSize="13" fontWeight="700">Mechanical Output</text>
+
+        {/* left power feed (AC/ DC) */}
+        <g transform="translate(40,80)" aria-hidden="false">
+          <rect x="0" y="0" width="160" height="120" rx="10" fill="#060608" stroke="#0d1114" />
+          <text x="12" y="18" fill="#9aa" fontSize="11">Supply</text>
+          {/* waveform symbol */}
+          <g transform="translate(12,36)">
+            {wf.type === "sine" ? (
+              <path d="M0 18 Q20 0 40 18 T 80 18 T 120 18" fill="none" stroke="#00eaff" strokeWidth="2" filter="url(#neon)" style={{ strokeDasharray: 200, animation: `sineMove ${revSec}s linear infinite` }} />
+            ) : (
+              <path d="M0 18 L40 18 L40 6 L80 6 L80 18 L120 18" fill="none" stroke="#ffb84a" strokeWidth="2" filter="url(#neon)" />
+            )}
+          </g>
+
+          <text x="12" y="110" fill="#ffdca3" fontSize="12">{wf.type.toUpperCase()} • {freq} Hz</text>
+        </g>
+
+        {/* feed line */}
+        <line x1="200" y1="140" x2="320" y2="140" stroke={wf.type === "sine" ? "url(#acIn)" : "url(#dcIn)"} strokeWidth="6" strokeLinecap="round" filter="url(#soft)" />
+
+        {/* animated current particles on feed */}
+        {Array.from({ length: Math.max(6, Math.round(4 * amp)) }).map((_, i) => (
+          <circle key={i} r="3" fill={wf.type === "sine" ? "#00eaff" : "#ffd24a"} style={{
+            offsetPath: `path('M 200 140 H 320')`,
+            animationName: 'feedFlow',
+            animationDuration: `${Math.max(1.2, 2.4 - amp)}s`,
+            animationDelay: `-${i * 0.2}s`,
+            animationTimingFunction: 'linear',
+            animationIterationCount: 'infinite',
+            filter: 'url(#neon)'
+          }} />
+        ))}
+
+        {/* STATOR (coils) arranged circularly */}
+        <g transform={`translate(${svgW / 2 - 40}, ${svgH / 2})`} aria-label="Stator Coils">
+          {/* outer ring */}
+          <circle r="120" fill="none" stroke="#0b0b0b" strokeWidth="2" />
+          {/* coils — 6 coils */}
+          {Array.from({ length: 6 }).map((_, i) => {
+            const angle = (i / 6) * 360;
+            const x = Math.cos((angle - 90) * Math.PI / 180) * 90;
+            const y = Math.sin((angle - 90) * Math.PI / 180) * 90;
+            return (
+              <g key={i} transform={`translate(${x},${y}) rotate(${angle})`}>
+                <rect x="-22" y="-26" width="44" height="52" rx="10" fill="#080808" stroke="#222" />
+                <rect x="-18" y="-22" width="36" height="44" rx="8" fill="url(#coilGrad)" opacity="0.95" filter="url(#neon)" style={{ transformOrigin: 'center', animation: `coilPulse ${pulseSec}s linear infinite`, animationDelay: `${(i % 3) * (pulseSec / 3)}s` }} />
+                <text x="0" y="66" fill="#9aa" fontSize="9" textAnchor="middle">STATOR</text>
+              </g>
+            );
+          })}
+        </g>
+
+        {/* ROTOR (armature) - center */}
+        <g transform={`translate(${svgW / 2 - 40}, ${svgH / 2})`} aria-label="Rotor">
+          {/* rotor outer */}
+          <g className="rotor" style={{ transformOrigin: '50% 50%', animation: `rotorSpin ${revSec}s linear infinite` }}>
+            <circle r="44" fill="#0a0a0a" stroke="#222" strokeWidth="2" />
+            {/* copper coil bars (visual) */}
+            {Array.from({ length: 8 }).map((_, i) => (
+              <rect key={i} x="-4" y="-44" width="8" height="24" rx="2" fill="url(#coilGrad)" transform={`rotate(${i * 45})`} opacity={0.95} filter="url(#neon)" />
+            ))}
+            {/* shaft */}
+            <rect x="-6" y="-6" width="12" height="40" rx="4" fill="#111" transform="rotate(0)" />
+            <circle r="6" fill="#ffd24a" />
+          </g>
+
+          {/* magnetic flux arcs (N/S) */}
+          <g>
+            <path d="M -80 -20 Q -60 0 -80 20" stroke="#00eaff" strokeWidth="3" fill="none" opacity="0.9" filter="url(#neon)" style={{ animation: `fluxPulse ${pulseSec}s ease-in-out infinite` }} />
+            <path d="M 80 -20 Q 60 0 80 20" stroke="#ff3366" strokeWidth="3" fill="none" opacity="0.9" filter="url(#neon)" style={{ animation: `fluxPulse ${pulseSec}s ease-in-out infinite reverse` }} />
+            <text x="-100" y="-6" fill="#00eaff" fontSize="10">N</text>
+            <text x="92" y="-6" fill="#ff3366" fontSize="10">S</text>
+          </g>
+        </g>
+
+        {/* torque arcs (visual flames) */}
+        <g transform={`translate(${svgW / 2 + 120}, ${svgH / 2})`} aria-hidden="true">
+          <path d="M -12 -32 C -24 -8 -24 8 -12 32" fill="none" stroke="#ffb347" strokeWidth="3" strokeLinecap="round" filter="url(#neon)" style={{ animation: `torquePulse ${revSec}s ease-in-out infinite` }} />
+          <text x="-8" y="56" fill="#ffdca3" fontSize="11">Torque</text>
+        </g>
+
+        {/* mechanical output: gear/fan on right */}
+        <g transform={`translate(${svgW - 120}, ${svgH / 2})`} aria-label="Mechanical Output">
+          <g className="gear" style={{ transformOrigin: '50% 50%', animation: `gearSpin ${revSec}s linear infinite` }}>
+            <circle r="34" fill="#0b0b0b" stroke="#222" />
+            {Array.from({ length: 8 }).map((_, i) => (
+              <rect key={i} x="-6" y="-46" width="12" height="16" rx="2" fill="#ffb347" transform={`rotate(${i * 45})`} opacity="0.95" filter="url(#neon)" />
+            ))}
+            <circle r="8" fill="#ffd24a" />
+          </g>
+          <text x="-8" y="64" fill="#ffdca3" fontSize="11" textAnchor="middle">Output Shaft</text>
+        </g>
+
+        {/* output electrical wires (glowing) */}
+        <path d={`M ${svgW/2 + 60} ${svgH/2} H ${svgW - 180}`} stroke="#33cfff" strokeWidth="4" strokeLinecap="round" filter="url(#neon)" />
+        <path d={`M ${svgW/2 + 60} ${svgH/2 + 12} H ${svgW - 180}`} stroke="#ffb84a" strokeWidth="4" strokeLinecap="round" filter="url(#neon)" />
+
+        {/* particles from coil to wires to represent generated current */}
+        {Array.from({ length: 10 }).map((_, i) => (
+          <circle key={i} r="2.5" fill="#fff7d1" style={{
+            offsetPath: `path('M ${svgW/2 - 40} ${svgH/2} C ${svgW/2 + 30} ${svgH/2 - 60} ${svgW - 220} ${svgH/2 - 20} ${svgW - 180} ${svgH/2}')`,
+            animationName: 'genFlow',
+            animationDuration: `${Math.max(1.4, 3.2 - amp)}s`,
+            animationDelay: `-${i * 0.25}s`,
+            animationIterationCount: 'infinite',
+            animationTimingFunction: 'linear',
+            filter: 'url(#neon)'
+          }} />
+        ))}
+
+        {/* small oscilloscope waveform below motor */}
+        <g transform={`translate(${svgW/2 - 220}, ${svgH - 70})`}>
+          <rect x="0" y="0" width="440" height="48" rx="8" fill="#070708" stroke="#111" />
+          <path d="M 8 24 Q 40 4 72 24 T 136 24 T 200 24 T 264 24 T 328 24 T 392 24" fill="none" stroke="#00eaff" strokeWidth="2" filter="url(#neon)" style={{ strokeDasharray: 600, animation: `osc ${revSec}s linear infinite` }} />
+          <text x="12" y="14" fill="#9aa" fontSize="10">Generator Output (waveform)</text>
+        </g>
+      </svg>
+
+      <style>{`
+        /* core animations */
+        @keyframes rotorSpin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        @keyframes gearSpin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(-360deg); } /* opposite visually for gear */
+        }
+        @keyframes coilPulse {
+          0% { transform: scale(1); opacity: 0.7; filter: blur(0px); }
+          50% { transform: scale(1.06); opacity: 1; filter: blur(0.6px); }
+          100% { transform: scale(1); opacity: 0.7; filter: blur(0px); }
+        }
+        @keyframes feedFlow {
+          0% { offset-distance: 0%; opacity: 0.95; }
+          100% { offset-distance: 100%; opacity: 0.95; }
+        }
+        @keyframes genFlow {
+          0% { offset-distance: 0%; opacity: 1; transform: scale(1); }
+          100% { offset-distance: 100%; opacity: 0.2; transform: scale(0.7); }
+        }
+        @keyframes inducedFlow {
+          0% { offset-distance: 0%; opacity: 1; }
+          100% { offset-distance: 100%; opacity: 0; }
+        }
+        @keyframes fieldOsc {
+          0% { opacity: 0.8; stroke-width: 2; }
+          50% { opacity: 1; stroke-width: 4; }
+          100% { opacity: 0.8; stroke-width: 2; }
+        }
+        @keyframes acWave {
+          0% { stroke-dashoffset: 0; }
+          100% { stroke-dashoffset: -320; }
+        }
+        @keyframes osc {
+          0% { stroke-dashoffset: 0; }
+          100% { stroke-dashoffset: -600; }
+        }
+        @keyframes torquePulse {
+          0% { opacity: 0.4; transform: scale(0.98); }
+          50% { opacity: 1; transform: scale(1.05); }
+          100% { opacity: 0.4; transform: scale(0.98); }
+        }
+
+        /* apply durations derived from props */
+        .rotor { animation-duration: ${revSec}s; animation-name: rotorSpin; animation-timing-function: linear; animation-iteration-count: infinite; transform-origin: 50% 50%; animation-play-state: ${running ? 'running' : 'paused'}; }
+        .gear { animation-duration: ${revSec}s; animation-name: gearSpin; animation-timing-function: linear; animation-iteration-count: infinite; transform-origin: 50% 50%; animation-play-state: ${running ? 'running' : 'paused'}; }
+        .turbineGroup { animation-duration: ${revSec}s; animation-name: rotorSpin; animation-timing-function: linear; animation-iteration-count: infinite; transform-origin: 50% 50%; animation-play-state: ${running ? 'running' : 'paused'}; }
+
+        /* coil pulse rate sync */
+        @keyframes coilPulseCustom { 0% { transform: scale(1); } 50% { transform: scale(1.06); } 100% { transform: scale(1); } }
+        rect[fill="url(#coilGrad)"] { animation: coilPulse ${pulseSec}s ease-in-out infinite; transform-origin: center; }
+
+        /* responsive */
+        @media (max-width: 720px) {
+          svg { height: 520px; }
+        }
       `}</style>
     </>
   );
 })()}
 
 
+{visual?.symbol === "generator" && (() => {
+const freq = visual?.waveform?.freq ?? 1.0; // electrical frequency (Hz) — visually tied to rotor speed
+const amp = visual?.waveform?.amp ?? 1.0;
+const running = visual?.running ?? true;
+const rotationPeriod = Math.max(0.35, 1 / Math.max(0.3, freq)); // seconds per revolution (visual)
+const svgW = 1100;
+const svgH = 520;
+const glow = 3;
+const particleCount = 14;
+
+// small helper for oscilloscope path (smooth sine-like bezier)
+const oscPath =` M 0 28 C 24 ${28 - 18 * amp} 48 ${28 + 18 * amp} 96 28 C 144 ${28 - 18 * amp} 192 ${28 + 18 * amp} 240 28`;
+
+return (
+<>
+<g className="generatorViz" transform="translate(0,0)">
+<defs>
+{/* Glow / bloom filters */}
+<filter id="glowBlue" x="-200%" y="-200%" width="400%" height="400%">
+<feGaussianBlur stdDeviation={glow} result="b" />
+<feMerge>
+<feMergeNode in="b" />
+<feMergeNode in="SourceGraphic" />
+</feMerge>
+</filter>
+      <filter id="glowOrange" x="-200%" y="-200%" width="400%" height="400%">
+        <feGaussianBlur stdDeviation={glow * 1.1} result="o" />
+        <feMerge>
+          <feMergeNode in="o" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
+
+      <filter id="softShadow" x="-50%" y="-50%" width="200%" height="200%">
+        <feDropShadow dx="0" dy="6" stdDeviation="6" floodColor="#000" floodOpacity="0.6" />
+      </filter>
+
+      {/* Metallic / coil gradients */}
+      <linearGradient id="shaftMetal" x1="0" x2="1">
+        <stop offset="0%" stopColor="#2b2b2b" />
+        <stop offset="40%" stopColor="#6b6b6b" />
+        <stop offset="100%" stopColor="#1a1a1a" />
+      </linearGradient>
+
+      <linearGradient id="coilCopper" x1="0" x2="1">
+        <stop offset="0%" stopColor="#ff7a2d" />
+        <stop offset="100%" stopColor="#ffd24a" />
+      </linearGradient>
+
+      <linearGradient id="fieldBlue" x1="0" x2="1">
+        <stop offset="0%" stopColor="#00eaff" />
+        <stop offset="100%" stopColor="#00b8ff" />
+      </linearGradient>
+
+      <linearGradient id="energyTrail" x1="0" x2="1">
+        <stop offset="0%" stopColor="#ffb347" />
+        <stop offset="60%" stopColor="#ff7a2d" />
+        <stop offset="100%" stopColor="#00eaff" />
+      </linearGradient>
+
+      {/* small path elements used for particle offset-path */}
+      <path id="outputWire" d="M 820 260 H 980" fill="none" />
+      <path id="shaftPath" d="M 140 260 H 260" fill="none" />
+    </defs>
+
+    {/* Background */}
+    <rect width={svgW} height={svgH} fill="#0a0a0f" />
+    {/* faint PCB/grid */}
+    <g opacity="0.04">
+      {Array.from({ length: Math.ceil(svgW / 30) }).map((_, i) => (
+        <line key={`v-${i}`} x1={i * 30} y1="0" x2={i * 30} y2={svgH} stroke="#111" />
+      ))}
+      {Array.from({ length: Math.ceil(svgH / 30) }).map((_, i) => (
+        <line key={`h-${i}`} x1="0" y1={i * 30} x2={svgW} y2={i * 30} stroke="#111" />
+      ))}
+    </g>
+
+    {/* Title + small formula label */}
+    <text x="40" y="40" fill="#e6e6e6" fontSize="16" fontFamily="Orbitron" fontWeight="600">
+      Electromagnetic Generator — Energy Conversion
+    </text>
+    <text x="40" y="60" fill="#9aa0b1" fontSize="12">Mechanical → Electrical (E = N × dΦ/dt)</text>
+
+    {/* Mechanical input (left): turbine/shaft */}
+    <g transform="translate(120,260)">
+      {/* flywheel */}
+      <g transform="translate(-40,0)" >
+        <circle cx="0" cy="0" r="40" fill="#101010" stroke="#2a2a2a" strokeWidth="3" />
+        <g transform="translate(-4,0)" style={{ filter: 'url(#softShadow)' }}>
+          <rect x="-8" y="-36" width="16" height="72" rx="4" fill="url(#shaftMetal)" />
+        </g>
+        <text x="-4" y="64" fontSize="11" fill="#ffb86b">Turbine</text>
+      </g>
+
+      {/* shaft segment with reflection sweep */}
+      <g transform="translate(20,0)">
+        <rect x="0" y="-6" width="140" height="12" rx="6" fill="url(#shaftMetal)" stroke="#333" />
+        {/* reflection sweep */}
+        <rect x="0" y="-6" width="140" height="12" rx="6" fill="#ffffff11" style={{ mixBlendMode: 'overlay', opacity: 0.08, transformOrigin: 'left center', animation: running ? `shaftShine ${rotationPeriod * 0.9}s linear infinite` : 'none' }} />
+        <text x="70" y="26" fontSize="11" fill="#ffb86b" textAnchor="middle">Shaft</text>
+      </g>
+
+      {/* mechanical energy arrow (orange) */}
+      <path d="M -100 -40 L -60 -40" stroke="url(#energyTrail)" strokeWidth="6" strokeLinecap="round" markerEnd="url(#arrowHead)" />
+    </g>
+
+    {/* Rotor + Coil Assembly (center) */}
+    <g transform="translate(420,260)">
+      {/* stator poles - U shaped */}
+      <g>
+        <rect x="-240" y="-120" width="80" height="240" rx="12" fill="#071018" stroke="#06202a" strokeWidth="2" />
+        <rect x="160" y="-120" width="80" height="240" rx="12" fill="#071018" stroke="#06202a" strokeWidth="2" />
+        {/* pole tips subtle glow */}
+        <rect x="-240" y="-36" width="80" height="72" fill="url(#fieldBlue)" opacity="0.06" />
+        <rect x="160" y="-36" width="80" height="72" fill="url(#fieldBlue)" opacity="0.06" />
+      </g>
+
+      {/* magnetic field animated arcs between poles */}
+      <g>
+        {[ -1, -0.6, -0.2, 0.2, 0.6, 1 ].map((s, i) => (
+          <path
+            key={i}
+            d={`M ${-120} ${s * 80} Q 0 ${s * 140} 120 ${s * 80}`}
+            fill="none"
+            stroke="url(#fieldBlue)"
+            strokeWidth={1.8 - i * 0.22}
+            strokeLinecap="round"
+            style={{
+              opacity: 0.28,
+              filter: 'url(#glowBlue)',
+              transformOrigin: 'center',
+              animation: running ? `fluxPulse ${rotationPeriod * (1 + i * 0.08)}s ease-in-out ${i * 0.08}s infinite` : 'none'
+            }}
+          />
+        ))}
+      </g>
+
+      {/* Rotor: central rotating coil (3D-ish) */}
+      <g>
+        {/* rotor rotations synchronized with rotationPeriod */}
+        <g style={{ transformOrigin: '0px 0px', animation: running ? `rotateRotor ${rotationPeriod}s linear infinite` : 'none' }}>
+          {/* coil cylinder */}
+          <ellipse cx="0" cy="0" rx="64" ry="40" fill="url(#coilCopper)" stroke="#a85a2a" strokeWidth="2" style={{ filter: 'url(#glowOrange)' }} />
+          {/* wrap lines to simulate winding */}
+          {Array.from({ length: 10 }).map((_, i) => (
+            <ellipse key={i} cx={(i - 5) * 1.5} cy="0" rx={64 - i * 4} ry={40 - i * 2.2} fill="none" stroke="#7a3310" strokeWidth={1} opacity={0.65} />
+          ))}
+          {/* shaft */}
+          <rect x="-6" y="-80" width="12" height="160" rx="6" fill="url(#shaftMetal)" />
+          <circle cx="0" cy="0" r="10" fill="#2a2a2a" stroke="#666" strokeWidth="1.2" />
+        </g>
+
+        {/* rotating field indicator arcs around rotor (torque arcs) */}
+        <g>
+          <path d="M -110 -6 Q -70 -40 -30 -6" fill="none" stroke="url(#energyTrail)" strokeWidth="2.2" strokeLinecap="round" style={{ opacity: 0.85, filter: 'url(#glowOrange)', transformOrigin: 'center', animation: running ? `torquePulse ${rotationPeriod * 0.9}s linear infinite` : 'none' }} />
+          <path d="M 110 6 Q 70 40 30 6" fill="none" stroke="url(#energyTrail)" strokeWidth="2.2" strokeLinecap="round" style={{ opacity: 0.75, filter: 'url(#glowOrange)', transformOrigin: 'center', animation: running ? `torquePulse ${rotationPeriod * 0.9}s linear infinite` : 'none' }} />
+        </g>
+      </g>
+
+      {/* label */}
+      <text x="0" y="110" fontSize="12" fill="#8f6fff" textAnchor="middle">ROTOR COIL</text>
+    </g>
+
+    {/* Output terminals and wire (right) */}
+    <g transform="translate(820,220)">
+      {/* terminals */}
+      <rect x="0" y="22" width="40" height="6" rx="3" fill="#0b0b0b" stroke="#223244" />
+      <rect x="0" y="-28" width="40" height="6" rx="3" fill="#0b0b0b" stroke="#223244" />
+      <text x="64" y="4" fontSize="12" fill="#00eaff">Output</text>
+
+      {/* output glowing wire */}
+      <path d="M 40 0 H 160" stroke="url(#energyTrail)" strokeWidth="6" strokeLinecap="round" style={{ filter: 'url(#glowBlue)', strokeDasharray: 8, strokeDashoffset: 0, animation: running ? `wireGlow ${rotationPeriod * 0.6}s linear infinite` : 'none' }} />
+
+      {/* particle pulses (AC) moving along wire (alternate direction) */}
+      {Array.from({ length: particleCount }).map((_, i) => {
+        const delay = (i / particleCount) * rotationPeriod * 0.9;
+        return (
+          <circle
+            key={i}
+            r="3.4"
+            fill={i % 2 === 0 ? "#ffb347" : "#00eaff"}
+            style={{
+              offsetPath: "path('M 40 0 H 160')",
+              animationName: running ? 'acParticle' : 'none',
+              animationDuration: `${rotationPeriod * 0.9}s`,
+              animationTimingFunction: 'linear',
+              animationIterationCount: 'infinite',
+              animationDelay: `${-delay}s`,
+              filter: 'url(#glowBlue)',
+              mixBlendMode: 'screen'
+            }}
+          />
+        );
+      })}
+
+      {/* oscilloscope box */}
+      <g transform="translate(200,-10)">
+        <rect x="0" y="0" width="260" height="56" rx="6" fill="#03030a" stroke="#0f2130" />
+        <text x="8" y="12" fontSize="11" fill="#9aa0b1">Generated V(t)</text>
+        {/* waveform — animate stroke-dashoffset to sync with rotor */}
+        <path d={oscPath} transform="translate(8,6)" stroke="url(#fieldBlue)" strokeWidth="2.2" fill="none" strokeLinecap="round" style={{ filter: 'url(#glowBlue)', opacity: 0.85, strokeDasharray: 480, strokeDashoffset: 0, animation: running ? `waveSync ${rotationPeriod}s linear infinite` : 'none' }} />
+      </g>
+    </g>
+  </g>
+
+  {/* Embedded styles / keyframes */}
+  <style>{`
+    .generatorViz { transform-origin: 0 0; transform: scale(0.68); }
+    @media (max-width: 640px) { .generatorViz { transform: scale(0.5); } }
+
+    /* Rotor rotation */
+    @keyframes rotateRotor {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* Flux pulse for magnetic field lines */
+    @keyframes fluxPulse {
+      0% { opacity: 0.25; transform: scale(1); }
+      50% { opacity: 0.9; transform: scale(1.05); }
+      100% { opacity: 0.25; transform: scale(1); }
+    }
+
+    /* Torque arc motion */
+    @keyframes torquePulse {
+      0% { stroke-dashoffset: 0; opacity: 0.9; transform: translateX(0); }
+      50% { stroke-dashoffset: 12; opacity: 1; transform: translateX(-2px); }
+      100% { stroke-dashoffset: 0; opacity: 0.9; transform: translateX(0); }
+    }
+
+    /* Shaft reflection sweep */
+    @keyframes shaftShine {
+      0% { transform: translateX(-140px) skewX(-8deg) scaleX(1); opacity: 0.06; }
+      50% { transform: translateX(140px) skewX(8deg) scaleX(1.05); opacity: 0.18; }
+      100% { transform: translateX(-140px) skewX(-8deg) scaleX(1); opacity: 0.06; }
+    }
+
+    /* Wire glow movement */
+    @keyframes wireGlow {
+      0% { stroke-dashoffset: 0; opacity: 0.8; }
+      50% { stroke-dashoffset: 16; opacity: 1; }
+      100% { stroke-dashoffset: 0; opacity: 0.8; }
+    }
+
+    /* AC particles alternate along wire */
+    @keyframes acParticle {
+      0% { offset-distance: 0%; opacity: 0.9; transform: scale(0.85); }
+      45% { offset-distance: 50%; opacity: 1; transform: scale(1.15); }
+      100% { offset-distance: 100%; opacity: 0; transform: scale(0.7); }
+    }
+
+    /* Sine waveform sync - translate stroke dash to simulate waveform movement */
+    @keyframes waveSync {
+      0% { stroke-dashoffset: 0; transform: translateX(0); opacity: 0.9; }
+      50% { stroke-dashoffset: -120; transform: translateX(2px); opacity: 1; }
+      100% { stroke-dashoffset: -240; transform: translateX(0); opacity: 0.9; }
+    }
+  `}</style>
+</>
+);
+})()}
 
 {visual?.symbol === "diode" && (() => {
   const amp = visual?.waveform?.amp ?? 0.9;
@@ -6076,8 +8648,8 @@ export default function GlossaryPage() {
                 <Zap className="w-5 h-5 text-black" />
               </div>
               <div>
-                <div className="text-sm font-semibold text-zinc-200">BEEE Glossary</div>
-                <div className="text-xs text-zinc-400">Searchable • Interactive • Live visualizer</div>
+                <div className="text-sm font-semibold text-zinc-200">SparkLab</div>
+                <div className="text-xs text-zinc-400">BEEE Glossary</div>
               </div>
             </div>
 
@@ -6085,13 +8657,19 @@ export default function GlossaryPage() {
               <div className="hidden sm:flex items-center gap-2">
                 <div className="text-xs text-zinc-400">User</div>
                 <Select value={userType} onValueChange={(v) => setUserType(v)}>
-                  <SelectTrigger className="w-36 bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm">
+                  <SelectTrigger className="w-36 cursor-pointer focus:border-orange-400 bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm">
                     <SelectValue placeholder="User Type" />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                    <SelectItem value="student">Student</SelectItem>
-                    <SelectItem value="instructor">Instructor</SelectItem>
-                    <SelectItem value="professional">Professional</SelectItem>
+                    <SelectItem   className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="student">Student</SelectItem>
+                    <SelectItem   className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="instructor">Instructor</SelectItem>
+                    <SelectItem   className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="professional">Professional</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -6114,7 +8692,7 @@ export default function GlossaryPage() {
             <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28 }}>
               <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden">
                 <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
+                  <CardTitle className="flex items-start flex-col gap-3 justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center">
                         <BookOpen className="w-5 h-5 text-black" />
@@ -6146,19 +8724,21 @@ export default function GlossaryPage() {
                       </div>
                     </div>
 
-                    <Button variant="outline" className="px-3 py-2" onClick={() => { setQuery(""); setTagFilter(""); setCategory("All"); setShowOnlyFavorites(false); toast("Filters cleared"); }}>
+                    <Button variant="outline" className="px-3 py-2 cursor-pointer" onClick={() => { setQuery(""); setTagFilter(""); setCategory("All"); setShowOnlyFavorites(false); toast("Filters cleared"); }}>
                       Clear
                     </Button>
                   </div>
 
                   <div className="flex gap-2 items-center">
                     <Select value={category} onValueChange={(v) => setCategory(v)}>
-                      <SelectTrigger className="w-44 bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm">
+                      <SelectTrigger className="w-44 cursor-pointer focus:border-orange-400 bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm">
                         <SelectValue placeholder="Category" />
                       </SelectTrigger>
                       <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
                         {categories.map((c) => (
-                          <SelectItem key={c} value={c} className="text-white">{c}</SelectItem>
+                          <SelectItem key={c} value={c}   className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">{c}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -6166,7 +8746,7 @@ export default function GlossaryPage() {
                     <Input value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} placeholder="Tag filter" className="bg-zinc-900/60 border border-zinc-800 text-white" />
 
                     <Tooltip content="Favorites only">
-                      <button className={`p-2 rounded-md border ${showOnlyFavorites ? "bg-orange-600/20 border-orange-500" : "border-zinc-800"}`} onClick={() => setShowOnlyFavorites((s) => !s)} aria-pressed={showOnlyFavorites}>
+                      <button className={`p-2 rounded-md text-orange-400 cursor-pointer border ${showOnlyFavorites ? "bg-orange-600/20 border-orange-500" : "border-zinc-800"}`} onClick={() => setShowOnlyFavorites((s) => !s)} aria-pressed={showOnlyFavorites}>
                         <Users className="w-4 h-4" />
                       </button>
                     </Tooltip>
@@ -6207,8 +8787,8 @@ export default function GlossaryPage() {
                   </div>
 
                   <div className="flex items-center gap-2 mt-2">
-                    <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]" onClick={addSampleTerm}><PlusIcon /> Add Term</Button>
-                    <Button variant="ghost" className="border border-zinc-800" onClick={() => { setTerms(SAMPLE_TERMS); toast("Reset terms"); }}>Reset</Button>
+                    <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer" onClick={addSampleTerm}><PlusIcon /> Add Term</Button>
+                    <Button variant="ghost" className="border bg-white cursor-pointer border-zinc-800" onClick={() => { setTerms(SAMPLE_TERMS); toast("Reset terms"); }}>Reset</Button>
                   </div>
                 </CardContent>
               </Card>
@@ -6221,55 +8801,97 @@ export default function GlossaryPage() {
               <TermVisualizer visual={selectedTerm?.visual ?? { symbol: "resistor", waveform: { type: "sine", amp: 0.6, freq: 1 } }} running={running} onChange={onVisualizerChange} />
             </motion.div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl p-4 md:col-span-2">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center">
-                    <IconForSymbol symbol={selectedTerm?.visual?.symbol} className="w-6 h-6" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="text-lg font-semibold text-[#ffd24a]">{selectedTerm?.name ?? "—"}</div>
-                    <div className="text-xs text-zinc-400 mt-1">{selectedTerm?.short ?? "—"}</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              
+    <motion.div
+      initial={{ opacity: 0, y: 30 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
+    >
+      <Card className="bg-gradient-to-b from-black via-zinc-950 to-zinc-900 border border-zinc-800/70 shadow-lg shadow-orange-500/10 rounded-2xl p-5 md:col-span-2 backdrop-blur-sm hover:border-orange-500/30 transition-all duration-300">
+        <div className="flex items-start gap-5">
+          {/* Icon bubble */}
+          <div className="w-14 h-14 rounded-xl bg-gradient-to-tr from-[#ff7a2d] via-[#ff9a4a] to-[#ffd24a] flex items-center justify-center shadow-md shadow-orange-500/30">
+            <Atom className="w-7 h-7 text-black drop-shadow-sm" />
+          </div>
 
-                    <Separator className="my-3 border-zinc-800" />
+          {/* Content */}
+          <div className="flex-1">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-semibold text-[#ffd24a] tracking-wide">
+                {selectedTerm?.name ?? "Select a Concept"}
+              </h3>
+              <Badge className="bg-zinc-900/70 border border-orange-500/40 text-orange-400 text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                <Layers className="w-3 h-3" /> #{selectedTerm?.id ?? "—"}
+              </Badge>
+            </div>
 
-                    <div className="text-sm text-zinc-200 leading-relaxed">
-                      {/* cater explanation to user type */}
-                      {(() => {
-                        if (!selectedTerm) return "Select a term to view definition.";
-                        if (userType === "student") {
-                          return (
-                            <>
-                              <div className="mb-2">{selectedTerm.definition}</div>
-                              <div className="text-xs text-zinc-400">Example: conceptual explanation and everyday analogies for students.</div>
-                            </>
-                          );
-                        } else if (userType === "instructor") {
-                          return (
-                            <>
-                              <div className="mb-2">{selectedTerm.definition}</div>
-                              <div className="text-xs text-zinc-400">Instructor notes: include teaching points, common pitfalls, demonstration ideas.</div>
-                            </>
-                          );
-                        } else {
-                          return (
-                            <>
-                              <div className="mb-2">{selectedTerm.definition}</div>
-                              <div className="text-xs text-zinc-400">Professional details: formulae, units, typical component values, and real-world applications.</div>
-                            </>
-                          );
-                        }
-                      })()}
+            <p className="text-sm text-zinc-400 mt-1 italic flex items-center gap-1">
+              <Info className="w-3.5 h-3.5 text-orange-400" />
+              {selectedTerm?.short ?? "—"}
+            </p>
+
+            <Separator className="my-4 border-zinc-800/60" />
+
+            <div className="text-sm text-zinc-200 leading-relaxed space-y-3">
+              {(() => {
+                if (!selectedTerm)
+                  return (
+                    <div className="flex items-center gap-2 text-zinc-500">
+                      <Sparkles className="w-4 h-4 text-orange-400" />
+                      Select a term to view its definition and learning details.
                     </div>
+                  );
 
-                    <div className="mt-4 flex gap-2 items-center">
-                      <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-2 py-1 rounded-full">Tags: {selectedTerm?.tags.join(", ")}</Badge>
-                      <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-2 py-1 rounded-full">Complexity: {selectedTerm?.complexity}</Badge>
-                      <div className="ml-auto text-xs text-zinc-400">ID: {selectedTerm?.id}</div>
+                if (userType === "student")
+                  return (
+                    <>
+                      <p>{selectedTerm.definition}</p>
+                      <div className="text-xs text-zinc-400 flex items-center gap-2">
+                        <BookOpen className="w-3.5 h-3.5 text-orange-400" />
+                        Example: easy conceptual explanations and analogies.
+                      </div>
+                    </>
+                  );
+
+                if (userType === "instructor")
+                  return (
+                    <>
+                      <p>{selectedTerm.definition}</p>
+                      <div className="text-xs text-zinc-400 flex items-center gap-2">
+                        <Brain className="w-3.5 h-3.5 text-orange-400" />
+                        Instructor tips: common pitfalls, demos, and teaching focus.
+                      </div>
+                    </>
+                  );
+
+                return (
+                  <>
+                    <p>{selectedTerm.definition}</p>
+                    <div className="text-xs text-zinc-400 flex items-center gap-2">
+                      <Atom className="w-3.5 h-3.5 text-orange-400" />
+                      Professional view: formulas, units, and real-world use cases.
                     </div>
-                  </div>
-                </div>
-              </Card>
+                  </>
+                );
+              })()}
+            </div>
+
+            {/* Tags and complexity */}
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              <Badge className="bg-zinc-900/80 border border-zinc-800/80 text-zinc-300 rounded-full px-2 py-1 text-xs flex items-center gap-1">
+                <Tag className="w-3.5 h-3.5 text-orange-400" />{" "}
+                {selectedTerm?.tags?.join(", ") ?? "No tags"}
+              </Badge>
+              <Badge className="bg-zinc-900/80 border border-orange-500/40 text-orange-400 rounded-full px-2 py-1 text-xs flex items-center gap-1">
+                <Brain className="w-3.5 h-3.5 text-orange-400" />{" "}
+                Complexity: {selectedTerm?.complexity ?? "—"}
+              </Badge>
+            </div>
+          </div>
+        </div>
+      </Card>
+    </motion.div>
 
               <Card className="bg-black/70 border border-zinc-800 rounded-2xl p-4">
                 <div className="text-sm text-zinc-400 mb-2">Quick Tools</div>
@@ -6277,12 +8899,12 @@ export default function GlossaryPage() {
                   <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={() => { navigator.clipboard?.writeText(selectedTerm?.definition ?? ""); toast.success("Copied definition"); }}>
                     Copy Definition
                   </Button>
-                  <Button variant="ghost" className="border border-zinc-800" onClick={() => toast("Open deep-dive (coming soon)")}>Deep Dive</Button>
-                  <Button variant="outline" className="border border-zinc-800" onClick={() => toast("Share link (placeholder)")}>Share</Button>
+                  <Button variant="ghost" className="border bg-white cursor-pointer border-zinc-800" onClick={() => toast("Open deep-dive (coming soon)")}>Deep Dive</Button>
+                  <Button variant="outline" className="border cursor-pointer border-zinc-800" onClick={() => toast("Share link (placeholder)")}>Share</Button>
                   <div className="text-xs text-zinc-500 mt-2">Visualizer status: {running ? "Live" : "Paused"}</div>
                   <div className="flex gap-2 mt-2">
-                    <Button variant="ghost" className="flex-1 border border-zinc-800" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" />Run</Button>
-                    <Button variant="ghost" className="flex-1 border border-zinc-800" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" />Pause</Button>
+                    <Button variant="ghost" className="flex-1 border bg-white cursor-pointer text-orange-500 hover:text-orange-600 border-zinc-800" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" />Run</Button>
+                    <Button variant="ghost" className="flex-1 border bg-white cursor-pointer text-orange-500 hover:text-orange-600 border-zinc-800" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" />Pause</Button>
                   </div>
                 </div>
               </Card>
