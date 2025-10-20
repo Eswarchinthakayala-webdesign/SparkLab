@@ -104,7 +104,7 @@ export default function LabReportControl({
 
             <Button
               onClick={onGeneratePDF}
-              className="ml-auto bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black font-semibold hover:shadow-[0_0_15px_#ffd24a50] transition"
+              className="ml-auto bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black font-semibold hover:shadow-[0_0_15px_#ffd24a50] transition"
             >
               <FileDown className="w-4 h-4 mr-2" />
               Generate PDF

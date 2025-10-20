@@ -69,11 +69,11 @@ export default function LabReportData({
                 value={selectedTitleID}
               >
                 <SelectTrigger
-                  className="w-full bg-[#0f0f0f] border border-zinc-800/70 text-white rounded-lg focus:ring-2 focus:ring-[#ffb84a]/50 
+                  className="w-full  bg-[#0f0f0f] border border-zinc-800/70 text-white rounded-lg focus:ring-2 focus:ring-[#ffb84a]/50 
                   hover:border-[#ffb84a]/40 transition-all duration-200 cursor-pointer flex items-center justify-between px-3 py-2 text-sm"
                 >
                   <SelectValue placeholder="Select an experiment" />
-                  <ChevronDown className="w-4 h-4 text-zinc-500" />
+                 
                 </SelectTrigger>
 
                 <SelectContent
@@ -99,7 +99,7 @@ export default function LabReportData({
                           }`}
                       >
                         <div className="flex flex-col">
-                          <span className="text-gray-300">{exp.title}</span>
+                          <span className="text-gray-300 truncate sm:w-[310px] w-[350px]">{exp.title}</span>
                           <span className="text-[11px] text-zinc-500 font-light">
                             {exp.titleID}
                           </span>

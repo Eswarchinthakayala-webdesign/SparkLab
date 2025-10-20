@@ -465,10 +465,10 @@ export default function LabReportGenerator() {
             </div>
             <div className="leading-tight">
               <h1 className="text-sm sm:text-base font-semibold text-white">
-                Lab Report Generator
+               SparkLab
               </h1>
               <p className="text-[11px] sm:text-xs text-zinc-400">
-                Export charts, tables & AI text to PDF
+                Lab Report Generator
               </p>
             </div>
           </motion.div>
@@ -478,7 +478,7 @@ export default function LabReportGenerator() {
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
               <Button
                 onClick={generatePDF}
-                className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-sm font-medium px-4 py-2 shadow-lg shadow-[#ff7a2d]/20 hover:from-[#ff9540] hover:to-[#ffe47a] transition-all"
+                className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-sm cursor-pointer font-medium px-4 py-2 shadow-lg shadow-[#ff7a2d]/20 hover:from-[#ff9540] hover:to-[#ffe47a] transition-all"
               >
                 <Download className="w-4 h-4 mr-2" />
                 Generate PDF
@@ -490,7 +490,7 @@ export default function LabReportGenerator() {
           <div className="md:hidden">
             <Button
               variant="ghost"
-              className="border border-zinc-800 text-zinc-300 p-2 hover:bg-zinc-800/50"
+              className="border border-zinc-800 text-orange-400 hover:text-orange-500 p-2 cursor-pointer hover:bg-zinc-800/50"
               onClick={() => setMobileOpen(!mobileOpen)}
             >
               {mobileOpen ? (
@@ -511,7 +511,7 @@ export default function LabReportGenerator() {
           <div className="flex flex-col gap-2">
             <Button
               onClick={generatePDF}
-              className="w-full bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-sm font-medium py-2 shadow-lg shadow-[#ff7a2d]/20 hover:from-[#ff9540] hover:to-[#ffe47a] transition-all"
+              className="w-full bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black text-sm font-medium py-2 shadow-lg shadow-[#ff7a2d]/20 hover:from-[#ff9540] hover:to-[#ffe47a] transition-all"
             >
               <Download className="w-4 h-4 mr-2" />
               Generate PDF

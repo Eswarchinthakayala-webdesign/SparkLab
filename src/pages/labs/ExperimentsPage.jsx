@@ -21,6 +21,7 @@ import {
 
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
+import { toPng } from "html-to-image";  
 
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -3813,9 +3814,34 @@ const resetDefaults = () => {
     });
     return g;
   }, []);
+  
+const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
 
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
   return (
-    <div className="min-h-screen bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.18)_1px,transparent_1px)] bg-[length:18px_18px] text-white overflow-x-hidden">
+    <div className="min-h-screen pb-20 bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.18)_1px,transparent_1px)] bg-[length:18px_18px] text-white overflow-x-hidden">
       <Toaster position="top-center" richColors />
       {/* Header */}
       <header className="fixed w-full top-0 z-50 backdrop-blur-lg bg-black/70 border-b border-zinc-800 shadow-lg py-2">
@@ -3854,22 +3880,22 @@ const resetDefaults = () => {
               </div>
 
               <div className="flex items-center gap-2">
-                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black font-semibold text-sm px-3 py-1 rounded-lg shadow-md hover:scale-105 transition-transform duration-200" onClick={() => toast.success("Experiment snapshot saved")}>
+                <Button className="cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black font-semibold text-sm px-3 py-1 rounded-lg shadow-md hover:scale-105 transition-transform duration-200" onClick={snapshotPNG}>
                   Snapshot
                 </Button>
 
-                <Button variant="ghost" className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg hover:bg-zinc-800 hover:text-orange-400 transition-colors duration-200" onClick={toggleRunning} title={running ? "Pause" : "Run"}>
+                <Button variant="ghost" className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg hover:bg-zinc-950 hover:text-orange-400 transition-colors duration-200" onClick={toggleRunning} title={running ? "Pause" : "Run"}>
                   {running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
                 </Button>
 
-                <Button variant="ghost" className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg" onClick={resetDefaults} title="Reset parameters">
+                <Button variant="ghost" className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg hover:bg-zinc-950 hover:text-orange-400" onClick={resetDefaults} title="Reset parameters">
                   <Settings className="w-5 h-5" />
                 </Button>
               </div>
             </div>
 
             <div className="md:hidden">
-              <Button variant="ghost" className="border cursor-pointer border-zinc-800 p-2 rounded-lg" onClick={() => setMobileOpen(!mobileOpen)}>{mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}</Button>
+              <Button variant="ghost" className="border cursor-pointer border-zinc-800 hover:bg-zinc-950 hover:text-orange-400 p-2 rounded-lg" onClick={() => setMobileOpen(!mobileOpen)}>{mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}</Button>
             </div>
           </div>
 
@@ -3897,9 +3923,9 @@ const resetDefaults = () => {
               </div>
 
               <div className="flex gap-2">
-                <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2 rounded-md" onClick={() => toast.success("Snapshot saved")}>Snapshot</Button>
-                <Button variant="ghost" className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2 rounded-md" onClick={toggleRunning}>{running ? "Pause" : "Run"}</Button>
-                <Button variant="ghost" className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2 rounded-md" onClick={resetDefaults}>Reset</Button>
+                <Button className="flex-1  bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black text-xs py-2 rounded-md" onClick={snapshotPNG}>Snapshot</Button>
+                <Button variant="ghost" className="flex-1 border cursor-pointer hover:bg-zinc-950 hover:text-orange-400 border-zinc-800 text-xs py-2 rounded-md" onClick={toggleRunning}>{running ? "Pause" : "Run"}</Button>
+                <Button variant="ghost" className="flex-1 border cursor-pointer hover:bg-zinc-950 hover:text-orange-400 border-zinc-800 text-xs py-2 rounded-md" onClick={resetDefaults}>Reset</Button>
               </div>
             </div>
           </div>
@@ -4345,12 +4371,16 @@ const resetDefaults = () => {
         value={params.testMode || "no_load"}
         onValueChange={(value) => updateParam("testMode", value)}
       >
-        <SelectTrigger className="bg-zinc-900/60 border border-zinc-800 text-white">
+        <SelectTrigger className="bg-zinc-900/60 cursor-pointer focus:border-orange-400 text-orange-100 border border-zinc-800 ">
           <SelectValue placeholder="Choose Test" />
         </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="no_load">No-load Test</SelectItem>
-          <SelectItem value="blocked">Blocked Rotor Test</SelectItem>
+        <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
+          <SelectItem   className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md"  value="no_load">No-load Test</SelectItem>
+          <SelectItem    className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="blocked">Blocked Rotor Test</SelectItem>
         </SelectContent>
       </Select>
     </div>
@@ -4454,14 +4484,14 @@ const resetDefaults = () => {
                   )}
 
                   <div className="mt-2 flex gap-2">
-                    <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-                    <Button variant="outline" className="flex-1 border-zinc-700 text-black cursor-pointer" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+                    <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer" onClick={() => setRunning(true),()=>toast.success("Simulation Started")}><Play className="w-4 h-4 mr-2" /> Run</Button>
+                    <Button variant="outline" className="flex-1 border-zinc-700 text-black cursor-pointer" onClick={() => setRunning(false),()=>toast.success("Simulation Paused")}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
                   </div>
 
                   <div className="flex items-center gap-2 mt-2">
-                    <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
-                    <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-zinc-300 p-2" onClick={() => toast("Saved preset (not implemented)")}>Save Preset</Button>
-                    <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-zinc-300 p-2" onClick={() => toast("Help: See lab manual in docs")}>Help</Button>
+                    <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-orange-400 hover:bg-black hover:text-orange-500  p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
+                    <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-orange-400 hover:bg-black hover:text-orange-500  p-2" onClick={() => toast("Saved preset (not implemented)")}>Save Preset</Button>
+                    <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-orange-400 hover:bg-black hover:text-orange-500  p-2" onClick={() => toast("Help: See lab manual in docs")}>Help</Button>
                   </div>
                 </CardContent>
               </Card>
@@ -4471,7 +4501,7 @@ const resetDefaults = () => {
           {/* Visual + Oscilloscope */}
           <div className="lg:col-span-8 space-y-4">
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl w-full max-w-full overflow-hidden">
+              <Card className="bg-black/70 border border-zinc-800 rounded-2xl w-full max-w-full overflow-hidden snapshot">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-3">
@@ -4518,19 +4548,19 @@ const resetDefaults = () => {
             >
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Busbar Frequency</div>
-                <div className="text-lg font-semibold text-[#ff9a4a]">
+                <div className="text-lg font-semibold text-[#ff9a4a] truncate">
                   {params.freqBus || 50} Hz
                 </div>
               </div>
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Incoming Frequency</div>
-                <div className="text-lg font-semibold text-[#00ffbf]">
+                <div className="text-lg font-semibold text-[#00ffbf] truncate">
                   {params.freqAlt || 49.5} Hz
                 </div>
               </div>
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Phase Difference</div>
-                <div className="text-lg font-semibold text-[#ffd24a]">
+                <div className="text-lg font-semibold text-[#ffd24a] truncate">
                  {(((Number(params.freqAlt) || 0) - (Number(params.freqBus) || 0))).toFixed(1)}°
 
                 </div>
@@ -4538,14 +4568,14 @@ const resetDefaults = () => {
 
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Voltage (Busbar)</div>
-                <div className="text-lg font-semibold text-[#ff9a4a]">
+                <div className="text-lg font-semibold text-[#ff9a4a] truncate">
                   {params.Vbus || 230} V
                 </div>
               </div>
 
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Voltage (Incoming)</div>
-                <div className="text-lg font-semibold text-[#ff9a4a]">
+                <div className="text-lg font-semibold text-[#ff9a4a] truncate">
                   {params.Valt || 230} V
                 </div>
               </div>
@@ -4579,7 +4609,7 @@ const resetDefaults = () => {
                 <div className="text-xs text-zinc-400">
                   {isOC ? "Rc (Ω)" : "Req (Ω)"}
                 </div>
-                <div className="text-lg font-semibold text-[#4de1ff]">
+                <div className="text-lg font-semibold text-[#4de1ff] truncate">
                   {isOC ? meters.extra.Rc : meters.extra.Req}
                 </div>
               </div>
@@ -4587,7 +4617,7 @@ const resetDefaults = () => {
                 <div className="text-xs text-zinc-400">
                   {isOC ? "Xm (Ω)" : "Xeq (Ω)"}
                 </div>
-                <div className="text-lg font-semibold text-[#ffdd2d]">
+                <div className="text-lg font-semibold text-[#ffdd2d truncate]">
                   {isOC ? meters.extra.Xm : meters.extra.Xeq}
                 </div>
               </div>
@@ -4595,7 +4625,7 @@ const resetDefaults = () => {
                 <div className="text-xs text-zinc-400">
                   {isOC ? "Core Loss (W)" : "Copper Loss (W)"}
                 </div>
-                <div className="text-lg font-semibold text-[#ff9a4a]">
+                <div className="text-lg font-semibold text-[#ff9a4a] truncate">
                   {meters.extra.loss}
                 </div>
               </div>
@@ -4612,19 +4642,19 @@ const resetDefaults = () => {
             >
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Secondary Voltage (Vₛ)</div>
-                <div className="text-lg font-semibold text-[#ffdd2d]">
+                <div className="text-lg font-semibold text-[#ffdd2d] truncate">
                   {meters.extra.Vs}
                 </div>
               </div>
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Efficiency (η%)</div>
-                <div className="text-lg font-semibold text-[#22c55e]">
+                <div className="text-lg font-semibold text-[#22c55e] truncate">
                   {meters.extra.efficiency}
                 </div>
               </div>
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Output Power (W)</div>
-                <div className="text-lg font-semibold text-[#4de1ff]">
+                <div className="text-lg font-semibold text-[#4de1ff] truncate">
                   {meters.extra.outputPower}
                 </div>
               </div>
@@ -4641,19 +4671,19 @@ const resetDefaults = () => {
             >
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Inductance (Lₓ)</div>
-                <div className="text-lg font-semibold text-[#ffd24a]">
+                <div className="text-lg font-semibold text-[#ffd24a] truncate">
                   {(meters.extra.Lx * 1e3).toFixed(3)} mH
                 </div>
               </div>
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Resistance (Rₓ)</div>
-                <div className="text-lg font-semibold text-[#00ffbf]">
+                <div className="text-lg font-semibold text-[#00ffbf] truncate">
                   {meters.extra.Rx} Ω
                 </div>
               </div>
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Balance Error</div>
-                <div className="text-lg font-semibold text-[#ff9a4a]">
+                <div className="text-lg font-semibold text-[#ff9a4a] truncate">
                   {meters.extra.balanceError}
                 </div>
               </div>
@@ -4672,19 +4702,19 @@ const resetDefaults = () => {
             >
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Armature Current</div>
-                <div className="text-lg font-semibold truncate text-[#00ffbf]">
+                <div className="text-lg font-semibold truncate text-[#00ffbf] truncate">
                   {meters?.extra?.Ia || 1.2} A
                 </div>
               </div>
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Speed(Rms)</div>
-                <div className="text-lg truncate font-semibold text-[#ff9a4a]">
+                <div className="text-lg truncate font-semibold text-[#ff9a4a] truncate">
                   {meters?.extra?.speed_rpm || 220} Rms
                 </div>
               </div>
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Torque</div>
-                <div className="text-lg font-semibold truncate text-[#ffd24a]">
+                <div className="text-lg font-semibold truncate text-[#ffd24a] truncate">
                   {meters?.extra?.torque}
                 </div>
               </div>
@@ -4738,25 +4768,25 @@ const resetDefaults = () => {
             >
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Armature Current</div>
-                <div className="text-lg font-semibold truncate text-[#ff9a4a]">
+                <div className="text-lg font-semibold truncate text-[#ff9a4a] ">
                   {meters?.extra?.Ia || 1} A
                 </div>
               </div>
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Field Current If (A)</div>
-                <div className="text-lg font-semibold text-[#ffd24a]">
+                <div className="text-lg font-semibold text-[#ffd24a] truncate">
                   {params.If || 0.5} 
                 </div>
               </div>
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Mechanical Load</div>
-                <div className="text-lg font-semibold text-[#00ffbf]">
+                <div className="text-lg font-semibold text-[#00ffbf] truncate">
                   {params.Pload }
                 </div>
               </div>
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Synchronous Reactance</div>
-                <div className="text-lg font-semibold text-[#00ffbf]">
+                <div className="text-lg font-semibold text-[#00ffbf] truncate">
                   {params.Xs }
                 </div>
               </div>
@@ -4773,19 +4803,19 @@ const resetDefaults = () => {
             >
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Input Voltage</div>
-                <div className="text-lg font-semibold text-[#ff9a4a]">
+                <div className="text-lg font-semibold text-[#ff9a4a] truncate">
                   {params.Vp || 230} V
                 </div>
               </div>
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Core Loss</div>
-                <div className="text-lg font-semibold text-[#ffd24a]">
+                <div className="text-lg font-semibold text-[#ffd24a] truncate">
                   {params.coreLoss || 15} W
                 </div>
               </div>
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Efficiency</div>
-                <div className="text-lg font-semibold text-[#00ffbf]">
+                <div className="text-lg font-semibold text-[#00ffbf] truncate">
                   {meters.efficiency || 96.2}%
                 </div>
               </div>
@@ -4801,19 +4831,19 @@ const resetDefaults = () => {
             >
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Calculated Frequency</div>
-                <div className="text-lg font-semibold text-[#ffd24a]">
+                <div className="text-lg font-semibold text-[#ffd24a] truncate">
                   {meters.extra.f0} Hz
                 </div>
               </div>
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Vout (Bridge Output)</div>
-                <div className="text-lg font-semibold text-[#00ffbf]">
+                <div className="text-lg font-semibold text-[#00ffbf] truncate">
                   {meters.extra.Vout} V
                 </div>
               </div>
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Balance Error</div>
-                <div className="text-lg font-semibold text-[#ff9a4a]">
+                <div className="text-lg font-semibold text-[#ff9a4a] truncate">
                   {meters.extra.balanceError}
                 </div>
               </div>
@@ -4826,19 +4856,19 @@ const resetDefaults = () => {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Voltage</div>
-                <div className="text-lg font-semibold text-[#ff9a4a]">
+                <div className="text-lg font-semibold text-[#ff9a4a] truncate">
                   {meters.V || 0} V
                 </div>
               </div>
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Current</div>
-                <div className="text-lg font-semibold text-[#00ffbf]">
+                <div className="text-lg font-semibold text-[#00ffbf] truncate">
                   {meters.I || 0} A
                 </div>
               </div>
               <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                 <div className="text-xs text-zinc-400">Power</div>
-                <div className="text-lg font-semibold text-[#ffd24a]">
+                <div className="text-lg font-semibold text-[#ffd24a] truncate">
                   {meters.P || 0} W
                 </div>
               </div>
@@ -4865,11 +4895,11 @@ const resetDefaults = () => {
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-60 w-[92%] sm:w-auto sm:left-auto sm:translate-x-0 sm:bottom-6 sm:right-6 lg:hidden" role="region" aria-label="Mobile controls">
         <div className="flex items-center justify-between gap-3 bg-black/80 border border-zinc-800 p-3 rounded-full shadow-lg">
           <div className="flex items-center gap-2">
-            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-zinc-300 text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer text-sm" onClick={() => setRunning(true),()=>toast.success("Simulation Started")}><Play className="w-4 h-4 mr-2" /> Run</Button>
+            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-orange-400 bg-black hover:bg-black hover:text-orange-500 cursor-pointer text-sm" onClick={() => setRunning(false),()=>toast.success("Simulation Paused")}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" className="border border-zinc-800 text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
+            <Button variant="ghost" className="border border-zinc-800 text-orange-400 hover:bg-black hover:text-orange-500 cursor-pointer p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
           </div>
         </div>
       </div>

@@ -7,11 +7,16 @@ import {
   FileText,
   ClipboardList,
   CheckCircle2,
+  Eye,
+  Pencil,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import useGemini from "../../hooks/useGemini";
+import remarkGfm from "remark-gfm";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import ReactMarkdown from "react-markdown";
 
 // ===============================
 // Memoized Section Component
@@ -27,6 +32,8 @@ const SectionBlock = React.memo(function SectionBlock({
   generateFor,
   stopGeneration,
 }) {
+ 
+  const [mode, setMode] = useState("edit");
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
@@ -52,7 +59,7 @@ const SectionBlock = React.memo(function SectionBlock({
               size="sm"
               variant="destructive"
               onClick={stopGeneration}
-              className="bg-red-500/20 hover:bg-red-500/40 cursor-pointer text-red-300 border border-red-600/40 transition-all duration-300"
+              className="bg-red-500/20  hover:bg-red-500/40 cursor-pointer text-red-300 border border-red-600/40 transition-all duration-300"
             >
               <Square className="w-3.5 h-3.5 mr-1" /> Stop
             </Button>
@@ -71,13 +78,57 @@ const SectionBlock = React.memo(function SectionBlock({
         </div>
       </div>
 
-      <Textarea
-        value={value}
-        onChange={(e) => setter(e.target.value)}
-        rows={field === "procedure" ? 7 : 5}
-        placeholder={`Write ${label.toLowerCase()} here or click "Auto Generate"...`}
-        className="bg-[#0a0a0a]/95 border border-zinc-800 text-white placeholder:text-zinc-500 focus:border-[#ff9a3c]/70 focus:ring-1 focus:ring-[#ff9a3c]/50 min-h-[120px] rounded-xl shadow-inner shadow-black/40"
-      />
+     <div className="w-full bg-[#0a0a0a] border border-zinc-800 rounded-2xl shadow-[0_0_30px_rgba(255,154,60,0.15)] overflow-hidden">
+      <Tabs defaultValue="edit" onValueChange={setMode}>
+        <TabsList className="flex bg-black/60 border-b border-zinc-800">
+          <TabsTrigger
+            value="edit"
+            className={`flex-1 cursor-pointer text-sm font-medium text-zinc-400 hover:text-orange-400 transition ${
+              mode === "edit" ? "text-orange-400 border-b-2 border-orange-500" : ""
+            }`}
+          >
+          <Pencil/> Edit
+          </TabsTrigger>
+          <TabsTrigger
+            value="preview"
+            className={`flex-1 text-sm cursor-pointer font-medium text-zinc-400 hover:text-orange-400 transition ${
+              mode === "preview" ? "text-orange-400 border-b-2 border-orange-500" : ""
+            }`}
+          >
+            <Eye/> Preview
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Edit Mode */}
+        <TabsContent value="edit" className="p-4">
+          <Textarea
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            rows={field === "procedure" ? 7 : 5}
+            placeholder={`Write ${label.toLowerCase()} here or click "Auto Generate"...`}
+            className="bg-[#0a0a0a]/95 border border-zinc-800 text-white placeholder:text-zinc-500 
+                       focus:border-[#ff9a3c]/70 focus:ring-1 focus:ring-[#ff9a3c]/50 
+                       min-h-[120px] rounded-xl shadow-inner shadow-black/40 w-full"
+          />
+        </TabsContent>
+
+        {/* Markdown Preview Mode */}
+        <TabsContent value="preview" className="p-4">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="prose prose-invert max-w-none text-zinc-100
+                      prose-headings:text-orange-400 prose-strong:text-orange-300
+                      prose-code:bg-black/50 prose-code:text-orange-400 prose-code:rounded-lg
+                      prose-code:px-2 prose-code:py-1 prose-blockquote:border-l-4 prose-blockquote:border-orange-500
+                      prose-blockquote:bg-black/40 prose-blockquote:p-3 prose-blockquote:rounded-lg
+                      prose-a:text-orange-400 hover:prose-a:text-orange-300"
+          >
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{value || "_Nothing to preview yet..._"}</ReactMarkdown>
+          </motion.div>
+        </TabsContent>
+      </Tabs>
+    </div>
     </div>
   );
 });
@@ -97,7 +148,7 @@ export default function LabReportSections({
   const [genError, setGenError] = useState(null);
   const [typing, setTyping] = useState(false);
   const stopRef = useRef(false);
-
+ 
   // ======================================
   // Improved Prompt Builder
   // ======================================
