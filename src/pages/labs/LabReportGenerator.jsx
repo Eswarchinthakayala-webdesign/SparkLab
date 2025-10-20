@@ -443,7 +443,9 @@ export default function LabReportGenerator() {
   };
 
   return (
-    <div className="min-h-screen bg-[#05060a] p-4 text-white">
+    <div className="min-h-screen  bg-[#05060a]
+                 bg-[radial-gradient(circle,_rgba(255,122,28,0.25)_1px,transparent_1px)]
+                 bg-[length:20px_20px] p-4 text-white">
       <Toaster position="top-center" />
 <header
       className={`fixed top-0 w-full z-50 transition-all px-2 duration-300 ${
