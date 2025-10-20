@@ -3742,7 +3742,7 @@ pf:0
   const toggleRunning = () => {
     setRunning((r) => {
       const nxt = !r;
-      toast(nxt ? "Simulation resumed" : "Simulation paused");
+      toast.success(nxt ? "Simulation resumed" : "Simulation paused");
       return nxt;
     });
   };
@@ -3923,7 +3923,7 @@ const snapshotPNG = async () => {
               </div>
 
               <div className="flex gap-2">
-                <Button className="flex-1  bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black text-xs py-2 rounded-md" onClick={snapshotPNG}>Snapshot</Button>
+                <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black text-xs py-2 rounded-md" onClick={snapshotPNG}>Snapshot</Button>
                 <Button variant="ghost" className="flex-1 border cursor-pointer hover:bg-zinc-950 hover:text-orange-400 border-zinc-800 text-xs py-2 rounded-md" onClick={toggleRunning}>{running ? "Pause" : "Run"}</Button>
                 <Button variant="ghost" className="flex-1 border cursor-pointer hover:bg-zinc-950 hover:text-orange-400 border-zinc-800 text-xs py-2 rounded-md" onClick={resetDefaults}>Reset</Button>
               </div>
@@ -4484,8 +4484,8 @@ const snapshotPNG = async () => {
                   )}
 
                   <div className="mt-2 flex gap-2">
-                    <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer" onClick={() => setRunning(true),()=>toast.success("Simulation Started")}><Play className="w-4 h-4 mr-2" /> Run</Button>
-                    <Button variant="outline" className="flex-1 border-zinc-700 text-black cursor-pointer" onClick={() => setRunning(false),()=>toast.success("Simulation Paused")}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+                    <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
+                    <Button variant="outline" className="flex-1 border-zinc-700 text-black cursor-pointer" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
                   </div>
 
                   <div className="flex items-center gap-2 mt-2">
@@ -4895,8 +4895,8 @@ const snapshotPNG = async () => {
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-60 w-[92%] sm:w-auto sm:left-auto sm:translate-x-0 sm:bottom-6 sm:right-6 lg:hidden" role="region" aria-label="Mobile controls">
         <div className="flex items-center justify-between gap-3 bg-black/80 border border-zinc-800 p-3 rounded-full shadow-lg">
           <div className="flex items-center gap-2">
-            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer text-sm" onClick={() => setRunning(true),()=>toast.success("Simulation Started")}><Play className="w-4 h-4 mr-2" /> Run</Button>
-            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-orange-400 bg-black hover:bg-black hover:text-orange-500 cursor-pointer text-sm" onClick={() => setRunning(false),()=>toast.success("Simulation Paused")}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
+            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-orange-400 bg-black hover:bg-black hover:text-orange-500 cursor-pointer text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" className="border border-zinc-800 text-orange-400 hover:bg-black hover:text-orange-500 cursor-pointer p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
