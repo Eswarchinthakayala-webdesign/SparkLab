@@ -15,6 +15,9 @@ import {
   Menu,
   X,
 } from "lucide-react";
+import { toPng } from "html-to-image";  
+
+
 import { Toaster, toast } from "sonner";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -172,7 +175,32 @@ export default function FormulaSheetPage() {
   };
 
   const toggleMenu = () => setMenuOpen((v) => !v);
+  
+const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
 
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
   return (
     <div className="min-h-screen bg-[#05060a] text-white flex flex-col">
       <Toaster position="top-center" richColors />
@@ -198,12 +226,14 @@ export default function FormulaSheetPage() {
           {/* Desktop Menu */}
           <div className="hidden md:flex items-center gap-3">
             <Select value={category} onValueChange={(v) => setCategory(v)}>
-              <SelectTrigger className="w-40 bg-black/80 border border-zinc-800 text-white text-sm">
+              <SelectTrigger className="w-40 bg-black/80 border cursor-pointer border-zinc-800 text-white text-sm">
                 <SelectValue placeholder="Category" />
               </SelectTrigger>
               <SelectContent className="bg-zinc-900 border border-zinc-800">
                 {categories.map((c) => (
-                  <SelectItem key={c} value={c} className="text-white">
+                  <SelectItem key={c} value={c} className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">
                     {c}
                   </SelectItem>
                 ))}
@@ -216,7 +246,7 @@ export default function FormulaSheetPage() {
               className="bg-zinc-900/60 border border-zinc-800 text-white w-56"
             />
             <Button
-              className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black"
+              className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black"
               onClick={downloadPdf}
               disabled={loadingPdf}
             >
@@ -225,12 +255,12 @@ export default function FormulaSheetPage() {
           </div>
 
           {/* Mobile Menu Icon */}
-          <button
+          <Button
             onClick={toggleMenu}
-            className="md:hidden text-zinc-300 hover:text-white transition"
+            className="md:hidden text-orange-400 hover:bg-black  bg-black cursor-pointer border border-zinc-600/50 hover:text-orange-500 transition"
           >
-            {menuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
+            {menuOpen ? <X className="w-10 h-10" /> : <Menu className="w-10 h-10" />}
+          </Button>
         </div>
 
         {/* Mobile Dropdown Menu */}
@@ -240,15 +270,17 @@ export default function FormulaSheetPage() {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="md:hidden px-4 mt-2 pb-3 space-y-3 bg-black/80 border-t border-zinc-800"
+              className="md:hidden px-4 mt-4 pb-3 p-2 space-y-3 bg-black/80 border-t border-zinc-800"
             >
               <Select value={category} onValueChange={(v) => setCategory(v)}>
-                <SelectTrigger className="w-full bg-black/80 border border-zinc-800 text-white text-sm">
+                <SelectTrigger className="w-full cursor-pointer bg-black/80 border border-zinc-800 text-white text-sm">
                   <SelectValue placeholder="Category" />
                 </SelectTrigger>
                 <SelectContent className="bg-zinc-900 border border-zinc-800">
                   {categories.map((c) => (
-                    <SelectItem key={c} value={c} className="text-white">
+                    <SelectItem key={c} value={c} className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">
                       {c}
                     </SelectItem>
                   ))}
@@ -261,7 +293,7 @@ export default function FormulaSheetPage() {
                 className="bg-zinc-900/60 border border-zinc-800 text-white w-full"
               />
               <Button
-                className="w-full bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black"
+                className="w-full bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer"
                 onClick={downloadPdf}
                 disabled={loadingPdf}
               >
@@ -290,7 +322,7 @@ export default function FormulaSheetPage() {
                     Formulas
                   </div>
                 </div>
-                <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300">
+                <Badge className="bg-orange-800/80 border border-zinc-800 text-zinc-300">
                   {visible.length}
                 </Badge>
               </CardTitle>
@@ -309,7 +341,7 @@ export default function FormulaSheetPage() {
                   }`}
                 >
                   <div>
-                    <div className="text-sm font-medium">{f.title}</div>
+                    <div className="text-sm font-medium text-orange-300">{f.title}</div>
                     <div className="text-xs text-zinc-400">{f.formula}</div>
                   </div>
                   <Badge className="bg-black/80 border border-zinc-700 text-orange-300">
@@ -348,13 +380,14 @@ export default function FormulaSheetPage() {
               ))}
               <div className="flex gap-2">
                 <Button
-                  className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]"
-                  onClick={() => toast.success("Snapshot saved")}
+                  className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]"
+                 onClick={snapshotPNG}
                 >
                   <Play className="w-4 h-4 mr-2" /> Snapshot
                 </Button>
                 <Button
-                  className="flex-1 border border-zinc-800"
+                  className="flex-1 border cursor-pointer text-orange-400 hover:bg-black hover:text-orange-500
+ border-zinc-800"
                   variant="ghost"
                   onClick={() => {
                     const base = {};
@@ -384,11 +417,13 @@ export default function FormulaSheetPage() {
 
             <CardContent className="space-y-6">
               {/* Visualization */}
+              <div className="snapshot">
               <FormulaVisualizer
                 formula={currentFormula}
                 computed={computed}
                 onImageReady={setVisualImage}
               />
+              </div>
 
               <Separator />
 
@@ -396,7 +431,7 @@ export default function FormulaSheetPage() {
               <div className="flex flex-wrap gap-3">
                 <Button
                   onClick={generateAIText}
-                  className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]"
+                  className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer"
                   disabled={loadingAI}
                 >
                   <Brain className="w-4 h-4 mr-2" /> Generate AI Insights
@@ -404,7 +439,8 @@ export default function FormulaSheetPage() {
                 <Button
                   onClick={downloadPdf}
                   disabled={loadingPdf}
-                  className="flex-1 border border-zinc-800"
+                  className="flex-1 border cursor-pointer text-orange-400 hover:bg-black hover:text-orange-500
+ border-zinc-800"
                   variant="ghost"
                 >
                   <FileText className="w-4 h-4 mr-2" /> Export Report

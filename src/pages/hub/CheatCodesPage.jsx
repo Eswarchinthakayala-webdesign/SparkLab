@@ -18,6 +18,7 @@ import {
   Users,
   ZapOff,
   Cpu,
+  ListPlus,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
@@ -449,7 +450,7 @@ export default function CheatCodePage() {
                 <BookOpen className="w-5 h-5 text-black" />
               </div>
               <div className="truncate">
-                <div className="text-sm sm:text-base md:text-lg font-semibold text-zinc-200 truncate">BrainSpark</div>
+                <div className="text-sm sm:text-base md:text-lg font-semibold text-zinc-200 truncate">SparkLab</div>
                 <div className="text-xs sm:text-sm md:text-sm text-zinc-400 -mt-0.5 truncate">Cheat Codes • Quick study hacks</div>
               </div>
             </motion.div>
@@ -457,7 +458,7 @@ export default function CheatCodePage() {
             <div className="hidden md:flex items-center gap-4">
               <div className="w-44">
                 <Select value={subject} onValueChange={(v) => setSubject(v)}>
-                  <SelectTrigger className="w-full bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm hover:border-orange-500 focus:ring-2 focus:ring-orange-500">
+                  <SelectTrigger className="w-full cursor-pointer bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm hover:border-orange-500 focus:ring-2 focus:ring-orange-500">
                     <SelectValue placeholder="Subject" />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
@@ -471,15 +472,17 @@ export default function CheatCodePage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-1 rounded-lg shadow-md hover:scale-105" onClick={() => { startAdd(); toast("Add a new cheat"); }}>
+                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black px-3 py-1 rounded-lg shadow-md hover:scale-105" onClick={() => { startAdd(); toast("Add a new cheat"); }}>
                   <Plus className="w-4 h-4 mr-2" /> New Cheat
                 </Button>
 
-                <Button variant="ghost" className="border border-zinc-700 text-zinc-300 p-2 rounded-lg" onClick={toggleRunning} title={running ? "Pause Session" : "Start Session"}>
+                <Button variant="ghost" className="border border-zinc-700 cursor-pointer text-orange-400 hover:bg-black hover:text-orange-500
+ p-2 rounded-lg" onClick={toggleRunning} title={running ? "Pause Session" : "Start Session"}>
                   {running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
                 </Button>
 
-                <Button variant="ghost" className="border border-zinc-700 text-zinc-300 p-2 rounded-lg" onClick={exportCSV} title="Export CSV">
+                <Button variant="ghost" className="border cursor-pointer text-orange-400 hover:bg-black hover:text-orange-500
+  border-zinc-700  p-2 rounded-lg" onClick={exportCSV} title="Export CSV">
                   <Download className="w-5 h-5" />
                 </Button>
               </div>
@@ -487,7 +490,8 @@ export default function CheatCodePage() {
 
             {/* mobile menu placeholder */}
             <div className="md:hidden">
-              <Button variant="ghost" className="border cursor-pointer border-zinc-800 p-2 rounded-lg" onClick={() => { toast("Use the page controls below"); }}>
+              <Button variant="ghost" className="border cursor-pointer border-zinc-800 p-2 rounded-lg text-orange-400 hover:bg-black hover:text-orange-500
+" onClick={() => { toast("Use the page controls below"); }}>
                 <Menu className="w-5 h-5" />
               </Button>
             </div>
@@ -527,11 +531,13 @@ export default function CheatCodePage() {
                     <div>
                       <label className="text-xs text-zinc-400">Subject</label>
                       <Select value={subject} onValueChange={(v) => setSubject(v)}>
-                        <SelectTrigger className="w-full bg-zinc-900/60 border border-zinc-800 text-white">
+                        <SelectTrigger className="w-full cursor-pointer bg-zinc-900/60 border border-zinc-800 text-white">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                          {subjects.map((s) => <SelectItem key={s} value={s} className="text-white">{s}</SelectItem>)}
+                          {subjects.map((s) => <SelectItem  key={s} value={s}    className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">{s}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
@@ -539,13 +545,19 @@ export default function CheatCodePage() {
                     <div>
                       <label className="text-xs text-zinc-400">User Type</label>
                       <Select value={userType} onValueChange={(v) => setUserType(v)}>
-                        <SelectTrigger className="w-full bg-zinc-900/60 border border-zinc-800 text-white">
+                        <SelectTrigger className="w-full cursor-pointer bg-zinc-900/60 border border-zinc-800 text-white">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                          <SelectItem value="novice" className="text-white">Novice</SelectItem>
-                          <SelectItem value="regular" className="text-white">Regular</SelectItem>
-                          <SelectItem value="pro" className="text-white">Pro</SelectItem>
+                          <SelectItem value="novice"    className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Novice</SelectItem>
+                          <SelectItem value="regular"    className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Regular</SelectItem>
+                          <SelectItem value="pro"    className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Pro</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -565,7 +577,7 @@ export default function CheatCodePage() {
                       <label className="text-xs text-zinc-400">Category</label>
                       <div className="flex gap-2 flex-wrap mt-2">
                         {categories.map((c) => (
-                          <Button key={c} variant={c === categoryFilter ? "default" : "ghost"} className={`px-3 py-1 ${c === categoryFilter ? "bg-zinc-900/80 border border-orange-500 text-orange-300" : "border border-zinc-800 text-zinc-300"}`} onClick={() => setCategoryFilter(c)}>
+                          <Button key={c} variant={c === categoryFilter ? "default" : "ghost"} className={`px-3 cursor-pointer py-1 ${c === categoryFilter ? "bg-zinc-900/80 border border-orange-500 text-orange-300" : "border border-zinc-800 text-orange-400/80 hover:bg-black hover:text-orange-500/80 bg-black"}`} onClick={() => setCategoryFilter(c)}>
                             {c === "all" ? "All" : c}
                           </Button>
                         ))}
@@ -583,8 +595,8 @@ export default function CheatCodePage() {
                             <div className="text-xs text-zinc-400 mt-1">{c.category} • <span className="text-zinc-300">{c.subject}</span></div>
                           </div>
                           <div className="flex gap-2">
-                            <Button variant="ghost" className="p-2" onClick={() => startEdit(c)}><Edit2 className="w-4 h-4" /></Button>
-                            <Button variant="ghost" className="p-2" onClick={() => removeCheat(c.id)}><Trash2 className="w-4 h-4" /></Button>
+                            <Button variant="ghost" className="p-2 text-orange-400 cursor-pointer border border-zinc-600/30 hover:bg-black hover:text-orange-500" onClick={() => startEdit(c)}><Edit2 className="w-4 h-4" /></Button>
+                            <Button variant="ghost" className="p-2 cursor-pointer border border-zinc-600/30 bg-red-500 text-black hover:bg-red-600" onClick={() => removeCheat(c.id)}><Trash2 className="w-4 h-4" /></Button>
                           </div>
                         </div>
                         <div className="text-xs text-zinc-300 mt-2">{c.content}</div>
@@ -619,23 +631,33 @@ export default function CheatCodePage() {
                     <Input value={form.title} onChange={(e) => setForm((s) => ({ ...s, title: e.target.value }))} placeholder="Short title (e.g., 'Nodal Steps')" className="bg-zinc-900/60 border border-zinc-800 text-white" />
                     <div className="grid grid-cols-2 gap-2">
                       <Select value={form.category} onValueChange={(v) => setForm((s) => ({ ...s, category: v }))}>
-                        <SelectTrigger className="w-full bg-zinc-900/60 border border-zinc-800 text-white">
+                        <SelectTrigger className="w-full cursor-pointer bg-zinc-900/60 border border-zinc-800 text-white">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                          <SelectItem value="Formulas">Formulas</SelectItem>
-                          <SelectItem value="Mnemonics">Mnemonics</SelectItem>
-                          <SelectItem value="Shortcuts">Shortcuts</SelectItem>
-                          <SelectItem value="Tips">Tips</SelectItem>
+                          <SelectItem      className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="Formulas">Formulas</SelectItem>
+                          <SelectItem      className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="Mnemonics">Mnemonics</SelectItem>
+                          <SelectItem      className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="Shortcuts">Shortcuts</SelectItem>
+                          <SelectItem      className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="Tips">Tips</SelectItem>
                         </SelectContent>
                       </Select>
 
                       <Select value={form.subject} onValueChange={(v) => setForm((s) => ({ ...s, subject: v }))}>
-                        <SelectTrigger className="w-full bg-zinc-900/60 border border-zinc-800 text-white">
+                        <SelectTrigger className="w-full cursor-pointer bg-zinc-900/60 border border-zinc-800 text-white">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                          {subjects.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                          {subjects.map((s) => <SelectItem      className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" key={s} value={s}>{s}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
@@ -648,8 +670,8 @@ export default function CheatCodePage() {
                     </div>
 
                     <div className="flex gap-2">
-                      <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]" onClick={saveForm}><Plus className="w-4 h-4 mr-2" /> {editing ? "Save" : "Add"}</Button>
-                      <Button variant="ghost" className="flex-1 border border-zinc-800" onClick={() => { setForm({ title: "", category: "Formulas", content: "", subject, effectiveness: 0.6 }); setEditing(null); }}>Cancel</Button>
+                      <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]" onClick={saveForm}><ListPlus className="w-4 h-4 " /> {editing ? "Save" : "Add"}</Button>
+                      <Button variant="ghost" className="flex-1 border text-orange-400 hover:bg-black hover:text-orange-500 border-zinc-800 cursor-pointer" onClick={() => { setForm({ title: "", category: "Formulas", content: "", subject, effectiveness: 0.6 }); setEditing(null); }}>Cancel</Button>
                     </div>
                   </div>
                 </CardContent>
@@ -725,9 +747,9 @@ export default function CheatCodePage() {
                   </div>
 
                   <div className="mt-4 flex gap-2">
-                    <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]" onClick={() => { setRunning(true); toast.success("Session resumed"); }}><Play className="w-4 h-4 mr-2" /> Start</Button>
-                    <Button variant="outline" className="border-zinc-700" onClick={() => { setRunning(false); toast("Session paused"); }}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
-                    <Button variant="ghost" className="border border-zinc-800 text-zinc-300" onClick={exportCSV}><Download className="w-4 h-4 mr-2" />Export</Button>
+                    <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer" onClick={() => { setRunning(true); toast.success("Session resumed"); }}><Play className="w-4 h-4 mr-2" /> Start</Button>
+                    <Button variant="outline" className="border-zinc-700 text-orange-400 bg-black cursor-pointer hover:bg-black hover:text-orange-500" onClick={() => { setRunning(false); toast("Session paused"); }}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+                    <Button variant="ghost" className="border border-zinc-800 text-orange-400 cursor-pointer hover:bg-black hover:text-orange-500" onClick={exportCSV}><Download className="w-4 h-4 mr-2" />Export</Button>
                   </div>
                 </CardContent>
               </Card>
@@ -740,11 +762,11 @@ export default function CheatCodePage() {
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-60 w-[92%] sm:w-auto sm:left-auto sm:translate-x-0 sm:bottom-6 sm:right-6 lg:hidden" role="region" aria-label="Mobile controls">
         <div className="flex items-center justify-between gap-3 bg-black/80 border border-zinc-800 p-3 rounded-full shadow-lg">
           <div className="flex items-center gap-2">
-            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm" onClick={() => { setRunning(true); toast.success("Session resumed"); }}><Play className="w-4 h-4 mr-2" /> Start</Button>
-            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-zinc-300 text-sm" onClick={() => { setRunning(false); toast("Session paused"); }}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black text-sm" onClick={() => { setRunning(true); toast.success("Session resumed"); }}><Play className="w-4 h-4 mr-2" /> Start</Button>
+            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-orange-400 bg-black cursor-pointer hover:bg-black hover:text-orange-500 text-sm" onClick={() => { setRunning(false); toast("Session paused"); }}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" className="border border-zinc-800 text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
+            <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-orange-400 hover:bg-black hover:text-orange-500 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
           </div>
         </div>
       </div>

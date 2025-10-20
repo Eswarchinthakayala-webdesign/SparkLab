@@ -20,6 +20,7 @@ import {
   Cpu,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
+import { toPng } from "html-to-image";  
 
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -601,9 +602,33 @@ export default function ExplainerPage() {
     }
     // no blocking; these are just helpful nudges
   }, [activeParams, concept]);
+  const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
 
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
   return (
-    <div className="min-h-screen bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.25)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
+    <div className="min-h-screen pb-20 bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.25)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
       <Toaster position="top-center" richColors />
 
       {/* Header */}
@@ -615,7 +640,7 @@ export default function ExplainerPage() {
                 <Zap className="w-6 h-6 text-black" />
               </div>
               <div>
-                <div className="text-sm sm:text-base md:text-lg font-semibold text-zinc-200">SparkLab — Explainers</div>
+                <div className="text-sm sm:text-base md:text-lg font-semibold text-zinc-200">SparkLab</div>
                 <div className="text-xs sm:text-sm md:text-sm text-zinc-400 -mt-0.5">Animated Concept Explainers • BEEE</div>
               </div>
             </motion.div>
@@ -624,28 +649,40 @@ export default function ExplainerPage() {
             <div className="hidden md:flex items-center gap-4">
               <div className="w-52">
                 <Select value={concept} onValueChange={(v) => setConcept(v)}>
-                  <SelectTrigger className="w-full bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm hover:border-orange-500 focus:ring-2 focus:ring-orange-500">
+                  <SelectTrigger className="w-full cursor-pointer bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm hover:border-orange-500 focus:ring-2 focus:ring-orange-500">
                     <SelectValue placeholder="Select Concept" />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                    <SelectItem value="rc">RC Charging</SelectItem>
-                    <SelectItem value="rl">RL Charging</SelectItem>
-                    <SelectItem value="rlc">RLC Resonance</SelectItem>
-                    <SelectItem value="divider">Voltage Divider</SelectItem>
-                    <SelectItem value="led">LED + Resistor</SelectItem>
+                    <SelectItem className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="rc">RC Charging</SelectItem>
+                    <SelectItem className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="rl">RL Charging</SelectItem>
+                    <SelectItem className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="rlc">RLC Resonance</SelectItem>
+                    <SelectItem className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="divider">Voltage Divider</SelectItem>
+                    <SelectItem className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="led">LED + Resistor</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="flex items-center gap-2">
-                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-1 rounded-lg shadow-md hover:scale-105" onClick={() => toast.success("Saved snapshot (demo)")}>
+                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black px-3 py-1 rounded-lg shadow-md hover:scale-105" onClick={snapshotPNG}>
                   Snapshot
                 </Button>
 
-                <Button variant="ghost" className="border border-zinc-700 text-zinc-300 p-2 rounded-lg" onClick={toggleRunning} title={running ? "Pause" : "Play"}>
+                <Button variant="ghost" className="border cursor-pointer text-orange-400 hover:bg-black hover:text-orange-500
+ border-zinc-700  p-2 rounded-lg" onClick={toggleRunning} title={running ? "Pause" : "Play"}>
                   {running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
                 </Button>
-                <Button variant="ghost" className="border border-zinc-700 text-zinc-300 p-2 rounded-lg" onClick={resetToPresets} title="Reset Presets">
+                <Button variant="ghost" className="border border-zinc-700 text-orange-400 hover:bg-black hover:text-orange-500
+cursor-pointer p-2 rounded-lg" onClick={resetToPresets} title="Reset Presets">
                   <Settings className="w-5 h-5" />
                 </Button>
               </div>
@@ -653,7 +690,8 @@ export default function ExplainerPage() {
 
             {/* mobile menu toggle */}
             <div className="md:hidden">
-              <Button variant="ghost" className="border border-zinc-800 p-2 rounded-lg" onClick={() => setMobileOpen((s) => !s)}>
+              <Button variant="ghost" className="border text-orange-400 cursor-pointer hover:bg-black hover:text-orange-500
+ border-zinc-800 p-2 rounded-lg" onClick={() => setMobileOpen((s) => !s)}>
                 {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </Button>
             </div>
@@ -665,20 +703,31 @@ export default function ExplainerPage() {
               <div className="flex gap-2">
                 <div className="flex-1">
                   <Select value={concept} onValueChange={(v) => setConcept(v)}>
-                    <SelectTrigger className="w-full bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm hover:border-orange-500 focus:ring-2 focus:ring-orange-500">
+                    <SelectTrigger className="w-full  cursor-pointer bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm hover:border-orange-500 focus:ring-2 focus:ring-orange-500">
                       <SelectValue placeholder="Concept" />
                     </SelectTrigger>
                     <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                      <SelectItem value="rc">RC Charging</SelectItem>
-                      <SelectItem value="rl">RL Charging</SelectItem>
-                      <SelectItem value="rlc">RLC Resonance</SelectItem>
-                      <SelectItem value="divider">Voltage Divider</SelectItem>
-                      <SelectItem value="led">LED + Resistor</SelectItem>
+                      <SelectItem       className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="rc">RC Charging</SelectItem>
+                      <SelectItem       className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="rl">RL Charging</SelectItem>
+                      <SelectItem       className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="rlc">RLC Resonance</SelectItem>
+                      <SelectItem       className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="divider">Voltage Divider</SelectItem>
+                      <SelectItem       className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="led">LED + Resistor</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-2 rounded-md" onClick={() => toast.success("Snapshot saved")}>Snapshot</Button>
-                <Button variant="ghost" className="border border-zinc-800 px-3 py-2 rounded-md" onClick={toggleRunning}>{running ? "Pause" : "Play"}</Button>
+                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-2 rounded-md cursor-pointer" onClick={snapshotPNG}>Snapshot</Button>
+                <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-orange-400 hover:bg-black hover:text-orange-500
+ px-3 py-2 rounded-md" onClick={toggleRunning}>{running ? "Pause" : "Play"}</Button>
               </div>
             </div>
           </div>
@@ -797,17 +846,21 @@ export default function ExplainerPage() {
                   )}
 
                   <div className="mt-4 flex gap-2">
-                    <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={() => { setRunning(true); toast.success("Running"); }}>
+                    <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={() => { setRunning(true); toast.success("Running"); }}>
                       <Play className="w-4 h-4 mr-2" /> Run
                     </Button>
-                    <Button variant="outline" className="flex-1 border-zinc-700" onClick={() => { setRunning(false); toast("Paused"); }}>
+                    <Button variant="outline" className="flex-1 cursor-pointer border-zinc-700" onClick={() => { setRunning(false); toast("Paused"); }}>
                       <Pause className="w-4 h-4 mr-2" /> Pause
                     </Button>
                   </div>
 
                   <div className="mt-3 flex gap-2">
-                    <Button variant="ghost" className="flex-1 border border-zinc-800" onClick={() => toast("Saved demo snapshot")}><Layers className="w-4 h-4 mr-2" /> Snapshot</Button>
-                    <Button variant="ghost" className="flex-1 border border-zinc-800" onClick={() => updateActiveParam("C", (activeParams.C || 0) * 1) && toast("Action")}>Apply</Button>
+                    <Button variant="ghost" className="flex-1 border text-orange-400 hover:bg-black hover:text-orange-500
+ cursor-pointer border-zinc-800" 
+onClick={snapshotPNG}
+><Layers className="w-4 h-4 mr-2" /> Snapshot</Button>
+                    <Button variant="ghost" className="flex-1 border text-orange-400 hover:bg-black hover:text-orange-500
+ cursor-pointer border-zinc-800" onClick={() => updateActiveParam("C", (activeParams.C || 0) * 1) && toast("Action")}>Apply</Button>
                   </div>
                 </CardContent>
               </Card>
@@ -857,7 +910,7 @@ export default function ExplainerPage() {
           {/* Right: visual + oscilloscope */}
           <div className="lg:col-span-8 space-y-4">
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden">
+              <Card className="bg-black/70 snapshot border border-zinc-800 rounded-2xl overflow-hidden">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -933,11 +986,13 @@ export default function ExplainerPage() {
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-60 w-[92%] sm:w-auto sm:left-auto sm:translate-x-0 sm:bottom-6 sm:right-6 lg:hidden" role="region" aria-label="Mobile controls">
         <div className="flex items-center justify-between gap-3 bg-black/80 border border-zinc-800 p-3 rounded-full shadow-lg">
           <div className="flex items-center gap-2">
-            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-zinc-300 text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
+            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-orange-400 hover:bg-black hover:text-orange-500
+ cursor-pointer bg-black text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" className="border border-zinc-800 text-zinc-300 p-2" onClick={() => toast("Share feature demo")}>Share</Button>
+            <Button variant="ghost" className="border border-zinc-800 text-orange-400 hover:bg-black hover:text-orange-500
+ cursor-pointer p-2" onClick={() => toast("Share feature coming soon")}>Share</Button>
           </div>
         </div>
       </div>

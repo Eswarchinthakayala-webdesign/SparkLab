@@ -23,6 +23,7 @@ import {
   User,
   Tag,
   Sparkles,
+  ListPlus,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
@@ -689,7 +690,7 @@ export default function NotesPage() {
                   <div className="flex items-center gap-2">
                     <div className="flex items-center gap-2 bg-zinc-900 rounded-md px-2 py-1 w-full">
                       <Search className="w-4 h-4 text-zinc-400" />
-                      <Input placeholder="Search notes..." value={search} onChange={(e) => setSearch(e.target.value)} className="bg-transparent border-0 focus:ring-0 text-sm" />
+                      <Input placeholder="Search notes..." value={search} onChange={(e) => setSearch(e.target.value)} className="bg-transparent border-0 focus:ring-0 text-orange-100 text-sm" />
                     </div>
                   </div>
 
@@ -716,8 +717,10 @@ export default function NotesPage() {
                           </div>
 
                           <div className="flex flex-col gap-2 items-center ml-2">
-                            <Button variant="ghost" className="p-1 border border-zinc-800" onClick={(e) => { e.stopPropagation(); setActiveNoteId(n.id); toast("Opened"); }}><Edit2 className="w-4 h-4" /></Button>
-                            <Button variant="ghost" className="p-1 border border-zinc-800 bg-red-600 text-black" onClick={(e) => { e.stopPropagation(); deleteNote(n.id); }}><Trash2 className="w-4 h-4" /></Button>
+                            <Button variant="ghost" className="p-1 border text-orange-400 cursor-pointer  hover:bg-black hover:text-orange-500
+
+ border-zinc-800" onClick={(e) => { e.stopPropagation(); setActiveNoteId(n.id); toast("Opened"); }}><Edit2 className="w-4 h-4" /></Button>
+                            <Button variant="ghost" className="p-1 border border-zinc-800  cursor-pointer  hover:bg-red-600 bg-red-600 text-black" onClick={(e) => { e.stopPropagation(); deleteNote(n.id); }}><Trash2 className="w-4 h-4" /></Button>
                           </div>
                         </div>
                       </div>
@@ -747,7 +750,7 @@ export default function NotesPage() {
 
                     <div className="flex items-center gap-2">
                       <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">View: <span className="text-[#ffd24a] ml-1">{selectedUserView}</span></Badge>
-                      <Button className="px-3 py-2 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={() => exportNoteCSV()}><Download className="w-4 h-4 mr-2" />Export</Button>
+                      <Button className="px-3 py-2 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer" onClick={() => exportNoteCSV()}><Download className="w-4 h-4 mr-2" />Export</Button>
                     </div>
                   </CardTitle>
                 </CardHeader>
@@ -763,12 +766,16 @@ export default function NotesPage() {
                           onActiveFieldChange({ tags });
                         }} placeholder="tags (comma separated)" className="bg-zinc-900/60 border border-zinc-800 text-white" />
                         <Select value={activeNote?.compType ?? compType} onValueChange={(v) => onActiveFieldChange({ compType: v })}>
-                          <SelectTrigger className="w-44 bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm">
+                          <SelectTrigger className="w-44 cursor-pointer bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm">
                             <SelectValue placeholder="Component" />
                           </SelectTrigger>
                           <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                            <SelectItem value="capacitor" className="text-white">Capacitor (μF)</SelectItem>
-                            <SelectItem value="inductor" className="text-white">Inductor (mH)</SelectItem>
+                            <SelectItem value="capacitor"   className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Capacitor (μF)</SelectItem>
+                            <SelectItem value="inductor"   className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Inductor (mH)</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -780,12 +787,14 @@ export default function NotesPage() {
                       <Input value={activeNote?.preset?.Rs ?? ""} onChange={(e) => onActiveFieldChange({ preset: { ...(activeNote?.preset ?? {}), Rs: e.target.value } })} type="number" placeholder="Series R (Ω)" className="bg-zinc-900/60 border border-zinc-800 text-white" />
                       <Input value={activeNote?.preset?.manualI ?? ""} onChange={(e) => onActiveFieldChange({ preset: { ...(activeNote?.preset ?? {}), manualI: e.target.value } })} placeholder="Manual I (A)" className="bg-zinc-900/60 border border-zinc-800 text-white" />
                       <div className="flex gap-2 mt-2">
-                        <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={() => { setRunning(true); toast.success("Simulation running"); }}><Play className="w-4 h-4 mr-2" />Run</Button>
-                        <Button variant="ghost" className="flex-1 border border-zinc-800" onClick={() => { setRunning(false); toast("Paused"); }}><Pause className="w-4 h-4 mr-2" />Pause</Button>
+                        <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={() => { setRunning(true); toast.success("Simulation running"); }}><Play className="w-4 h-4 mr-2" />Run</Button>
+                        <Button variant="ghost" className="flex-1 border border-zinc-800 text-orange-400 hover:bg-black hover:text-orange-500
+ cursor-pointer" onClick={() => { setRunning(false); toast("Paused"); }}><Pause className="w-4 h-4 mr-2" />Pause</Button>
                       </div>
                       <div className="mt-2 flex gap-2">
-                        <Button variant="outline" onClick={() => resetActivePreset()} className="flex-1">Reset</Button>
-                        <Button variant="ghost" onClick={() => exportNoteCSV()} className="flex-1">Export CSV</Button>
+                        <Button variant="outline" onClick={() => resetActivePreset()} className="flex-1 cursor-pointer">Reset</Button>
+                        <Button variant="outline" onClick={() => exportNoteCSV()} className="flex-1 cursor-pointer text-orange-400 bg-black border border-zinc-500/40 hover:bg-black hover:text-orange-500
+ ">Export CSV</Button>
                       </div>
                     </div>
                   </div>
@@ -795,7 +804,7 @@ export default function NotesPage() {
                     <div className="flex items-center justify-between">
                       <div className="text-sm text-zinc-300">Diagram</div>
                       <div className="flex gap-2">
-                        <Button variant="ghost" onClick={() => addGroup()} className="border border-zinc-800">Add Group</Button>
+                        <Button variant="ghost" onClick={() => addGroup()} className="border border-zinc-800 bg-white cursor-pointer">Add Group</Button>
                       </div>
                     </div>
 
@@ -812,15 +821,22 @@ export default function NotesPage() {
                                 const ng = activeNote.diagram.groups.map((gg, i) => (i === gi ? { ...gg, type: v } : gg));
                                 onActiveFieldChange({ diagram: { groups: ng } });
                               }}>
-                                <SelectTrigger className="w-32 bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm">
+                                <SelectTrigger className="w-32 cursor-pointer bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm">
                                   <SelectValue placeholder="Type" />
                                 </SelectTrigger>
                                 <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                                  <SelectItem value="series" className="text-white">Series</SelectItem>
-                                  <SelectItem value="parallel" className="text-white">Parallel</SelectItem>
+                                  <SelectItem value="series" 
+      className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Series</SelectItem>
+                                  <SelectItem value="parallel" 
+      className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Parallel</SelectItem>
                                 </SelectContent>
                               </Select>
-                              <Button variant="ghost" className="border border-zinc-800" onClick={() => removeGroup(gi)}>Remove</Button>
+                              <Button variant="ghost" className="border border-zinc-800 text-orange-400 hover:bg-black hover:text-orange-500
+ cursor-pointer" onClick={() => removeGroup(gi)}>Remove</Button>
                             </div>
                           </div>
 
@@ -833,15 +849,16 @@ export default function NotesPage() {
                                   onActiveFieldChange({ diagram: { groups: ng } });
                                 }} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
                                 <div className="flex gap-1 ml-auto">
-                                  <Button variant="ghost" onClick={() => removeComponentFromGroup(gi, ri)} className="p-1 border border-zinc-800 bg-red-500 text-black"><Trash2 className="w-4 h-4" /></Button>
+                                  <Button variant="ghost" onClick={() => removeComponentFromGroup(gi, ri)} className="p-1 border border-zinc-800 bg-red-500 cursor-pointer hover:bg-red-600 text-black"><Trash2 className="w-4 h-4" /></Button>
                                 </div>
                               </div>
                             ))}
                           </div>
 
                           <div className="mt-3 flex gap-2">
-                            <Button variant="outline" onClick={() => addComponentToGroup(gi)} className="flex-1 border border-zinc-800 text-[#ffd24a]"><Plus className="w-4 h-4 mr-2" /> Add</Button>
-                            <Button variant="ghost" className="border border-zinc-800" onClick={() => { /* quick auto-scale */ const ng = activeNote.diagram.groups.map((gg, i) => (i === gi ? { ...gg, values: gg.values.map(v => Math.max(1, Math.round(v))) } : gg)); onActiveFieldChange({ diagram: { groups: ng } }); }}>Normalize</Button>
+                            <Button variant="outline" onClick={() => addComponentToGroup(gi)} className="flex-1 border border-zinc-800 text-orange-400 hover:bg-black hover:text-orange-500
+ cursor-pointer bg-black"><ListPlus className="w-4 h-4 mr-2" /> Add</Button>
+                            <Button variant="ghost" className="border border-zinc-800 cursor-pointer hover:bg-orange-500 bg-orange-400" onClick={() => { /* quick auto-scale */ const ng = activeNote.diagram.groups.map((gg, i) => (i === gi ? { ...gg, values: gg.values.map(v => Math.max(1, Math.round(v))) } : gg)); onActiveFieldChange({ diagram: { groups: ng } }); }}>Normalize</Button>
                           </div>
                         </div>
                       ))}
@@ -937,11 +954,13 @@ export default function NotesPage() {
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-60 w-[92%] sm:w-auto sm:left-auto sm:translate-x-0 sm:bottom-6 sm:right-6 lg:hidden" role="region" aria-label="Mobile controls">
         <div className="flex items-center justify-between gap-3 bg-black/80 border border-zinc-800 p-3 rounded-full shadow-lg">
           <div className="flex items-center gap-2">
-            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-zinc-300 text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
+            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-orange-400 hover:bg-black hover:text-orange-500
+ cursor-pointer bg-black text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" className="border border-zinc-800 text-zinc-300 p-2" onClick={() => exportNoteCSV()}><Download className="w-4 h-4" /></Button>
+            <Button variant="ghost" className="border border-zinc-800 text-orange-400 cursor-pointer hover:bg-black hover:text-orange-500
+ p-2" onClick={() => exportNoteCSV()}><Download className="w-4 h-4" /></Button>
           </div>
         </div>
       </div>
