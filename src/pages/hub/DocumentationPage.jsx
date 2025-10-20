@@ -776,14 +776,22 @@ export default function DocumentationPage() {
     toast.success("Tutorial saved");
   }
 
-  function deleteTutorial(id) {
-    const next = tutorials.filter((t) => t.id !== id);
-    setTutorials(next);
-    if (selectedId === id) {
-      setSelectedId(next?.[0]?.id || null);
-    }
-    toast("Deleted tutorial");
+function deleteTutorial(id) {
+  if (tutorials.length <= 1) {
+    toast.error("At least one tutorial must remain.");
+    return;
   }
+
+  const next = tutorials.filter((t) => t.id !== id);
+  setTutorials(next);
+
+  if (selectedId === id) {
+    setSelectedId(next?.[0]?.id || null);
+  }
+
+  toast.success("Deleted tutorial");
+}
+
 
   // step check toggle
   function toggleStepChecked(idx) {
