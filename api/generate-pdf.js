@@ -58,6 +58,15 @@ function drawFooter(doc) {
   doc.fillColor("#ddd"); // ✅ Reset color for next page
 }
 
+function stripMarkdown(text) {
+  if (!text) return "";
+  return text
+    .replace(/[#_*`~>\-]+/g, "")        
+    .replace(/\[(.*?)\]\(.*?\)/g, "$1")  
+    .replace(/\n{2,}/g, "\n\n")          
+    .trim();
+}
+
 // 🧩 Section Title
 function sectionTitle(doc, text) {
   doc.moveDown(0.5);
@@ -104,6 +113,9 @@ export default async function handler(req, res) {
       aiDetail = "",
       visualImage = null,
     } = req.body || {};
+
+    const cleanAiSummary=stripMarkdown(aiSummary)
+    const cleanAiDetail=stripMarkdown(aiDetail)
 
     // ✅ Create new PDF
     const doc = new PDFDocument({
@@ -176,7 +188,7 @@ export default async function handler(req, res) {
     // 🧩 AI Summary
     if (aiSummary) {
       sectionTitle(doc, "AI Summary");
-      writeText(doc, aiSummary, {
+      writeText(doc, cleanAiSummary, {
         align: "justify",
         width: doc.page.width - 100,
         font: "Helvetica",
@@ -190,7 +202,7 @@ export default async function handler(req, res) {
     // 🧩 AI Detailed Explanation
     if (aiDetail) {
       sectionTitle(doc, "AI Detailed Explanation");
-      writeText(doc, aiDetail, {
+      writeText(doc, cleanAiDetail, {
         align: "justify",
         width: doc.page.width - 100,
         font: "Helvetica",
