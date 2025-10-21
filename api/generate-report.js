@@ -25,6 +25,14 @@ function sectionTitle(doc, title) {
   doc.moveDown(0.3);
   doc.font("Helvetica").fontSize(10).fillColor("#ffffff");
 }
+function stripMarkdown(text) {
+  if (!text) return "";
+  return text
+    .replace(/[#_*`~>\-]+/g, "")         // Remove Markdown symbols
+    .replace(/\[(.*?)\]\(.*?\)/g, "$1")  // Convert [text](link) → text
+    .replace(/\n{2,}/g, "\n\n")          // Normalize newlines
+    .trim();
+}
 
 // Page background + border
 function drawPageBackground(doc) {
@@ -84,7 +92,11 @@ export default async function handler(req, res) {
       procedure = "Connect the circuit as shown.\nIncrease the voltage gradually.\nMeasure current for each voltage.\nPlot V–I graph and calculate resistance.",
       conclusion = "Conclusion not provided.",
     } = req.body || {};
-
+     
+    const cleanObjective = stripMarkdown(objective);
+    const cleanDescription = stripMarkdown(description);
+    const cleanApparatus = stripMarkdown(apparatus);
+    const cleanProcedure = stripMarkdown(procedure);
     // Create PDF
     const doc = new PDFDocument({ size: "A4", margin: 50 });
     res.setHeader("Content-Disposition", `attachment; filename=${title.replace(/\s+/g, "-")}.pdf`);
@@ -114,16 +126,16 @@ export default async function handler(req, res) {
 
     // ---------------- THEORY / DETAILS ----------------
     sectionTitle(doc, "Objective");
-    doc.text(objective, { align: "justify" });
+    doc.text(cleanObjective, { align: "justify" });
 
     sectionTitle(doc, "Description");
-    doc.text(description, { align: "justify", lineGap: 3 });
+    doc.text(cleanDescription, { align: "justify", lineGap: 3 });
 
     sectionTitle(doc, "Apparatus");
-    doc.text(apparatus, { align: "left" });
+    doc.text(cleanApparatus, { align: "left" });
 
     sectionTitle(doc, "Procedure");
-    procedure.split("\n").forEach((step) => doc.text("• " + step.trim(), { lineGap: 2 }));
+    cleanProcedure.split("\n").forEach((step) => doc.text("• " + step.trim(), { lineGap: 2 }));
 
     // ---------------- OBSERVATION TABLE ----------------
     doc.addPage();
