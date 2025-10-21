@@ -235,84 +235,447 @@ function ExplainerSVG({ concept, params, history = [], running }) {
           <path d={`M 60 ${svgH / 2} H ${svgW - 60}`} stroke="#111" strokeWidth="6" strokeLinecap="round" />
 
           {/* depending on concept, draw a different diagram */}
-          {concept === "rc" && (
-            <>
-              {/* supply block */}
-              <g transform={`translate(40, ${svgH / 2 - 12})`}>
-                <rect x="-24" y="-28" width="48" height="56" rx="6" fill="#060606" stroke="#222" />
-                <text x="-36" y="-40" fontSize="12" fill="#ffd24a">{params.Vsup} V</text>
-              </g>
+{concept === "rc" && (
+  <>
+    <defs>
+      {/* ✨ Neon gradients and glow filters */}
+      <linearGradient id="wireGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stopColor="#00f0ff" stopOpacity="0.6" />
+        <stop offset="50%" stopColor="#39ff14" stopOpacity="1" />
+        <stop offset="100%" stopColor="#00f0ff" stopOpacity="0.6" />
+      </linearGradient>
 
-              {/* resistor */}
-              <g transform={`translate(240, ${svgH / 2})`}>
-                <rect x="-30" y="-18" width="60" height="36" rx="8" fill="#0a0a0a" stroke="#222" />
-                <text x="-24" y="-26" fontSize="12" fill="#ffb86b">R = {params.R} Ω</text>
-                <text x="-24" y="36" fontSize="12" fill="#fff">I ~ {round(I, 6)} A</text>
-              </g>
+      <linearGradient id="voltagePulse" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stopColor="#ffb86b">
+          <animate
+            attributeName="stop-color"
+            values="#ffb86b;#ffd24a;#ffb86b"
+            dur="2s"
+            repeatCount="indefinite"
+          />
+        </stop>
+        <stop offset="100%" stopColor="#ffd24a" />
+      </linearGradient>
 
-              {/* capacitor */}
-              <g transform={`translate(520, ${svgH / 2})`}>
-                <rect x="-30" y="-22" width="60" height="44" rx="8" fill="#0a0a0a" stroke="#222" />
-                <rect x="-18" y="-10" width="36" height="20" rx="6" fill="#ffb86b" opacity={0.95} />
-                <text x="-24" y="-32" fontSize="12" fill="#ffd24a">C = {params.Cu || params.C} μF</text>
-                <text x="-24" y="36" fontSize="12" fill="#fff">Vc {`≈`} {round(Vc, 3)} V</text>
-              </g>
+      <filter id="glowFilter" x="-100%" y="-100%" width="300%" height="300%">
+        <feGaussianBlur stdDeviation="3" result="blur" />
+        <feMerge>
+          <feMergeNode in="blur" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
 
-              {/* animated dots along path from supply->resistor->cap */}
-              {Array.from({ length: dotCount }).map((_, di) => {
-                const pathStr = `M 104 ${svgH / 2} H 260 H 520`;
-                const delay = (di / dotCount) * speed;
-                const style = {
-                  offsetPath: `path('${pathStr}')`,
-                  animationName: "flowExplainer",
-                  animationDuration: `${speed}s`,
-                  animationTimingFunction: "linear",
-                  animationDelay: `${-delay}s`,
-                  animationIterationCount: "infinite",
-                  animationPlayState: running ? "running" : "paused",
-                  transformOrigin: "0 0",
-                };
-                return <circle key={`dot-rc-${di}`} r="4" fill="#ffd24a" style={style} />;
-              })}
-            </>
-          )}
+      <filter id="innerGlow">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="1.5" result="blur" />
+        <feComposite in="SourceGraphic" in2="blur" operator="atop" />
+      </filter>
 
-          {concept === "rl" && (
-            <>
-              {/* supply */}
-              <g transform={`translate(40, ${svgH / 2 - 12})`}>
-                <rect x="-24" y="-28" width="48" height="56" rx="6" fill="#060606" stroke="#222" />
-                <text x="-36" y="-40" fontSize="12" fill="#ffd24a">{params.Vsup} V</text>
-              </g>
+      <style>{`
+        @keyframes flowExplainer {
+          0% { offset-distance: 0%; }
+          100% { offset-distance: 100%; }
+        }
+        @keyframes pulseCharge {
+          0%, 100% { opacity: 0.6; transform: scale(1); }
+          50% { opacity: 1; transform: scale(1.08); }
+        }
+        @keyframes neonFlicker {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.8; }
+        }
+      `}</style>
+    </defs>
 
-              {/* inductor (coil effect) */}
-              <g transform={`translate(420, ${svgH / 2})`}>
-                <rect x="-38" y="-24" width="76" height="48" rx="10" fill="#0a0a0a" stroke="#222" />
-                {/* stylized coils */}
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <ellipse key={i} cx={-18 + i * 9} cy={0} rx="6" ry="12" fill="none" stroke="#ff6a9a" strokeWidth="3" />
-                ))}
-                <text x="-34" y="-36" fontSize="12" fill="#ff6a9a">L = {params.Lm || params.L} mH</text>
-                <text x="-34" y="36" fontSize="12" fill="#fff">I {`≈`} {round(I, 6)} A</text>
-              </g>
+    {/* 🔋 POWER SUPPLY */}
+    <g transform={`translate(60, ${svgH / 2})`}>
+      <rect
+        x="-26"
+        y="-36"
+        width="52"
+        height="72"
+        rx="12"
+        fill="#050505"
+        stroke="url(#voltagePulse)"
+        strokeWidth="2"
+        filter="url(#glowFilter)"
+      />
+      <text
+        x="-22"
+        y="-48"
+        fontSize="12"
+        fill="#39ff14"
+        fontFamily="monospace"
+      >
+        {params.Vsup} V
+      </text>
+      <circle
+        r="10"
+        cx="0"
+        cy="0"
+        fill="#39ff14"
+        filter="url(#glowFilter)"
+        style={{ animation: "neonFlicker 2s infinite" }}
+      />
+      <circle r="4" fill="#000" />
+    </g>
 
-              {Array.from({ length: dotCount }).map((_, di) => {
-                const pathStr = `M 104 ${svgH / 2} H 420`;
-                const delay = (di / dotCount) * speed;
-                const style = {
-                  offsetPath: `path('${pathStr}')`,
-                  animationName: "flowExplainerInd",
-                  animationDuration: `${speed}s`,
-                  animationTimingFunction: "linear",
-                  animationDelay: `${-delay}s`,
-                  animationIterationCount: "infinite",
-                  animationPlayState: running ? "running" : "paused",
-                  transformOrigin: "0 0",
-                };
-                return <circle key={`dot-rl-${di}`} r="4" fill="#00ffbf" style={style} />;
-              })}
-            </>
-          )}
+    {/* ⚡ MAIN CONDUCTING PATH */}
+    <path
+      d={`M 110 ${svgH / 2} H 240 H 520`}
+      stroke="url(#wireGlow)"
+      strokeWidth="3.5"
+      strokeLinecap="round"
+      filter="url(#glowFilter)"
+      opacity="0.95"
+    />
+
+    {/* 🔸 RESISTOR BLOCK */}
+    <g transform={`translate(240, ${svgH / 2})`}>
+      {/* metallic base */}
+      <rect
+        x="-34"
+        y="-18"
+        width="68"
+        height="36"
+        rx="10"
+        fill="#0a0a0a"
+        stroke="#00f0ff88"
+        strokeWidth="1.6"
+        filter="url(#innerGlow)"
+      />
+      {/* resistor waves */}
+      {Array.from({ length: 4 }).map((_, i) => (
+        <line
+          key={i}
+          x1={-26 + i * 14}
+          y1="-10"
+          x2={-18 + i * 14}
+          y2="10"
+          stroke="#39ff14"
+          strokeWidth="1.5"
+          opacity="0.8"
+        />
+      ))}
+      <text
+        x="-30"
+        y="-26"
+        fontSize="12"
+        fill="#39ff14"
+        fontFamily="monospace"
+      >
+        R = {params.R} Ω
+      </text>
+      <text
+        x="-28"
+        y="34"
+        fontSize="12"
+        fill="#fff"
+        fontFamily="monospace"
+      >
+        I ≈ {round(I, 6)} A
+      </text>
+    </g>
+
+    {/* 🧲 CAPACITOR */}
+    <g transform={`translate(520, ${svgH / 2})`}>
+      {/* glowing body */}
+      <rect
+        x="-32"
+        y="-26"
+        width="64"
+        height="52"
+        rx="10"
+        fill="#0a0a0a"
+        stroke="#ffd24a"
+        strokeWidth="1.5"
+        filter="url(#glowFilter)"
+      />
+      {/* two plates */}
+      <rect
+        x="-16"
+        y="-14"
+        width="4"
+        height="28"
+        rx="2"
+        fill="#ffd24a"
+        style={{ animation: "pulseCharge 2.2s ease-in-out infinite" }}
+      />
+      <rect
+        x="12"
+        y="-14"
+        width="4"
+        height="28"
+        rx="2"
+        fill="#ffd24a"
+        style={{ animation: "pulseCharge 2.2s ease-in-out infinite" }}
+      />
+      {/* inner charge bar */}
+      <rect
+        x="-10"
+        y="-6"
+        width="22"
+        height="12"
+        rx="2"
+        fill="url(#voltagePulse)"
+        opacity="0.7"
+      />
+      <text
+        x="-30"
+        y="-34"
+        fontSize="12"
+        fill="#ffd24a"
+        fontFamily="monospace"
+      >
+        C = {params.Cu || params.C} μF
+      </text>
+      <text
+        x="-28"
+        y="40"
+        fontSize="12"
+        fill="#fff"
+        fontFamily="monospace"
+      >
+        Vc ≈ {round(Vc, 3)} V
+      </text>
+    </g>
+
+    {/* 🔹 ELECTRON FLOW */}
+    {Array.from({ length: dotCount }).map((_, di) => {
+      const pathStr = `M 110 ${svgH / 2} H 240 H 520`;
+      const delay = (di / dotCount) * speed;
+      const style = {
+        offsetPath: `path('${pathStr}')`,
+        animationName: "flowExplainer",
+        animationDuration: `${speed}s`,
+        animationTimingFunction: "linear",
+        animationDelay: `${-delay}s`,
+        animationIterationCount: "infinite",
+        animationPlayState: running ? "running" : "paused",
+        transformOrigin: "0 0",
+        filter: "url(#glowFilter)",
+      };
+      return (
+        <circle
+          key={`dot-rc-${di}`}
+          r="3.2"
+          fill="#39ff14"
+          opacity="0.95"
+          style={style}
+        />
+      );
+    })}
+
+    {/* ⚙️ Ambient voltage pulse line */}
+    <rect
+      x="110"
+      y={svgH / 2 - 2}
+      width="410"
+      height="4"
+      rx="2"
+      fill="url(#voltagePulse)"
+      opacity="0.2"
+    />
+  </>
+)}
+
+{concept === "rl" && (
+  <>
+    <defs>
+      {/* ✨ Neon gradients, electromagnetic glows */}
+      <linearGradient id="wireGlowRL" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stopColor="#00eaff" stopOpacity="0.6" />
+        <stop offset="50%" stopColor="#00ffbf" stopOpacity="1" />
+        <stop offset="100%" stopColor="#00eaff" stopOpacity="0.6" />
+      </linearGradient>
+
+      <linearGradient id="coilGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#ff6a9a" />
+        <stop offset="100%" stopColor="#ff2df1" />
+      </linearGradient>
+
+      {/* Glowing filter for soft bloom */}
+      <filter id="glowRL" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="3" result="blur" />
+        <feMerge>
+          <feMergeNode in="blur" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
+
+      <filter id="fieldGlow" x="-100%" y="-100%" width="300%" height="300%">
+        <feGaussianBlur stdDeviation="10" result="blur" />
+        <feColorMatrix
+          in="blur"
+          type="matrix"
+          values="0 0 0 0 0.8  0 0 0 0 0.2  0 0 0 0 0.6  0 0 0 1 0"
+        />
+      </filter>
+
+      <style>{`
+        @keyframes flowExplainerInd {
+          0% { offset-distance: 0%; }
+          100% { offset-distance: 100%; }
+        }
+        @keyframes fieldPulse {
+          0%, 100% { opacity: 0.4; transform: scale(1); }
+          50% { opacity: 0.9; transform: scale(1.05); }
+        }
+        @keyframes currentPulse {
+          0%, 100% { stop-color: #00ffbf; }
+          50% { stop-color: #00eaff; }
+        }
+        @keyframes coilFlicker {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.85; }
+        }
+      `}</style>
+    </defs>
+
+    {/* 🔋 POWER SUPPLY */}
+    <g transform={`translate(60, ${svgH / 2})`}>
+      <rect
+        x="-26"
+        y="-36"
+        width="52"
+        height="72"
+        rx="12"
+        fill="#050505"
+        stroke="url(#currentPulse)"
+        strokeWidth="2"
+        filter="url(#glowRL)"
+      />
+      <text
+        x="-22"
+        y="-48"
+        fontSize="12"
+        fill="#00ffbf"
+        fontFamily="monospace"
+      >
+        {params.Vsup} V
+      </text>
+      <circle
+        r="9"
+        cx="0"
+        cy="0"
+        fill="#00ffbf"
+        filter="url(#glowRL)"
+        style={{ animation: "coilFlicker 2s infinite" }}
+      />
+      <circle r="4" fill="#000" />
+    </g>
+
+    {/* ⚡ MAIN WIRE PATH */}
+    <path
+      d={`M 110 ${svgH / 2} H 420`}
+      stroke="url(#wireGlowRL)"
+      strokeWidth="3.5"
+      strokeLinecap="round"
+      filter="url(#glowRL)"
+      opacity="0.95"
+    />
+
+    {/* 🌀 INDUCTOR */}
+    <g transform={`translate(420, ${svgH / 2})`}>
+      {/* Background casing */}
+      <rect
+        x="-44"
+        y="-28"
+        width="88"
+        height="56"
+        rx="14"
+        fill="#0a0a0a"
+        stroke="url(#coilGlow)"
+        strokeWidth="1.8"
+        filter="url(#glowRL)"
+      />
+
+      {/* Glowing electromagnetic field aura */}
+      <circle
+        cx="0"
+        cy="0"
+        r="38"
+        fill="#ff2df122"
+        filter="url(#fieldGlow)"
+        style={{ animation: "fieldPulse 2.2s infinite ease-in-out" }}
+      />
+
+      {/* Metallic coil rings */}
+      {Array.from({ length: 6 }).map((_, i) => (
+        <ellipse
+          key={i}
+          cx={-25 + i * 10}
+          cy={0}
+          rx="6"
+          ry="14"
+          fill="none"
+          stroke="url(#coilGlow)"
+          strokeWidth="2.5"
+          opacity="0.95"
+          style={{ animation: "coilFlicker 3s infinite" }}
+        />
+      ))}
+
+      {/* Coil data labels */}
+      <text
+        x="-38"
+        y="-38"
+        fontSize="12"
+        fill="#ff6a9a"
+        fontFamily="monospace"
+      >
+        L = {params.Lm || params.L} mH
+      </text>
+      <text
+        x="-34"
+        y="40"
+        fontSize="12"
+        fill="#fff"
+        fontFamily="monospace"
+      >
+        I ≈ {round(I, 6)} A
+      </text>
+    </g>
+
+    {/* ⚙️ Flowing energy particles */}
+    {Array.from({ length: dotCount }).map((_, di) => {
+      const pathStr = `M 110 ${svgH / 2} H 420`;
+      const delay = (di / dotCount) * speed;
+      const style = {
+        offsetPath: `path('${pathStr}')`,
+        animationName: "flowExplainerInd",
+        animationDuration: `${speed}s`,
+        animationTimingFunction: "linear",
+        animationDelay: `${-delay}s`,
+        animationIterationCount: "infinite",
+        animationPlayState: running ? "running" : "paused",
+        transformOrigin: "0 0",
+        filter: "url(#glowRL)",
+      };
+      return (
+        <circle
+          key={`dot-rl-${di}`}
+          r="3.5"
+          fill="#00ffbf"
+          opacity="0.95"
+          style={style}
+        />
+      );
+    })}
+
+    {/* 💫 Dynamic magnetic field pulse line */}
+    <rect
+      x="110"
+      y={svgH / 2 - 2}
+      width="310"
+      height="4"
+      rx="2"
+      fill="url(#wireGlowRL)"
+      opacity="0.25"
+      style={{ animation: "currentPulse 2s infinite ease-in-out" }}
+    />
+  </>
+)}
+
 
           {concept === "rlc" && (
             <>
