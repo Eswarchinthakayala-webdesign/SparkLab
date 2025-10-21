@@ -1,29 +1,18 @@
-// server.cjs — Final Clean Version with Markdown Cleanup (Option 3)
-// -----------------------------------------------------------------
+// server.cjs — Final Clean Version (No AI)
+// ---------------------------------------
 import PDFDocument from "pdfkit";
 
 export const config = {
   api: {
-    bodyParser: { sizeLimit: "30mb" },
+    bodyParser: { sizeLimit: "50mb" },
   },
 };
-
 // Convert base64 → Buffer
 function base64ToBuffer(dataURL) {
   if (!dataURL) return null;
   const match = dataURL.match(/^data:(image\/\w+);base64,(.+)$/);
   if (!match) return null;
   return Buffer.from(match[2], "base64");
-}
-
-// ✅ Strip Markdown symbols (*, #, -, etc.)
-function stripMarkdown(text) {
-  if (!text) return "";
-  return text
-    .replace(/[#_*`~>\-]+/g, "")         // Remove Markdown symbols
-    .replace(/\[(.*?)\]\(.*?\)/g, "$1")  // Convert [text](link) → text
-    .replace(/\n{2,}/g, "\n\n")          // Normalize newlines
-    .trim();
 }
 
 // Section title (orange heading)
@@ -96,15 +85,6 @@ export default async function handler(req, res) {
       conclusion = "Conclusion not provided.",
     } = req.body || {};
 
-    // ✅ Clean Markdown from text fields
-    const cleanObjective = stripMarkdown(objective);
-    const cleanDescription = stripMarkdown(description);
-    const cleanApparatus = stripMarkdown(apparatus);
-    const cleanProcedure = stripMarkdown(procedure);
-    const cleanCalculations = stripMarkdown(calculations);
-    const cleanResult = stripMarkdown(result);
-    const cleanConclusion = stripMarkdown(conclusion);
-
     // Create PDF
     const doc = new PDFDocument({ size: "A4", margin: 50 });
     res.setHeader("Content-Disposition", `attachment; filename=${title.replace(/\s+/g, "-")}.pdf`);
@@ -134,18 +114,16 @@ export default async function handler(req, res) {
 
     // ---------------- THEORY / DETAILS ----------------
     sectionTitle(doc, "Objective");
-    doc.text(cleanObjective, { align: "justify" });
+    doc.text(objective, { align: "justify" });
 
     sectionTitle(doc, "Description");
-    doc.text(cleanDescription, { align: "justify", lineGap: 3 });
+    doc.text(description, { align: "justify", lineGap: 3 });
 
     sectionTitle(doc, "Apparatus");
-    doc.text(cleanApparatus, { align: "left" });
+    doc.text(apparatus, { align: "left" });
 
     sectionTitle(doc, "Procedure");
-    cleanProcedure.split("\n").forEach((step) => {
-      if (step.trim()) doc.text("• " + step.trim(), { lineGap: 2 });
-    });
+    procedure.split("\n").forEach((step) => doc.text("• " + step.trim(), { lineGap: 2 }));
 
     // ---------------- OBSERVATION TABLE ----------------
     doc.addPage();
@@ -217,13 +195,13 @@ export default async function handler(req, res) {
     // ---------------- CALCULATIONS ----------------
     doc.addPage();
     sectionTitle(doc, "Calculations");
-    doc.text(cleanCalculations || "No calculations provided.", { align: "justify" });
+    doc.text(calculations || "No calculations provided.", { align: "justify" });
 
     sectionTitle(doc, "Result");
-    doc.text(cleanResult || "No result provided.", { align: "justify" });
+    doc.text(result || "No result provided.", { align: "justify" });
 
     sectionTitle(doc, "Conclusion");
-    doc.text(cleanConclusion || "No conclusion provided.", { align: "justify" });
+    doc.text(conclusion || "No conclusion provided.", { align: "justify" });
 
     // ---------------- SIGNATURE AREA ----------------
     doc.moveDown(2);
@@ -233,6 +211,8 @@ export default async function handler(req, res) {
     doc.moveTo(340, signY).lineTo(500, signY).stroke("#777");
     doc.text("Instructor Signature", 340, signY + 5);
 
+
+
     // End PDF
     doc.end();
   } catch (err) {
@@ -240,3 +220,5 @@ export default async function handler(req, res) {
     res.status(500).json({ error: "Failed to generate PDF" });
   }
 }
+
+
