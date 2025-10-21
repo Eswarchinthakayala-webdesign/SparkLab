@@ -43,6 +43,15 @@ function drawPageBackground(doc) {
     .stroke();
 }
 
+function stripMarkdown(text) {
+  if (!text) return "";
+  return text
+    .replace(/[#_*`~>\-]+/g, "")         
+    .replace(/\[(.*?)\]\(.*?\)/g, "$1")  
+    .replace(/\n{2,}/g, "\n\n")          
+    .trim();
+}
+
 // Footer text
 function drawFooter(doc) {
   const footerY = doc.page.height - 40;
@@ -86,7 +95,10 @@ export default async function handler(req, res) {
       procedure = "Connect the circuit as shown.\nIncrease the voltage gradually.\nMeasure current for each voltage.\nPlot V–I graph and calculate resistance.",
       conclusion = "Conclusion not provided.",
     } = req.body || {};
-
+    
+     const cleanDescription = stripMarkdown(description);
+    const cleanProcedure = stripMarkdown(procedure);
+       const cleanConclusion = stripMarkdown(conclusion);
     // Create PDF
     const doc = new PDFDocument({ size: "A4", margin: 50 });
     res.setHeader("Content-Disposition", `attachment; filename=${title.replace(/\s+/g, "-")}.pdf`);
@@ -119,13 +131,13 @@ export default async function handler(req, res) {
     doc.text(objective, { align: "justify" });
 
     sectionTitle(doc, "Description");
-    doc.text(description, { align: "justify", lineGap: 3 });
+    doc.text(cleanDescription, { align: "justify", lineGap: 3 });
 
     sectionTitle(doc, "Apparatus");
     doc.text(apparatus, { align: "left" });
 
     sectionTitle(doc, "Procedure");
-    procedure.split("\n").forEach((step) => doc.text("• " + step.trim(), { lineGap: 2 }));
+    cleanProcedure.split("\n").forEach((step) => doc.text("• " + step.trim(), { lineGap: 2 }));
 
     // ---------------- OBSERVATION TABLE ----------------
     doc.addPage();
@@ -203,7 +215,7 @@ export default async function handler(req, res) {
     doc.text(result || "No result provided.", { align: "justify" });
 
     sectionTitle(doc, "Conclusion");
-    doc.text(conclusion || "No conclusion provided.", { align: "justify" });
+    doc.text(cleanConclusion || "No conclusion provided.", { align: "justify" });
 
     // ---------------- SIGNATURE AREA ----------------
     doc.moveDown(2);
