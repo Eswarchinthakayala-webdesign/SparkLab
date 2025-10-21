@@ -99,8 +99,7 @@ export default async function handler(req, res) {
     const cleanDescription = stripMarkdown(description);
     const cleanApparatus = stripMarkdown(apparatus);
     const cleanProcedure = stripMarkdown(procedure);
-    const cleanCalculations = stripMarkdown(calculations);
-    const cleanResult = stripMarkdown(result);
+  
     const cleanConclusion = stripMarkdown(conclusion);
 
     // Create PDF
@@ -213,10 +212,10 @@ export default async function handler(req, res) {
     // ---------------- CALCULATIONS ----------------
     doc.addPage();
     sectionTitle(doc, "Calculations");
-    doc.text(cleanCalculations || "No calculations provided.", { align: "justify" });
+    doc.text(calculations || "No calculations provided.", { align: "justify" });
 
     sectionTitle(doc, "Result");
-    doc.text(cleanResult || "No result provided.", { align: "justify" });
+    doc.text(result || "No result provided.", { align: "justify" });
 
     sectionTitle(doc, "Conclusion");
     doc.text(cleanConclusion || "No conclusion provided.", { align: "justify" });
