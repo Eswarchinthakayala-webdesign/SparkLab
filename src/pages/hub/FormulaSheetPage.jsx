@@ -16,6 +16,10 @@ import {
   X,
 } from "lucide-react";
 import { toPng } from "html-to-image";  
+import remarkGfm from "remark-gfm";
+import ReactMarkdown from "react-markdown";
+
+import "highlight.js/styles/atom-one-dark.css";
 
 
 import { Toaster, toast } from "sonner";
@@ -334,7 +338,7 @@ const snapshotPNG = async () => {
                   key={f.id}
                   onClick={() => setSelected(f.id)}
                   whileHover={{ scale: 1.02 }}
-                  className={`w-full text-left p-3 rounded-md border flex justify-between items-center transition-all ${
+                  className={`w-full text-left p-3 cursor-pointer rounded-md border flex justify-between items-center transition-all ${
                     selected === f.id
                       ? "border-orange-500 bg-zinc-900/40"
                       : "border-zinc-800 hover:bg-zinc-900/20"
@@ -415,7 +419,7 @@ const snapshotPNG = async () => {
               </CardTitle>
             </CardHeader>
 
-            <CardContent className="space-y-6">
+<CardContent className="space-y-6">
               {/* Visualization */}
               <div className="snapshot">
               <FormulaVisualizer
@@ -452,13 +456,155 @@ const snapshotPNG = async () => {
                 <div className="p-4 bg-zinc-900/40 border border-zinc-800 rounded-lg">
                   <div className="text-xs text-zinc-400 mb-2">AI Insights</div>
                   <div className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">
-                    <strong>Summary:</strong> {aiSummary}
+                    <strong>Summary:</strong>  <ReactMarkdown
+    remarkPlugins={[remarkGfm]}
+    components={{
+      h1: ({ node, ...props }) => (
+        <h1 className="text-xl font-bold text-[#ff9a4a] mt-3 mb-2 border-b border-zinc-800 pb-1" {...props} />
+      ),
+      h2: ({ node, ...props }) => (
+        <h2 className="text-lg font-semibold text-orange-400 mt-3 mb-1" {...props} />
+      ),
+      h3: ({ node, ...props }) => (
+        <h3 className="text-md font-semibold text-orange-300 mt-2 mb-1" {...props} />
+      ),
+      p: ({ node, ...props }) => (
+        <p className="text-zinc-300 mb-2" {...props} />
+      ),
+      strong: ({ node, ...props }) => (
+        <strong className="text-orange-300 font-semibold" {...props} />
+      ),
+      em: ({ node, ...props }) => (
+        <em className="text-orange-400/80 italic" {...props} />
+      ),
+      a: ({ node, ...props }) => (
+        <a
+          className="text-orange-400 hover:text-orange-300 underline decoration-dotted transition-colors duration-200"
+          target="_blank"
+          rel="noopener noreferrer"
+          {...props}
+        />
+      ),
+      ul: ({ node, ...props }) => (
+        <ul className="list-disc list-inside text-zinc-300 space-y-1 ml-4" {...props} />
+      ),
+      ol: ({ node, ...props }) => (
+        <ol className="list-decimal list-inside text-zinc-300 space-y-1 ml-4" {...props} />
+      ),
+      blockquote: ({ node, ...props }) => (
+        <blockquote
+          className="border-l-2 border-orange-500/40 pl-3 italic text-zinc-400 bg-zinc-900/40 rounded-md py-1"
+          {...props}
+        />
+      ),
+      code: ({ inline, className, children, ...props }) =>
+        inline ? (
+          <code
+            className="bg-zinc-900/70 border border-orange-500/20 text-orange-300 rounded-md px-1.5 py-0.5 text-xs"
+            {...props}
+          >
+            {children}
+          </code>
+        ) : (
+          <pre
+            className="bg-zinc-900/80 border border-orange-400/30 rounded-lg p-3 overflow-x-auto mt-2 mb-3 text-xs text-orange-300 font-mono"
+            {...props}
+          >
+            <code>{children}</code>
+          </pre>
+        ),
+      hr: () => <hr className="my-3 border-zinc-800" />,
+      table: ({ node, ...props }) => (
+        <div className="overflow-x-auto mt-2 mb-3">
+          <table className="w-full border border-zinc-800 rounded-md text-zinc-300 text-sm" {...props} />
+        </div>
+      ),
+      th: ({ node, ...props }) => (
+        <th className="bg-zinc-900 text-orange-300 border border-zinc-800 px-2 py-1 text-left font-semibold" {...props} />
+      ),
+      td: ({ node, ...props }) => (
+        <td className="border border-zinc-800 px-2 py-1" {...props} />
+      ),
+    }}
+  >
+    {aiSummary || "Nothing to preview yet."}
+  </ReactMarkdown>
+
                     <br />
-                    <strong>Details:</strong> {aiDetail}
+                    <strong>Details:</strong> <ReactMarkdown
+    remarkPlugins={[remarkGfm]}
+    components={{
+      h1: ({ node, ...props }) => (
+        <h1 className="text-xl font-bold text-[#ff9a4a] mt-3 mb-2 border-b border-zinc-800 pb-1" {...props} />
+      ),
+      h2: ({ node, ...props }) => (
+        <h2 className="text-lg font-semibold text-orange-400 mt-3 mb-1" {...props} />
+      ),
+      h3: ({ node, ...props }) => (
+        <h3 className="text-md font-semibold text-orange-300 mt-2 mb-1" {...props} />
+      ),
+      p: ({ node, ...props }) => (
+        <p className="text-zinc-300 mb-2" {...props} />
+      ),
+      strong: ({ node, ...props }) => (
+        <strong className="text-orange-300 font-semibold" {...props} />
+      ),
+      em: ({ node, ...props }) => (
+        <em className="text-orange-400/80 italic" {...props} />
+      ),
+      a: ({ node, ...props }) => (
+        <a
+          className="text-orange-400 hover:text-orange-300 underline decoration-dotted transition-colors duration-200"
+          target="_blank"
+          rel="noopener noreferrer"
+          {...props}
+        />
+      ),
+  
+      blockquote: ({ node, ...props }) => (
+        <blockquote
+          className="border-l-2 border-orange-500/40 pl-3 italic text-zinc-400 bg-zinc-900/40 rounded-md py-1"
+          {...props}
+        />
+      ),
+      code: ({ inline, className, children, ...props }) =>
+        inline ? (
+          <code
+            className="bg-zinc-900/70 border border-orange-500/20 text-orange-300 rounded-md px-1.5 py-0.5 text-xs"
+            {...props}
+          >
+            {children}
+          </code>
+        ) : (
+          <pre
+            className="bg-zinc-900/80 border border-orange-400/30 rounded-lg p-3 overflow-x-auto mt-2 mb-3 text-xs text-orange-300 font-mono"
+            {...props}
+          >
+            <code>{children}</code>
+          </pre>
+        ),
+      hr: () => <hr className="my-3 border-zinc-800" />,
+      table: ({ node, ...props }) => (
+        <div className="overflow-x-auto mt-2 mb-3">
+          <table className="w-full border border-zinc-800 rounded-md text-zinc-300 text-sm" {...props} />
+        </div>
+      ),
+      th: ({ node, ...props }) => (
+        <th className="bg-zinc-900 text-orange-300 border border-zinc-800 px-2 py-1 text-left font-semibold" {...props} />
+      ),
+      td: ({ node, ...props }) => (
+        <td className="border border-zinc-800 px-2 py-1" {...props} />
+      ),
+    }}
+  >
+    {aiDetail || "Nothing to preview yet."}
+  </ReactMarkdown>
                   </div>
                 </div>
               )}
             </CardContent>
+
+
           </Card>
         </div>
       </main>

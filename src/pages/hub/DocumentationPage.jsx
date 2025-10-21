@@ -528,7 +528,7 @@ function StepEditorDialog({ open, onOpenChange, step, onSave, onDelete, totalSte
           <div className="flex gap-2">
             <Button
               variant="destructive"
-              className="flex items-center gap-2 text-sm bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black hover:scale-105 transition-transform"
+              className="flex items-center cursor-pointer gap-2 text-sm bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black hover:scale-105 transition-transform"
               onClick={handleDelete}
             >
               <Trash2 size={16} /> Delete
@@ -536,12 +536,12 @@ function StepEditorDialog({ open, onOpenChange, step, onSave, onDelete, totalSte
           </div>
           <div className="flex gap-2">
             <DialogClose asChild>
-              <Button variant="outline" className="text-zinc-300 border-zinc-700 hover:border-orange-500 hover:text-orange-400">
+              <Button variant="outline" className="text-black cursor-pointer border-zinc-700 hover:border-orange-500 hover:text-orange-400">
                 Cancel
               </Button>
             </DialogClose>
             <Button
-              className="flex items-center gap-2 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black hover:scale-105 transition-transform"
+              className="flex items-center cursor-pointer gap-2 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black hover:scale-105 transition-transform"
               onClick={() => { onSave({ ...step, title: title.trim() || "New Step" }); onOpenChange(false); }}
             >
               <Save size={14} /> Save
@@ -628,7 +628,7 @@ function TutorialEditorDialog({ open, onOpenChange, tutorial, onSave }) {
                 <Label className="mb-0 text-zinc-200">Steps</Label>
                 <Badge className="bg-orange-500/20 text-orange-300 border border-orange-400/30">{localSteps.length}</Badge>
               </div>
-              <Button size="sm" onClick={addStep} className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black shadow-sm hover:scale-105 transition-transform">
+              <Button size="sm" onClick={addStep} className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black shadow-sm hover:scale-105 transition-transform">
                 <Plus size={14} /> Add Step
               </Button>
             </div>
@@ -640,7 +640,7 @@ function TutorialEditorDialog({ open, onOpenChange, tutorial, onSave }) {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-orange-400 hover:text-orange-300"
+                      className="text-orange-400 cursor-pointer hover:bg-black hover:text-orange-300"
                       onClick={() => moveStep(i, Math.max(0, i - 1))}
                       aria-label="Move up"
                     >
@@ -649,7 +649,7 @@ function TutorialEditorDialog({ open, onOpenChange, tutorial, onSave }) {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-orange-400 hover:text-orange-300"
+                      className="text-orange-400 cursor-pointer hover:bg-black hover:text-orange-300"
                       onClick={() => moveStep(i, Math.min(localSteps.length - 1, i + 1))}
                       aria-label="Move down"
                     >
@@ -665,7 +665,7 @@ function TutorialEditorDialog({ open, onOpenChange, tutorial, onSave }) {
                     />
                   </div>
 
-                  <Button variant="ghost" size="sm" onClick={() => deleteStep(i)} className="text-red-400 hover:text-red-300">
+                  <Button variant="ghost" size="sm" onClick={() => deleteStep(i)} className="text-red-400 cursor-pointer hover:bg-black hover:text-red-500">
                     <Trash2 size={14} />
                   </Button>
                 </div>
@@ -675,13 +675,13 @@ function TutorialEditorDialog({ open, onOpenChange, tutorial, onSave }) {
         </div>
 
         <DialogFooter className="flex justify-between mt-4">
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button className='cursor-pointer hover:bg-black text-orange-300 border border-zinc-500/50 hover:text-orange-500' variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
 
           <div className="flex gap-2">
             <DialogClose asChild>
-              <Button variant="outline">Close</Button>
+              <Button className="cursor-pointer" variant="outline">Close</Button>
             </DialogClose>
             <Button
               onClick={() => {
@@ -693,7 +693,7 @@ function TutorialEditorDialog({ open, onOpenChange, tutorial, onSave }) {
                 });
                 onOpenChange(false);
               }}
-              className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black hover:scale-105 transition-transform"
+              className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black hover:scale-105 transition-transform"
             >
               <Save size={14} /> Save Tutorial
             </Button>
@@ -944,7 +944,7 @@ const GEMINI_MODEL = "gemini-2.0-flash-exp"; // or gemini-1.5-pro
 
       {/* Header */}
     <header className="fixed w-full left-0 top-0 z-50 backdrop-blur-lg bg-black/70 border-b border-zinc-800 shadow-lg py-2 sm:py-0">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+      <div className="max-w-8xl mx-auto px-3 sm:px-6 lg:px-8">
         {/* Top Row */}
         <div className="flex items-center justify-between h-12 sm:h-14 md:h-16">
           {/* Logo + Title */}
@@ -995,7 +995,7 @@ const GEMINI_MODEL = "gemini-2.0-flash-exp"; // or gemini-1.5-pro
 
             <Button
               variant="ghost"
-              className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg hover:bg-zinc-800 hover:text-orange-400 transition-colors duration-200"
+              className="border cursor-pointer border-zinc-700  text-zinc-300 p-2 rounded-lg hover:bg-zinc-800 hover:text-orange-400 transition-colors duration-200"
               onClick={createNewTutorial}
             >
               <Plus className="w-5 h-5" />
@@ -1021,14 +1021,7 @@ const GEMINI_MODEL = "gemini-2.0-flash-exp"; // or gemini-1.5-pro
                   e.currentTarget.value = "";
                 }}
               />
-              <label htmlFor="import-file">
-                <Button
-                  variant="ghost"
-                  className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg hover:bg-zinc-800 hover:text-orange-400 transition-colors duration-200"
-                >
-                  <FolderOpen className="w-5 h-5" />
-                </Button>
-              </label>
+         
             </div>
           </div>
 
@@ -1036,7 +1029,7 @@ const GEMINI_MODEL = "gemini-2.0-flash-exp"; // or gemini-1.5-pro
           <div className="md:hidden">
             <Button
               variant="ghost"
-              className="border cursor-pointer border-zinc-800 p-2 rounded-lg"
+              className="border cursor-pointer text-orange-400 hover:bg-black hover:text-orange-500 border-zinc-800 p-2 rounded-lg"
               onClick={() => setMobileOpen(!mobileOpen)}
             >
               {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -1076,26 +1069,19 @@ const GEMINI_MODEL = "gemini-2.0-flash-exp"; // or gemini-1.5-pro
               </Button>
               <Button
                 variant="ghost"
-                className="flex-1 border border-zinc-800 text-xs py-2 rounded-md text-zinc-300 hover:bg-zinc-800 hover:text-orange-400"
+                className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2 rounded-md text-zinc-300 hover:bg-zinc-800 hover:text-orange-400"
                 onClick={createNewTutorial}
               >
                 New
               </Button>
               <Button
                 variant="ghost"
-                className="flex-1 border border-zinc-800 text-xs py-2 rounded-md text-zinc-300 hover:bg-zinc-800 hover:text-orange-400"
+                className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2 rounded-md text-zinc-300 hover:bg-zinc-800 hover:text-orange-400"
                 onClick={() => exportTutorial(selectedTutorial)}
               >
                 Export
               </Button>
-              <label htmlFor="import-file" className="flex-1">
-                <Button
-                  variant="ghost"
-                  className="w-full border border-zinc-800 text-xs py-2 rounded-md text-zinc-300 hover:bg-zinc-800 hover:text-orange-400"
-                >
-                  Import
-                </Button>
-              </label>
+             
             </div>
           </div>
         </div>
@@ -1144,11 +1130,11 @@ const GEMINI_MODEL = "gemini-2.0-flash-exp"; // or gemini-1.5-pro
             <div className="flex items-center justify-between gap-2">
               {/* Tutorial Info */}
               <div
-                className="flex-1 text-left"
+                className=" text-left truncate"
                 onClick={() => setSelectedId(t.id)}
               >
                 <div
-                  className={`font-medium truncate ${
+                  className={`font-medium  truncate ${
                     t.id === selectedId
                       ? "text-orange-300"
                       : "text-zinc-100 hover:text-orange-400"
@@ -1167,7 +1153,7 @@ const GEMINI_MODEL = "gemini-2.0-flash-exp"; // or gemini-1.5-pro
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="text-zinc-400 hover:text-orange-400 hover:bg-orange-500/10 p-1.5"
+                  className="text-zinc-400 cursor-pointer hover:text-orange-400 hover:bg-orange-500/10 p-1.5"
                   onClick={() => {
                     setSelectedId(t.id);
                     setEditorDialogOpen(true);
@@ -1179,7 +1165,7 @@ const GEMINI_MODEL = "gemini-2.0-flash-exp"; // or gemini-1.5-pro
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="text-zinc-400 hover:text-orange-400 hover:bg-orange-500/10 p-1.5"
+                  className="text-zinc-400 cursor-pointer hover:text-orange-400 hover:bg-orange-500/10 p-1.5"
                   onClick={() => exportTutorial(t)}
                   title="Export Tutorial"
                 >
@@ -1188,7 +1174,7 @@ const GEMINI_MODEL = "gemini-2.0-flash-exp"; // or gemini-1.5-pro
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="text-zinc-400 hover:text-red-400 hover:bg-red-500/10 p-1.5"
+                  className="text-zinc-400 cursor-pointer hover:text-red-400 hover:bg-red-500/10 p-1.5"
                   onClick={() => deleteTutorial(t.id)}
                   title="Delete Tutorial"
                 >
@@ -1220,7 +1206,7 @@ const GEMINI_MODEL = "gemini-2.0-flash-exp"; // or gemini-1.5-pro
       <Button
         onClick={toggle}
         aria-pressed={running}
-        className={`flex items-center justify-center gap-2 text-sm font-medium py-2 rounded-md transition-all duration-300 ${
+        className={`flex items-center cursor-pointer hover:bg-black justify-center gap-2 text-sm font-medium py-2 rounded-md transition-all duration-300 ${
           running
             ? "bg-orange-500 text-black hover:bg-orange-400 shadow-lg shadow-orange-500/30"
             : "bg-zinc-900/60 text-zinc-200 hover:text-orange-400 hover:border-orange-400/30 border border-zinc-800"
@@ -1239,21 +1225,21 @@ const GEMINI_MODEL = "gemini-2.0-flash-exp"; // or gemini-1.5-pro
 
       <Button
         onClick={reset}
-        className="flex items-center justify-center gap-2 bg-zinc-900/60 text-zinc-300 hover:text-orange-400 hover:border-orange-400/30 border border-zinc-800 rounded-md transition-all duration-300"
+        className="flex items-center cursor-pointer hover:bg-black justify-center gap-2 bg-zinc-900/60 text-zinc-300 hover:text-orange-400 hover:border-orange-400/30 border border-zinc-800 rounded-md transition-all duration-300"
       >
         <RotateCcw size={16} className="text-orange-400" /> Reset
       </Button>
 
       <Button
         onClick={stepBack}
-        className="flex items-center justify-center gap-2 bg-zinc-900/60 text-zinc-300 hover:text-orange-400 hover:border-orange-400/30 border border-zinc-800 rounded-md transition-all duration-300"
+        className="flex items-center cursor-pointer hover:bg-black justify-center gap-2 bg-zinc-900/60 text-zinc-300 hover:text-orange-400 hover:border-orange-400/30 border border-zinc-800 rounded-md transition-all duration-300"
       >
         <Rewind size={16} className="text-orange-400" /> Back
       </Button>
 
       <Button
         onClick={stepForward}
-        className="flex items-center justify-center gap-2 bg-zinc-900/60 text-zinc-300 hover:text-orange-400 hover:border-orange-400/30 border border-zinc-800 rounded-md transition-all duration-300"
+        className="flex items-center cursor-pointer hover:bg-black justify-center gap-2 bg-zinc-900/60 text-zinc-300 hover:text-orange-400 hover:border-orange-400/30 border border-zinc-800 rounded-md transition-all duration-300"
       >
         <FastForward size={16} className="text-orange-400" /> Next
       </Button>
@@ -1268,7 +1254,7 @@ const GEMINI_MODEL = "gemini-2.0-flash-exp"; // or gemini-1.5-pro
         <Checkbox
           checked={autoStopAtEnd}
           onCheckedChange={(v) => setAutoStopAtEnd(Boolean(v))}
-          className="data-[state=checked]:bg-orange-500 data-[state=checked]:border-orange-400"
+          className="data-[state=checked]:bg-orange-500 cursor-pointer data-[state=checked]:border-orange-400"
         />
         <span className="text-zinc-300">Stop at last step</span>
       </div>
@@ -1348,20 +1334,20 @@ const GEMINI_MODEL = "gemini-2.0-flash-exp"; // or gemini-1.5-pro
     <div className="flex flex-wrap items-center gap-2">
       <Button
         onClick={saveEditorToTutorial}
-        className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-xs sm:text-sm font-semibold px-3 py-2 rounded-lg shadow-md hover:scale-105 transition-transform duration-200"
+        className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black text-xs sm:text-sm font-semibold px-3 py-2 rounded-lg shadow-md hover:scale-105 transition-transform duration-200"
       >
         <Save size={14} className="mr-1" /> Save
       </Button>
       <Button
         onClick={() => generateWithGemini(editorValue)}
-        className="bg-zinc-900/70 border border-orange-500/30 text-orange-300 hover:text-white hover:bg-orange-500/20 transition-all duration-200 text-xs sm:text-sm"
+        className="bg-zinc-900/70 border cursor-pointer border-orange-500/30 text-orange-300 hover:text-white hover:bg-orange-500/20 transition-all duration-200 text-xs sm:text-sm"
       >
         <Sparkles size={14} className="mr-1" /> Generate
       </Button>
       <Button
         variant="outline"
         onClick={() => setEditorDialogOpen(true)}
-        className="text-zinc-300 border-zinc-700 hover:border-orange-400 hover:text-orange-300 text-xs sm:text-sm"
+        className="text-black cursor-pointer hover:bg-black border-zinc-700 hover:border-orange-400 hover:text-orange-300 text-xs sm:text-sm"
       >
         <Edit2 size={14} className="mr-1" /> Edit
       </Button>
@@ -1386,14 +1372,14 @@ const GEMINI_MODEL = "gemini-2.0-flash-exp"; // or gemini-1.5-pro
           <Button
             size="sm"
             onClick={saveEditorToTutorial}
-            className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black hover:scale-105 transition-transform duration-200"
+            className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black hover:scale-105 transition-transform duration-200"
           >
             <Save size={12} className="mr-1" /> Save
           </Button>
           <Button
             size="sm"
             variant="ghost"
-            className="text-zinc-300 hover:text-orange-400"
+            className="text-zinc-300 cursor-pointer hover:bg-black border border-zinc-500/50 hover:text-orange-400"
             onClick={() => {
               setEditorValue(selectedTutorial?.body || "");
               toast("Reverted");
@@ -1404,7 +1390,7 @@ const GEMINI_MODEL = "gemini-2.0-flash-exp"; // or gemini-1.5-pro
           <Button
             size="sm"
             variant="outline"
-            className="border-zinc-700 text-zinc-300 hover:border-orange-400 hover:text-orange-300"
+            className="border-zinc-700 text-zinc-950 cursor-pointer hover:bg-black hover:border-orange-400 hover:text-orange-300"
             onClick={() => setEditorValue((v) => `${v}\n\n- New bullet`)}
           >
             <ListPlus size={12} className="mr-1" /> Add Bullet
@@ -1522,7 +1508,7 @@ const GEMINI_MODEL = "gemini-2.0-flash-exp"; // or gemini-1.5-pro
       <Button
         variant="outline"
         size="sm"
-        className="border-orange-500/30 hover:bg-orange-500/20 text-orange-300"
+        className="border-orange-500/30 cursor-pointer hover:text-orange-500 hover:bg-orange-500/20 text-orange-600"
         onClick={() => {
           setIndex(0);
           setRunning(true);
@@ -1560,7 +1546,7 @@ const GEMINI_MODEL = "gemini-2.0-flash-exp"; // or gemini-1.5-pro
             checked={!!st.checked}
             onCheckedChange={() => toggleStepChecked(i)}
             aria-label={`Mark step ${i + 1} done`}
-            className="data-[state=checked]:bg-orange-500 data-[state=checked]:border-orange-400"
+            className="data-[state=checked]:bg-orange-500 cursor-pointer data-[state=checked]:border-orange-400"
           />
           <div className="flex-1">
             <div className="flex items-center justify-between">
@@ -1571,7 +1557,7 @@ const GEMINI_MODEL = "gemini-2.0-flash-exp"; // or gemini-1.5-pro
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="hover:bg-orange-500/20 text-zinc-400 hover:text-orange-300"
+                  className="hover:bg-orange-500/20 cursor-pointer text-zinc-400 hover:text-orange-300"
                   onClick={() => {
                     setSelectedId(selectedTutorial.id);
                     openEditStep(i);
@@ -1582,7 +1568,7 @@ const GEMINI_MODEL = "gemini-2.0-flash-exp"; // or gemini-1.5-pro
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="hover:bg-red-500/20 text-zinc-400 hover:text-red-400"
+                  className="hover:bg-red-500/20 cursor-pointer text-zinc-400 hover:text-red-400"
                   onClick={() => {
                    if ((selectedTutorial.steps || []).length <= 1) {
                   toast.error("A tutorial must contain at least one step.");
@@ -1639,7 +1625,7 @@ const GEMINI_MODEL = "gemini-2.0-flash-exp"; // or gemini-1.5-pro
       <motion.div
         key={l.t + "-" + idx}
         whileHover={{ scale: 1.02, backgroundColor: "rgba(255,154,74,0.1)" }}
-        className="flex items-center gap-2 p-2 rounded-lg bg-zinc-900/30 border border-zinc-800 transition-all duration-200"
+        className="flex items-center gap-2 p-2 rounded-lg cursor-pointer bg-zinc-900/30 border border-zinc-800 transition-all duration-200"
       >
         <div className="flex-shrink-0 text-xs text-zinc-400 w-20 sm:w-24">
           {new Date(l.t).toLocaleTimeString()}

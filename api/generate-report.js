@@ -15,6 +15,15 @@ function base64ToBuffer(dataURL) {
   return Buffer.from(match[2], "base64");
 }
 
+function stripMarkdown(text) {
+  if (!text) return "";
+  return text
+    .replace(/[#_*`~>\-]+/g, "")         // Remove Markdown symbols
+    .replace(/\[(.*?)\]\(.*?\)/g, "$1")  // Convert [text](link) → text
+    .replace(/\n{2,}/g, "\n\n")          // Normalize newlines
+    .trim();
+}
+
 // Section title (orange heading)
 function sectionTitle(doc, title) {
   doc.moveDown(1);
@@ -84,6 +93,15 @@ export default async function handler(req, res) {
       procedure = "Connect the circuit as shown.\nIncrease the voltage gradually.\nMeasure current for each voltage.\nPlot V–I graph and calculate resistance.",
       conclusion = "Conclusion not provided.",
     } = req.body || {};
+   
+
+    const cleanObjective = stripMarkdown(objective);
+    const cleanDescription = stripMarkdown(description);
+    const cleanApparatus = stripMarkdown(apparatus);
+    const cleanProcedure = stripMarkdown(procedure);
+    const cleanCalculations = stripMarkdown(calculations);
+    const cleanResult = stripMarkdown(result);
+    const cleanConclusion = stripMarkdown(conclusion);
 
     // Create PDF
     const doc = new PDFDocument({ size: "A4", margin: 50 });
@@ -114,16 +132,16 @@ export default async function handler(req, res) {
 
     // ---------------- THEORY / DETAILS ----------------
     sectionTitle(doc, "Objective");
-    doc.text(objective, { align: "justify" });
+    doc.text(cleanObjective, { align: "justify" });
 
     sectionTitle(doc, "Description");
-    doc.text(description, { align: "justify", lineGap: 3 });
+    doc.text(cleanDescription, { align: "justify", lineGap: 3 });
 
     sectionTitle(doc, "Apparatus");
-    doc.text(apparatus, { align: "left" });
+    doc.text(cleanApparatus, { align: "left" });
 
     sectionTitle(doc, "Procedure");
-    procedure.split("\n").forEach((step) => doc.text("• " + step.trim(), { lineGap: 2 }));
+    cleanProcedure.split("\n").forEach((step) => doc.text("• " + step.trim(), { lineGap: 2 }));
 
     // ---------------- OBSERVATION TABLE ----------------
     doc.addPage();
@@ -195,13 +213,13 @@ export default async function handler(req, res) {
     // ---------------- CALCULATIONS ----------------
     doc.addPage();
     sectionTitle(doc, "Calculations");
-    doc.text(calculations || "No calculations provided.", { align: "justify" });
+    doc.text(cleanCalculations || "No calculations provided.", { align: "justify" });
 
     sectionTitle(doc, "Result");
-    doc.text(result || "No result provided.", { align: "justify" });
+    doc.text(cleanResult || "No result provided.", { align: "justify" });
 
     sectionTitle(doc, "Conclusion");
-    doc.text(conclusion || "No conclusion provided.", { align: "justify" });
+    doc.text(cleanConclusion || "No conclusion provided.", { align: "justify" });
 
     // ---------------- SIGNATURE AREA ----------------
     doc.moveDown(2);

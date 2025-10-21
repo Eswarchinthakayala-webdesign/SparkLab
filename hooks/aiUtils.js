@@ -28,7 +28,7 @@ export async function generateTextWithGemini(prompt, apiKey, options = {}) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
     const body = {
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature, maxOutputTokens },
+      
     };
 
     try {
