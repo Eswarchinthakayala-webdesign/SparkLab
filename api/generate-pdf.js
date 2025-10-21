@@ -226,7 +226,6 @@ export default async function handler(req, res) {
           doc.addPage();
           drawPageLayout(doc);
           drawHeader(doc, "", new Date().toISOString());
-          drawFooter(doc);
         }
 
         const x = (doc.page.width - imgMaxWidth) / 2;
