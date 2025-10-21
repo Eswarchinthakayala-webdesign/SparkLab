@@ -4,7 +4,7 @@ import PDFDocument from "pdfkit";
 
 export const config = {
   api: {
-    bodyParser: { sizeLimit: "50mb" },
+    bodyParser: { sizeLimit: "30mb" },
   },
 };
 // Convert base64 → Buffer
@@ -24,14 +24,6 @@ function sectionTitle(doc, title) {
     .text(title, { underline: true });
   doc.moveDown(0.3);
   doc.font("Helvetica").fontSize(10).fillColor("#ffffff");
-}
-function stripMarkdown(text) {
-  if (!text) return "";
-  return text
-    .replace(/[#_*`~>\-]+/g, "")         // Remove Markdown symbols
-    .replace(/\[(.*?)\]\(.*?\)/g, "$1")  // Convert [text](link) → text
-    .replace(/\n{2,}/g, "\n\n")          // Normalize newlines
-    .trim();
 }
 
 // Page background + border
@@ -92,11 +84,7 @@ export default async function handler(req, res) {
       procedure = "Connect the circuit as shown.\nIncrease the voltage gradually.\nMeasure current for each voltage.\nPlot V–I graph and calculate resistance.",
       conclusion = "Conclusion not provided.",
     } = req.body || {};
-     
-    const cleanObjective = stripMarkdown(objective);
-    const cleanDescription = stripMarkdown(description);
-    const cleanApparatus = stripMarkdown(apparatus);
-    const cleanProcedure = stripMarkdown(procedure);
+
     // Create PDF
     const doc = new PDFDocument({ size: "A4", margin: 50 });
     res.setHeader("Content-Disposition", `attachment; filename=${title.replace(/\s+/g, "-")}.pdf`);
@@ -126,16 +114,16 @@ export default async function handler(req, res) {
 
     // ---------------- THEORY / DETAILS ----------------
     sectionTitle(doc, "Objective");
-    doc.text(cleanObjective, { align: "justify" });
+    doc.text(objective, { align: "justify" });
 
     sectionTitle(doc, "Description");
-    doc.text(cleanDescription, { align: "justify", lineGap: 3 });
+    doc.text(description, { align: "justify", lineGap: 3 });
 
     sectionTitle(doc, "Apparatus");
-    doc.text(cleanApparatus, { align: "left" });
+    doc.text(apparatus, { align: "left" });
 
     sectionTitle(doc, "Procedure");
-    cleanProcedure.split("\n").forEach((step) => doc.text("• " + step.trim(), { lineGap: 2 }));
+    procedure.split("\n").forEach((step) => doc.text("• " + step.trim(), { lineGap: 2 }));
 
     // ---------------- OBSERVATION TABLE ----------------
     doc.addPage();

@@ -25,6 +25,7 @@ import {
   Activity,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
+import { toPng } from "html-to-image";  
 
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -404,7 +405,33 @@ export default function FootPrintCalculatorPage() {
     { id: "a2", type: "electricity", label: "Electricity", unit: "kWh/mo", value: 300 },
     { id: "a3", type: "diet", label: "Diet (omnivore)", unit: "kgCO2e/wk", value: 14 },
   ]);
+  
 
+  const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
+
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
   // presets
   const PRESETS = {
     custom: [],
@@ -565,7 +592,7 @@ export default function FootPrintCalculatorPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <Button className="cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black font-semibold text-sm px-3 py-1 rounded-lg shadow-md hover:scale-105 transition-transform duration-200" onClick={snapshot} title="Save Snapshot">Snapshot</Button>
+                <Button className="cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black font-semibold text-sm px-3 py-1 rounded-lg shadow-md hover:scale-105 transition-transform duration-200" onClick={snapshotPNG} title="Save Snapshot">Snapshot</Button>
                 <Button variant="ghost" className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg hover:bg-zinc-800 hover:text-orange-400" onClick={toggleRunning} title={running ? "Pause" : "Play"}>
                   {running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
                 </Button>
@@ -604,7 +631,7 @@ export default function FootPrintCalculatorPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2 rounded-md" onClick={snapshot}>Snapshot</Button>
+                <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2 rounded-md" onClick={snapshotPNG}>Snapshot</Button>
                 <Button variant="ghost" className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2 rounded-md" onClick={toggleRunning}>{running ? "Pause" : "Play"}</Button>
               </div>
             </div>
@@ -763,7 +790,7 @@ export default function FootPrintCalculatorPage() {
           {/* Visual + charts */}
           <div className="lg:col-span-8 space-y-4">
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl w-full max-w-full overflow-hidden">
+              <Card className="bg-black/70 snapshot border border-zinc-800 rounded-2xl w-full max-w-full overflow-hidden">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-3">

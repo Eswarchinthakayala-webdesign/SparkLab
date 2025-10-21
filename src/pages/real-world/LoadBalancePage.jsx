@@ -30,6 +30,7 @@ import {
   BadgePlus,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
+import { toPng } from "html-to-image";  
 
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -499,6 +500,32 @@ export default function LoadBalancePage() {
     toast.success("Server added");
   };
 
+  const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
+
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
+
   const removeServer = (id) => {
     setServersCfg((s) => s.filter((sv) => sv.id !== id));
     if (manualServerSelect === id) setManualServerSelect(null);
@@ -577,7 +604,7 @@ export default function LoadBalancePage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <Button className="cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-2" onClick={snapshot}>Snapshot</Button>
+                <Button className="cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-2" onClick={snapshotPNG}>Snapshot</Button>
                 <Button variant="ghost" className="border cursor-pointer hover:bg-black hover:text-orange-400 border-zinc-700 text-zinc-300 p-2" onClick={() => setRunning((r) => !r)}>{running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}</Button>
                 <Button variant="ghost" className="border cursor-pointer hover:bg-black hover:text-orange-400 border-zinc-700 text-zinc-300 p-2" onClick={() => { setIncomingRPS(40); setBurst(false); toast("Defaults restored"); }}><Settings className="w-5 h-5" /></Button>
               </div>
@@ -612,7 +639,7 @@ export default function LoadBalancePage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={snapshot}>Snapshot</Button>
+                <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={snapshotPNG}>Snapshot</Button>
                 <Button variant="ghost" className="flex-1 cursor-pointer border border-zinc-800" onClick={() => setRunning((r) => !r)}>{running ? "Pause" : "Run"}</Button>
               </div>
             </div>
@@ -731,7 +758,7 @@ export default function LoadBalancePage() {
           {/* Visual + Oscilloscope */}
           <div className="lg:col-span-8 space-y-4">
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden">
+              <Card className="bg-black/70 border snapshot border-zinc-800 rounded-2xl overflow-hidden">
                 <CardHeader>
                   <CardTitle className="flex md:items-center items-start gap-3 md:flex-row flex-col justify-between">
                     <div className="flex items-center gap-3">

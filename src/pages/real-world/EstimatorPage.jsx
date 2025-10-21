@@ -28,6 +28,8 @@ import {
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
+import { toPng } from "html-to-image";  
+
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -577,7 +579,32 @@ export default function EstimatorPage() {
     const manual = toNum(panelCountManual);
     return Number.isFinite(manual) && manual > 0 ? Math.round(manual) : estimates.panelsReq;
   }, [panelCountManual, estimates.panelsReq]);
+  
+  const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
 
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
   // simulation hook to produce live produced power & history
   const { history } = useSolarSim({
     running,
@@ -671,7 +698,7 @@ export default function EstimatorPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer font-semibold text-sm px-3 py-1 rounded-lg shadow-md hover:scale-105 transition-transform duration-200" onClick={() => toast.success("Snapshot saved")}>Snapshot</Button>
+                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer font-semibold text-sm px-3 py-1 rounded-lg shadow-md hover:scale-105 transition-transform duration-200" onClick={snapshotPNG}>Snapshot</Button>
                 <Button variant="ghost" className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg hover:bg-zinc-800 hover:text-orange-400 transition-colors duration-200" onClick={() => setRunning((r) => !r)} aria-label="Play / Pause" title={running ? "Pause" : "Play"}>
                   {running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
                 </Button>
@@ -714,7 +741,7 @@ export default function EstimatorPage() {
               </div>
 
               <div className="flex flex-row gap-2">
-                <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2 rounded-md" onClick={() => toast.success("Snapshot saved")}>Snapshot</Button>
+                <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2 rounded-md" onClick={snapshotPNG}>Snapshot</Button>
                 <Button variant="ghost" className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2 rounded-md" onClick={() => setRunning((r) => !r)}>{running ? "Pause" : "Play"}</Button>
                 <Button variant="ghost" className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2 rounded-md" onClick={resetDefaults}>Reset</Button>
               </div>
@@ -836,7 +863,7 @@ export default function EstimatorPage() {
           {/* Visual + Oscilloscope + Summary */}
           <div className="lg:col-span-8 space-y-4">
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl w-full max-w-full overflow-hidden">
+              <Card className="bg-black/70 border snapshot border-zinc-800 rounded-2xl w-full max-w-full overflow-hidden">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-3">
@@ -883,41 +910,41 @@ export default function EstimatorPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                       <div className="text-xs text-zinc-400">Array required (W)</div>
-                      <div className="text-lg font-semibold text-[#ff9a4a]">{round(estimates.neededArrayW, 1)} W</div>
+                      <div className="text-lg font-semibold text-[#ff9a4a] truncate">{round(estimates.neededArrayW, 1)} W</div>
                       <div className="text-xs text-zinc-400 mt-1">To meet {estimates.dailyWh} Wh/day</div>
                     </div>
 
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                       <div className="text-xs text-zinc-400">Panels</div>
-                      <div className="text-lg font-semibold text-[#00ffbf]">{usagePanelCount} × {panelWatt}W</div>
+                      <div className="text-lg font-semibold text-[#00ffbf] truncate">{usagePanelCount} × {panelWatt}W</div>
                       <div className="text-xs text-zinc-400 mt-1">Area ~ {round(estimates.area || 0, 2)} m²</div>
                     </div>
 
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                       <div className="text-xs text-zinc-400">Battery stored energy</div>
-                      <div className="text-lg font-semibold text-[#9ee6ff]">{round(estimates.battWh || 0, 0)} Wh</div>
+                      <div className="text-lg font-semibold text-[#9ee6ff] truncate">{round(estimates.battWh || 0, 0)} Wh</div>
                       <div className="text-xs text-zinc-400 mt-1">≈ {round(estimates.battAh48 || 0, 1)} Ah @48V</div>
                     </div>
 
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800 col-span-full">
                       <div className="text-xs text-zinc-400">Estimated Cost (rough)</div>
-                      <div className="text-2xl font-bold text-[#ffd24a]">≈ ${round(estimates.totalCost, 0)}</div>
+                      <div className="text-2xl font-bold text-[#ffd24a] truncate">≈ ${round(estimates.totalCost, 0)}</div>
                       <div className="text-xs text-zinc-400 mt-1">Includes panels, battery estimate, and install.</div>
                     </div>
 
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                       <div className="text-xs text-zinc-400">Current Production</div>
-                      <div className="text-lg font-semibold text-[#ff9a4a]">{round(latest.Pprod || 0, 1)} W</div>
+                      <div className="text-lg font-semibold text-[#ff9a4a] truncate">{round(latest.Pprod || 0, 1)} W</div>
                     </div>
 
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                       <div className="text-xs text-zinc-400">Battery</div>
-                      <div className="text-lg font-semibold text-[#00ffbf]">{Math.round((latest.batt || 0) * 100)}%</div>
+                      <div className="text-lg font-semibold text-[#00ffbf] truncate">{Math.round((latest.batt || 0) * 100)}%</div>
                     </div>
 
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                       <div className="text-xs text-zinc-400">Peak Load</div>
-                      <div className="text-lg font-semibold text-[#ffd24a]">{round(estimates.peakW, 1)} W</div>
+                      <div className="text-lg font-semibold text-[#ffd24a] truncate">{round(estimates.peakW, 1)} W</div>
                     </div>
                   </div>
 
@@ -929,7 +956,7 @@ export default function EstimatorPage() {
                   </div>
 
                   <div className="mt-3 flex gap-2">
-                    <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer" onClick={() => { toast.success("Snapshot saved"); }}><Download className="w-4 h-4 mr-2" />Snapshot</Button>
+                    <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer" onClick={snapshotPNG}><Download className="w-4 h-4 mr-2" />Snapshot</Button>
                     <Button variant="ghost" className="flex-1 border border-zinc-800 text-zinc-300 cursor-pointer" onClick={exportCSV}><Download className="w-4 h-4 mr-2" />Export CSV</Button>
                   </div>
                 </CardContent>

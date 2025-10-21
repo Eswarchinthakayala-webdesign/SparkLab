@@ -428,7 +428,7 @@ export default function RealWorldApplicationPage() {
                   <SunMedium className="w-5 h-5" />
                 </div>
                 <div className="truncate">
-                  <div className="text-sm text-zinc-300 leading-none truncate">EnergyLab</div>
+                  <div className="text-sm text-zinc-300 leading-none truncate">SparkLab</div>
                   <div className="text-xs text-zinc-400 mt-0.5 truncate">Real-World Apps</div>
                 </div>
               </div>

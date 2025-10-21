@@ -21,6 +21,7 @@ import {
   Lightbulb,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
+import { toPng } from "html-to-image";  
 
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -722,6 +723,32 @@ export default function EnergySimulatorPage() {
     toast.success("Exported CSV");
   };
 
+  const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
+
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
+
   /* ---------------------------
      UI render
      --------------------------- */
@@ -766,7 +793,7 @@ export default function EnergySimulatorPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer font-semibold text-sm px-3 py-1 rounded-lg shadow-md hover:scale-105 transition-transform duration-200" onClick={() => toast.success("Snapshot saved")} title="Save Snapshot">Snapshot</Button>
+                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer font-semibold text-sm px-3 py-1 rounded-lg shadow-md hover:scale-105 transition-transform duration-200" onClick={snapshotPNG} title="Save Snapshot">Snapshot</Button>
                 <Button variant="ghost" className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg hover:bg-zinc-800 hover:text-orange-400 transition-colors duration-200" onClick={toggleRunning} aria-label="Play / Pause" title={running ? "Pause" : "Play"}>
                   {running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
                 </Button>
@@ -798,7 +825,7 @@ export default function EnergySimulatorPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2 rounded-md" onClick={() => toast.success("Snapshot saved")}>Snapshot</Button>
+                <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2 rounded-md" onClick={snapshotPNG}>Snapshot</Button>
                 <Button variant="ghost" className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2 rounded-md" onClick={toggleRunning}>{running ? "Pause" : "Run"}</Button>
                 <Button variant="ghost" className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2 rounded-md" onClick={resetDefaults}>Reset</Button>
               </div>
@@ -997,14 +1024,18 @@ export default function EnergySimulatorPage() {
                   value={gridAllowed ? "yes" : "no"}
                   onValueChange={(v) => setGridAllowed(v === "yes")}
                 >
-                  <SelectTrigger className="w-full bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm cursor-pointer focus:ring-1 focus:ring-[#ff7a2d]">
+                  <SelectTrigger className="w-full cursor-pointer bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm cursor-pointer focus:ring-1 focus:ring-[#ff7a2d]">
                     <SelectValue placeholder="Grid" />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                    <SelectItem value="yes" className="text-white">
+                    <SelectItem value="yes"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">
                       Yes
                     </SelectItem>
-                    <SelectItem value="no" className="text-white">
+                    <SelectItem value="no"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">
                       No
                     </SelectItem>
                   </SelectContent>
@@ -1046,7 +1077,7 @@ export default function EnergySimulatorPage() {
           {/* Visual + Oscilloscope */}
           <div className="lg:col-span-8 space-y-4">
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl w-full max-w-full overflow-hidden">
+              <Card className="bg-black/70 border snapshot border-zinc-800 rounded-2xl w-full max-w-full overflow-hidden">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-3">
@@ -1088,29 +1119,29 @@ export default function EnergySimulatorPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                       <div className="text-xs text-zinc-400">Total Generation</div>
-                      <div className="text-lg font-semibold text-[#ff9a4a]">{round(totalGen, 1)} W</div>
+                      <div className="text-lg font-semibold text-[#ff9a4a] truncate">{round(totalGen, 1)} W</div>
                       <div className="text-xs text-zinc-400 mt-1">AC after inverter</div>
                     </div>
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                       <div className="text-xs text-zinc-400">Battery SOC</div>
-                      <div className="text-lg font-semibold text-[#00ffbf]">{Math.round(soc * 100)}%</div>
+                      <div className="text-lg font-semibold text-[#00ffbf] truncate">{Math.round(soc * 100)}%</div>
                     </div>
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                       <div className="text-xs text-zinc-400">Battery Power</div>
-                      <div className="text-lg font-semibold text-[#ffd24a]">{round(P_batt, 1)} W</div>
+                      <div className="text-lg font-semibold text-[#ffd24a] truncate">{round(P_batt, 1)} W</div>
                     </div>
 
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                       <div className="text-xs text-zinc-400">Load</div>
-                      <div className="text-lg font-semibold text-[#ff9a4a]">{round(P_load, 0)} W</div>
+                      <div className="text-lg font-semibold text-[#ff9a4a] truncate">{round(P_load, 0)} W</div>
                     </div>
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                       <div className="text-xs text-zinc-400">Irradiance</div>
-                      <div className="text-lg font-semibold text-[#9ee6ff]">{latest?.env?.irradiance ?? "—"}</div>
+                      <div className="text-lg font-semibold text-[#9ee6ff] truncate">{latest?.env?.irradiance ?? "—"}</div>
                     </div>
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                       <div className="text-xs text-zinc-400">Wind Speed</div>
-                      <div className="text-lg font-semibold text-[#ffd24a]">{latest?.env?.windSpeed ?? "—"} m/s</div>
+                      <div className="text-lg font-semibold text-[#ffd24a] truncate">{latest?.env?.windSpeed ?? "—"} m/s</div>
                     </div>
                   </div>
 
