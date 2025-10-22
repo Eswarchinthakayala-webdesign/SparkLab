@@ -779,8 +779,8 @@ export default function LabSupportPage() {
               <div className="text-sm text-zinc-200">Need a custom lab tool? Reach out — we build tailored virtual labs for courses and institutions.</div>
             </div>
             <div className="mt-6 flex items-center justify-center gap-4">
-              <Button className="bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer">Contact Sales</Button>
-              <Button variant="outline" className="border-zinc-700 text-black cursor-pointer">View Integrations</Button>
+              <Button className="bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer" onClick={()=>navigate("/contact")}>Contact Us</Button>
+            
             </div>
           </motion.div>
         </div>

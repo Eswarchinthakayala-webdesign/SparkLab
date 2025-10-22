@@ -194,13 +194,14 @@ export default function Hero() {
                     <div className="flex-1">
                       <div className="text-white font-semibold text-lg">Live Circuit Playground</div>
                       <div className="text-zinc-400 text-sm mt-1">
-                        Launch, edit & visualize circuits in real-time — powered by WebSim.
+                        Launch, edit & visualize circuits in real-time — powered by SparkLab.
                       </div>
                     </div>
                     <div className="self-center">
                       <Button
                         size="sm"
-                        className="bg-orange-500 hover:bg-orange-600 text-black rounded-xl px-5 py-2 shadow-md transition-transform hover:scale-105"
+                        className="bg-orange-500 hover:bg-orange-600 cursor-pointer text-black rounded-xl px-5 py-2 shadow-md transition-transform hover:scale-105"
+                        onClick={()=>navigate("/topics/visualizations/circuit-playground")}
                       >
                         Open
                       </Button>

@@ -64,6 +64,7 @@ import ConceptMapPage from "./pages/hub/ConceptMapPage";
 import DocumentationPage from "./pages/hub/DocumentationPage";
 import SolverPage from "./pages/hub/SolverPage";
 import FlashCardPage from "./pages/hub/FlashCard";
+import ContactPage from "./pages/ContactPage";
 
 // TODO: You can add these later
 // import LoginPage from "./pages/LoginPage";
@@ -77,6 +78,7 @@ export default function App() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/features" element={<FeaturePage/>}/>
         <Route path="/about" element={<AboutPage/>} />
+        <Route path="/contact" element={<ContactPage/>} />
          <Route path="/topics" element={<TopicsOverviewPage />} />
         <Route path="/topics/tools" element={<ElectricToolsPage/>} />
         <Route path="/topics/tools/ohms-law" element={<OhmsLawPage/>}/>

@@ -822,16 +822,10 @@ export default function TopicsOverviewPage() {
       className="bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black font-semibold hover:scale-105 hover:shadow-[0_0_15px_rgba(255,122,45,0.5)] transition-all duration-300 cursor-pointer"
       onClick={() => navigate("/contact")}
     >
-      Contact Sales
+      Contact Us
     </Button>
 
-    <Button
-      variant="outline"
-      className="border border-[#ff9a4a]/40 text-[#ffd24a] hover:bg-[#ff9a4a]/10 hover:border-[#ffd24a]/70 hover:text-white transition-all duration-300 cursor-pointer"
-      onClick={() => navigate("/integrations")}
-    >
-      View Integrations
-    </Button>
+    
   </div>
 </motion.div>
 

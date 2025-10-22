@@ -689,8 +689,8 @@ export default function VisualizationToolsPage() {
             </div>
 
             <div className="mt-6 flex items-center justify-center gap-4">
-              <Button className="bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black" onClick={() => window.location.href = "/contact"}>Contact Sales</Button>
-              <Button variant="outline" className="border-zinc-700 text-white" onClick={() => window.location.href = "/docs"}>View Docs</Button>
+              <Button className="bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black" onClick={() => window.location.href = "/contact"}>Contact Us</Button>
+         
             </div>
           </motion.div>
         </div>

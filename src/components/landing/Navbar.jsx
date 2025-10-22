@@ -10,6 +10,8 @@ import {
   Info,
   LogIn,
   Rocket,
+  User2,
+  CircleUserRound,
 } from "lucide-react";
 import {
   Sheet,
@@ -86,10 +88,11 @@ export default function Navbar() {
         <div className="hidden md:flex items-center gap-3">
           <Button
             variant="ghost"
-            className="text-zinc-300 hover:text-orange-400 hover:bg-orange-500/10 rounded-xl px-4 transition-all"
+            className="text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 cursor-pointer hover:text-orange-400 border border-orange-500/50 rounded-xl px-4 transition-all"
+            onClick={()=>navigate("/contact")}
           >
-            <LogIn className="w-4 h-4 mr-1" />
-            Sign In
+            <CircleUserRound className="w-4 h-4 mr-1" />
+            Contact Us
           </Button>
           <Button className="bg-gradient-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600 text-black font-semibold rounded-xl shadow-lg shadow-orange-500/30 px-5 transition-all"
           onClick={()=>navigate("/topics")}
@@ -142,10 +145,11 @@ export default function Navbar() {
               <div className="mt-10 flex flex-col gap-3">
                 <Button
                   variant="ghost"
-                  className="text-zinc-300 cursor-pointer hover:text-orange-400 hover:bg-orange-500/10 rounded-xl transition-all"
+                  className="text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 cursor-pointer hover:text-orange-400 border border-orange-500/50 rounded-xl px-4 transition-all"
+                  onClick={()=>navigate("/contact")}
                 >
-                  <LogIn className="w-4 h-4 mr-1" />
-                  Sign In
+                  <CircleUserRound className="w-4 h-4 mr-1" />
+                  Contact Us
                 </Button>
                 <Button className="cursor-pointer bg-gradient-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600 text-black font-semibold rounded-xl shadow-lg shadow-orange-500/30 transition-all"
                 onClick={()=>navigate("/topics")}>

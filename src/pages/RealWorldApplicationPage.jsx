@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem, SelectGroup, SelectLabel } from "@/components/ui/select";
 import Footer from "../components/landing/Footer";
+import { useNavigate } from "react-router-dom";
 
 /* ====================== Real World Tools Data (41-50) ====================== */
 const realTools = [
@@ -413,7 +414,7 @@ export default function RealWorldApplicationPage() {
   const openTool = (id) => {
     window.location.href = `/tools/real-world/${id}`;
   };
-
+  const navigate=useNavigate()
   return (
     <div className="min-h-screen bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.22)_1px,transparent_1px)] bg-[length:20px_20px] text-white relative overflow-x-hidden">
       <header className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md bg-black/40 border-b border-zinc-800">
@@ -566,8 +567,8 @@ export default function RealWorldApplicationPage() {
               <div className="text-sm text-zinc-200">Want a custom estimator or tool? We can build tailored energy calculators for projects.</div>
             </div>
             <div className="mt-6 flex items-center justify-center gap-4">
-              <Button className="bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer">Contact Sales</Button>
-              <Button variant="outline" className="border-zinc-700 text-black cursor-pointer">View Integrations</Button>
+              <Button className="bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer" onClick={()=>navigate("/contact")}>Contact Us</Button>
+             
             </div>
           </motion.div>
         </div>

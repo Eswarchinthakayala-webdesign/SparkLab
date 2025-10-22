@@ -533,8 +533,8 @@ export default function LearningHubToolsPage() {
               <div className="text-sm text-zinc-200">Want a tailored study pack? We help create course-specific hubs and interactive explainers.</div>
             </div>
             <div className="mt-6 flex items-center justify-center gap-4">
-              <Button className="bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer" onClick={() => window.location.href = "/contact"}>Request a Pack</Button>
-              <Button variant="outline" className="border-zinc-700 text-black cursor-pointer" onClick={() => window.location.href = "/integrations"}>View Integrations</Button>
+              <Button className="bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer" onClick={() => window.location.href = "/contact"}>Contact Us</Button>
+           
             </div>
           </motion.div>
         </div>
