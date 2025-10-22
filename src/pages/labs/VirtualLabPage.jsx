@@ -43,6 +43,7 @@ import {
   Tooltip as ReTooltip,
   Legend,
 } from "recharts";
+import { toPng } from "html-to-image";
 
 /* ============================
    Utilities
@@ -259,7 +260,7 @@ function round(num, dec = 2) {
   return (
     <div className="w-full rounded-2xl p-5 bg-gradient-to-b from-black/60 to-zinc-900/30 border border-zinc-800 shadow-xl">
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center flex-wrap gap-4 justify-between mb-3">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-lg bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center shadow-md shadow-[#ff7a2d]/30">
             <Cpu className="w-6 h-6 text-black" />
@@ -578,12 +579,38 @@ export default function VirtualLabPage() {
     toast.success(`Snapshot: [${last}]`);
   };
 
+  const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
+
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
+
   // small safety: limit frequency and amplitude for animation performance
   const safeFrequency = clamp(Number(frequency), 0.001, 2000);
   const safeAmplitude = clamp(Number(amplitude), -1000, 1000);
 
   return (
-    <div className="min-h-screen bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.18)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
+    <div className="min-h-screen pb-20 bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.18)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
       <Toaster position="top-center" richColors />
 
       {/* Header */}
@@ -632,19 +659,19 @@ export default function VirtualLabPage() {
                 </Select>
               </div>
 
-              <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer font-semibold text-sm px-3 py-1 rounded-lg shadow-md hover:scale-105 transition-transform duration-200" onClick={snapshot} title="Snapshot">Snapshot</Button>
+              <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer font-semibold text-sm px-3 py-1 rounded-lg shadow-md hover:scale-105 transition-transform duration-200" onClick={snapshotPNG} title="Snapshot">Snapshot</Button>
 
-              <Button variant="ghost" className="border border-zinc-700 text-zinc-300 p-2 rounded-lg hover:bg-zinc-800 hover:text-orange-400" onClick={toggleRunning} title={running ? "Pause" : "Play"}>
+              <Button variant="ghost" className="border border-zinc-700 text-zinc-300 p-2 rounded-lg hover:bg-zinc-800 cursor-pointer hover:text-orange-400" onClick={toggleRunning} title={running ? "Pause" : "Play"}>
                 {running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
               </Button>
 
-              <Button variant="ghost" className="border border-zinc-700 text-zinc-300 p-2 rounded-lg hover:bg-zinc-800 hover:text-orange-400" onClick={resetDefaults} title="Reset">
+              <Button variant="ghost" className="border border-zinc-700 text-zinc-300 p-2 rounded-lg hover:bg-zinc-800 cursor-pointer hover:text-orange-400" onClick={resetDefaults} title="Reset">
                 <Settings className="w-5 h-5" />
               </Button>
             </div>
 
             <div className="md:hidden">
-              <Button variant="ghost" className="border cursor-pointer border-zinc-800 p-2 rounded-lg" onClick={() => setMobileOpen(!mobileOpen)}>
+              <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500  p-2 rounded-lg" onClick={() => setMobileOpen(!mobileOpen)}>
                 {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </Button>
             </div>
@@ -679,9 +706,9 @@ export default function VirtualLabPage() {
                   </Select>
                 </div>
 
-                <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2 rounded-md" onClick={snapshot}>Snapshot</Button>
-                <Button variant="ghost" className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2 rounded-md" onClick={toggleRunning}>{running ? "Pause" : "Play"}</Button>
-                <Button variant="ghost" className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2 rounded-md" onClick={resetDefaults}>Reset</Button>
+                <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black text-xs py-2 rounded-md" onClick={snapshotPNG}>Snapshot</Button>
+                <Button variant="ghost" className="flex-1 border cursor-pointer border-zinc-800 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 text-xs py-2 rounded-md" onClick={toggleRunning}>{running ? "Pause" : "Play"}</Button>
+                <Button variant="ghost" className="flex-1 border cursor-pointer border-zinc-800 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 text-xs py-2 rounded-md" onClick={resetDefaults}>Reset</Button>
               </div>
             </div>
           </div>
@@ -831,11 +858,11 @@ export default function VirtualLabPage() {
                   <div className="mt-3 flex items-center justify-between gap-2">
                     <div className="flex gap-2">
                       <Button className="px-3 py-2 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-                      <Button variant="outline" className="px-3 py-2 border-zinc-700 text-black cursor-pointer" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+                      <Button variant="outline" className="px-3 py-2 border-zinc-700 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
                     </div>
 
                     <div className="flex gap-2">
-                      <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
+                      <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
                     </div>
                   </div>
 
@@ -847,7 +874,7 @@ export default function VirtualLabPage() {
           {/* Visual + Oscilloscope */}
           <div className="lg:col-span-8 space-y-4">
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl w-full max-w-full overflow-hidden">
+              <Card className="bg-black/70 border snapshot border-zinc-800 rounded-2xl w-full max-w-full overflow-hidden">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-3">
@@ -921,9 +948,9 @@ export default function VirtualLabPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-col gap-3">
-                    <Button className="bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-2" onClick={exportCSV}><Download className="w-4 h-4 mr-2" /> Export CSV</Button>
-                    <Button variant="ghost" className="border border-zinc-800 text-zinc-300 px-3 py-2" onClick={snapshot}><ZapOff className="w-4 h-4 mr-2" /> Snapshot</Button>
-                    <Button variant="outline" className="px-3 py-2" onClick={() => { navigator.clipboard?.writeText(JSON.stringify({ waveform, frequency, amplitude, offset }, null, 2)); toast.success("Copied config"); }}><Sliders className="w-4 h-4 mr-2" /> Copy Config</Button>
+                    <Button className="bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black px-3 py-2" onClick={exportCSV}><Download className="w-4 h-4 mr-2" /> Export CSV</Button>
+                    <Button variant="ghost" className="border border-zinc-800 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer px-3 py-2" onClick={snapshotPNG}><ZapOff className="w-4 h-4 mr-2" /> Snapshot</Button>
+                    <Button variant="outline" className="px-3 py-2 cursor-pointer" onClick={() => { navigator.clipboard?.writeText(JSON.stringify({ waveform, frequency, amplitude, offset }, null, 2)); toast.success("Copied config"); }}><Sliders className="w-4 h-4 mr-2" /> Copy Config</Button>
                   </div>
                 </CardContent>
               </Card>
@@ -936,11 +963,11 @@ export default function VirtualLabPage() {
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-60 w-[92%] sm:w-auto sm:left-auto sm:translate-x-0 sm:bottom-6 sm:right-6 lg:hidden" role="region" aria-label="Mobile controls">
         <div className="flex items-center justify-between gap-3 bg-black/80 border border-zinc-800 p-3 rounded-full shadow-lg">
           <div className="flex items-center gap-2">
-            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-zinc-300 text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm cursor-pointer" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
+            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer bg-black text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" className="border border-zinc-800 text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
+            <Button variant="ghost" className="border border-zinc-800 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
           </div>
         </div>
       </div>

@@ -43,6 +43,7 @@ import {
   Tooltip as ReTooltip,
   Legend,
 } from "recharts";
+import { toPng } from "html-to-image";
 
 /* ============================
    Color code tables
@@ -384,6 +385,32 @@ export default function ColorCodeIdentifierPage() {
     URL.revokeObjectURL(url);
     toast.success("Exported quick snapshot");
   };
+  
+  const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
+
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
   const [mobileOpen, setMobileOpen] = useState(false);
   return (
     <div className="min-h-screen pb-20 bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.12)_1px,transparent_1px)] bg-[length:18px_18px] text-white overflow-x-hidden">
@@ -461,8 +488,8 @@ export default function ColorCodeIdentifierPage() {
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
           <Button
-            className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black font-semibold text-sm px-3 py-1 rounded-lg shadow-md hover:scale-105 transition-transform duration-200"
-            onClick={() => toast.success('Saved preset')}
+            className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black font-semibold cursor-pointer text-sm px-3 py-1 rounded-lg shadow-md hover:scale-105 transition-transform duration-200"
+           onClick={snapshotPNG}
           >
             Save
           </Button>
@@ -545,8 +572,8 @@ export default function ColorCodeIdentifierPage() {
         {/* Mobile Action Buttons */}
         <div className="flex flex-row gap-2">
           <Button
-            className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2 rounded-md"
-            onClick={() => toast.success('Saved preset')}
+            className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2 cursor-pointer rounded-md"
+           onClick={snapshotPNG}
           >
             Save
           </Button>
@@ -766,7 +793,7 @@ export default function ColorCodeIdentifierPage() {
           {/* Right: Visual + readouts */}
           <div className="lg:col-span-8 space-y-4">
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden">
+              <Card className="bg-black/70 border snapshot border-zinc-800 rounded-2xl overflow-hidden">
                 <CardHeader>
                   <CardTitle className="flex sm:items-center sm:flex-row flex-col gap-4 items-start justify-between">
                     <div className="flex items-center gap-3">

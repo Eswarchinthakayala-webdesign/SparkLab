@@ -48,105 +48,99 @@ import {
 /* ============================
    Utilities (safe numeric helpers)
    ============================ */
-const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const round = (v, p = 6) => {
-  if (!Number.isFinite(v)) return NaN;
-  const f = 10 ** p;
-  return Math.round(v * f) / f;
-};
-const toNum = (v, fallback = NaN) => {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
-};
+const toNum = (v, d = 0) => (isNaN(parseFloat(v)) ? d : parseFloat(v));
+const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
+const round = (v, n = 3) => Math.round(v * 10 ** n) / 10 ** n;
+
 
 /* ============================
    Simulation hook: useExplainerSim
    - supports multiple explainers (RC, RL, RLC, Voltage Divider, LED)
    - returns realtime history and descriptive state
    ============================ */
-function useExplainerSim({
-  running,
-  timestep = 80,
-  concept = "rc",
-  params = {},
-}) {
+ function useExplainerSim({ running, timestep = 80, concept = "rc", params = {} }) {
   const historyRef = useRef([]);
   const [history, setHistory] = useState([]);
   const tRef = useRef(0);
   const lastRef = useRef(performance.now());
   const rafRef = useRef(null);
 
-  const computeInstant = useCallback(
-    (tSeconds) => {
-      // base params with safe conversions
-      const V = toNum(params.Vsup, 5);
-      const R = Math.max(1e-6, toNum(params.R, 1000));
-      const C = Math.max(1e-12, toNum(params.C, 1e-6)); // in F
-      const L = Math.max(1e-9, toNum(params.L, 1e-3)); // in H
-      const freq = Math.max(0.0001, toNum(params.freq, 50));
-      // per-concept models (simple, pedagogical)
-      if (concept === "rc") {
-        // step response charging Vc = V*(1-exp(-t/RC))
-        const tau = clamp(R * C, 1e-9, 1e6);
-        const Vc = V * (1 - Math.exp(-tSeconds / tau));
-        const dVdt = (V / tau) * Math.exp(-tSeconds / tau);
-        const I = C * dVdt;
-        const P = Vc * I;
-        const energy = 0.5 * C * Vc * Vc;
-        return { t: tSeconds, Vc, I, P, energy, meta: { tau } };
-      } else if (concept === "rl") {
-        // step response in RL: I = V/R*(1 - exp(-R t / L))
-        const tauL = clamp(L / R, 1e-9, 1e6);
-        const Iinf = V / R;
-        const I = Iinf * (1 - Math.exp(-tSeconds / tauL));
-        const dIdt = (Iinf / tauL) * Math.exp(-tSeconds / tauL);
-        const Vl = L * dIdt;
-        const P = Vl * I;
-        const energy = 0.5 * L * I * I;
-        return { t: tSeconds, I, Vl, P, energy, meta: { tauL } };
-      } else if (concept === "rlc") {
-        // simple driven RLC at freq -> compute steady-state amplitude (voltage across C)
-        // R, L, C are series RLC driven by sinusoidal source V*sin(2πft)
-        const w = 2 * Math.PI * freq;
-        const Xl = w * L;
-        const Xc = 1 / (w * C);
-        const Z = Math.sqrt(R * R + (Xl - Xc) * (Xl - Xc));
-        const Iamp = V / Z;
-        // phase and instantaneous values for visualization: use tSeconds mod period
-        const instI = Iamp * Math.sin(w * tSeconds);
-        const Vc = instI * Xc * Math.cos(Math.atan2(Xl - Xc, R)); // approximate phasing for demo
-        const P = (Iamp * Iamp) * R * 0.5; // average power on resistor
-        return { t: tSeconds, I: instI, Vc, P, meta: { Xl, Xc, Z, Iamp } };
-      } else if (concept === "divider") {
-        // simple two-resistor divider: Vout = V*(R2/(R1+R2))
-        const R1 = Math.max(1e-6, toNum(params.R1, 1000));
-        const R2 = Math.max(1e-6, toNum(params.R2, 1000));
-        const Vout = V * (R2 / (R1 + R2));
-        const I = V / (R1 + R2);
-        const P = Vout * I;
-        return { t: tSeconds, Vout, I, P, meta: { R1, R2 } };
-      } else if (concept === "led") {
-        // LED forward conduction model (simple diode + resistor)
-        // Use piecewise: if V > Vf (0.7..2.2) current flows as (V-Vf)/R
-        const Vf = toNum(params.Vf, 2.0);
-        const Rled = Math.max(1e-3, toNum(params.R, 220));
-        const I = Math.max(0, (V - Vf) / Rled);
-        const P = V * I;
-        const on = I > 1e-6;
-        return { t: tSeconds, I, P, on, Vf, meta: { Rled } };
-      }
-      // default fallback
-      return { t: tSeconds, I: 0, Vc: 0, P: 0, energy: 0, meta: {} };
-    },
-    [concept, params]
-  );
+  // --- COMPUTATION ENGINE ---
+const computeInstant = useCallback(
+  (tSeconds) => {
+    const V = Number(params.Vsup) || 5;
+    const R = Math.max(1e-6, Number(params.R) || 1000);
+    const C = Math.max(1e-12, Number(params.C) || 1e-6);
+    const L = Math.max(1e-9, Number(params.L) || 1e-3);
+    const freq = Math.max(0.01, Number(params.freq) || 50);
 
+    // --- RC ---
+    if (concept === "rc") {
+      const tau = R * C;
+      const Vc = V * (1 - Math.exp(-tSeconds / tau));
+      const I = (V / R) * Math.exp(-tSeconds / tau);
+      return { t: tSeconds, Vc, I, P: Vc * I, meta: { tau } };
+    }
+
+    // --- RL ---
+    if (concept === "rl") {
+      const tauL = L / R;
+      const Iinf = V / R;
+      const I = Iinf * (1 - Math.exp(-tSeconds / tauL));
+      const Vl = V - I * R;
+      return { t: tSeconds, I, Vl, P: Vl * I, meta: { tauL } };
+    }
+
+    // --- RLC ---
+    if (concept === "rlc") {
+      const w = 2 * Math.PI * freq;
+      const Xl = w * L;
+      const Xc = 1 / (w * C);
+      const Z = Math.sqrt(R ** 2 + (Xl - Xc) ** 2);
+      const Iamp = V / Z;
+      const phi = Math.atan2(Xl - Xc, R);
+      const I = Iamp * Math.sin(w * tSeconds);
+      return { t: tSeconds, I, P: 0.5 * Iamp ** 2 * R, meta: { Xl, Xc, Z, Iamp, phi } };
+    }
+
+    // --- LED ---
+    if (concept === "led") {
+      const Vf = Number(params.Vf) || 2.0;
+      const Rled = Math.max(1, Number(params.R) || 220);
+      const Vdrop = Math.max(0, V - Vf);
+      const I = Vdrop / Rled;
+      const on = I > 0.001;
+      return { t: tSeconds, I, P: V * I, on, meta: { Vf, Rled, Vdrop } };
+    }
+
+    // --- Divider ---
+    if (concept === "divider") {
+      const R1 = Number(params.R1) || 1000;
+      const R2 = Number(params.R2) || 1000;
+      const Vout = V * (R2 / (R1 + R2));
+      const I = V / (R1 + R2);
+      return { t: tSeconds, Vout, I, meta: { R1, R2 } };
+    }
+
+    return { t: tSeconds, I: 0, Vc: 0, P: 0, meta: {} };
+  },
+  [concept, params]
+);
+
+
+  // --- Reset on concept change (not params) ---
+  useEffect(() => {
+    tRef.current = 0;
+    lastRef.current = performance.now();
+    historyRef.current = [];
+    setHistory([]);
+  }, [concept]);
+
+  // --- Simulation Loop ---
   useEffect(() => {
     let alive = true;
     lastRef.current = performance.now();
-    tRef.current = 0;
-    historyRef.current = [];
-    setHistory([]);
+
     const step = (ts) => {
       if (!alive) return;
       rafRef.current = requestAnimationFrame(step);
@@ -158,13 +152,13 @@ function useExplainerSim({
       if (dt < timestep) return;
       lastRef.current = ts;
       tRef.current += dt;
+
       const tSeconds = tRef.current / 1000;
       const sample = computeInstant(tSeconds);
-      // push to history
+
       historyRef.current.push(sample);
       if (historyRef.current.length > 720) historyRef.current.shift();
-      // update state (throttle updates slightly by copying)
-      setHistory(historyRef.current.slice());
+      setHistory([...historyRef.current]);
     };
 
     rafRef.current = requestAnimationFrame(step);
@@ -172,12 +166,12 @@ function useExplainerSim({
       alive = false;
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [running, timestep, computeInstant, concept, params]);
+  }, [running, timestep, computeInstant]);
 
-  // api: history, latest, meta
   const latest = history.length ? history[history.length - 1] : null;
   return { history, latest };
 }
+
 
 /* ============================
    Visualizer: ExplainerSVG
@@ -209,7 +203,7 @@ function ExplainerSVG({ concept, params, history = [], running }) {
   // Choose layout per concept
   return (
     <div className="w-full rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start flex-wrap justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
             <CircuitBoard className="w-5 h-5" />
@@ -238,26 +232,29 @@ function ExplainerSVG({ concept, params, history = [], running }) {
 {concept === "rc" && (
   <>
     <defs>
-      {/* ✨ Neon gradients and glow filters */}
+      {/* Neon gradients and glow filters */}
       <linearGradient id="wireGlow" x1="0%" y1="0%" x2="100%" y2="0%">
-        <stop offset="0%" stopColor="#00f0ff" stopOpacity="0.6" />
-        <stop offset="50%" stopColor="#39ff14" stopOpacity="1" />
-        <stop offset="100%" stopColor="#00f0ff" stopOpacity="0.6" />
+        <stop offset="0%" stopColor="#ff8a3d" stopOpacity="0.95" />
+        <stop offset="50%" stopColor="#ffd24a" stopOpacity="1" />
+        <stop offset="100%" stopColor="#00f0ff" stopOpacity="0.95" />
       </linearGradient>
 
       <linearGradient id="voltagePulse" x1="0%" y1="0%" x2="100%" y2="0%">
-        <stop offset="0%" stopColor="#ffb86b">
-          <animate
-            attributeName="stop-color"
-            values="#ffb86b;#ffd24a;#ffb86b"
-            dur="2s"
-            repeatCount="indefinite"
-          />
-        </stop>
+        <stop offset="0%" stopColor="#ffb86b" />
         <stop offset="100%" stopColor="#ffd24a" />
       </linearGradient>
 
-      <filter id="glowFilter" x="-100%" y="-100%" width="300%" height="300%">
+      <linearGradient id="capFill" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stopColor="#ffd24a" stopOpacity="1" />
+        <stop offset="100%" stopColor="#ffb86b" stopOpacity="0.25" />
+      </linearGradient>
+
+      <linearGradient id="batteryGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stopColor="#00f0ff" stopOpacity="1" />
+        <stop offset="100%" stopColor="#39ff14" stopOpacity="1" />
+      </linearGradient>
+
+      <filter id="glowFilter" x="-200%" y="-200%" width="500%" height="500%">
         <feGaussianBlur stdDeviation="3" result="blur" />
         <feMerge>
           <feMergeNode in="blur" />
@@ -265,223 +262,239 @@ function ExplainerSVG({ concept, params, history = [], running }) {
         </feMerge>
       </filter>
 
-      <filter id="innerGlow">
-        <feGaussianBlur in="SourceGraphic" stdDeviation="1.5" result="blur" />
-        <feComposite in="SourceGraphic" in2="blur" operator="atop" />
+      <filter id="softInner" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="1.2" result="inner" />
+        <feComposite in="SourceGraphic" in2="inner" operator="atop" />
       </filter>
 
       <style>{`
-        @keyframes flowExplainer {
-          0% { offset-distance: 0%; }
-          100% { offset-distance: 100%; }
+        /* Core animations and utility */
+        @keyframes electronFlow {
+          0% { offset-distance: 0%; opacity: 0.95; transform: translateZ(0); }
+          100% { offset-distance: 100%; opacity: 0.95; }
         }
-        @keyframes pulseCharge {
-          0%, 100% { opacity: 0.6; transform: scale(1); }
-          50% { opacity: 1; transform: scale(1.08); }
+        @keyframes wirePulse {
+          0% { stroke-dashoffset: 0; }
+          50% { stroke-dashoffset: 8; }
+          100% { stroke-dashoffset: 0; }
         }
-        @keyframes neonFlicker {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.8; }
+        @keyframes capFillAnim {
+          0% { transform: translateY(40%); opacity: 0.2; }
+          50% { transform: translateY(0%); opacity: 0.9; }
+          100% { transform: translateY(40%); opacity: 0.2; }
         }
+        @keyframes flicker {
+          0% { opacity: 1; }
+          50% { opacity: 0.85; }
+          100% { opacity: 1; }
+        }
+        .neonText { font-family: monospace; filter: url(#glowFilter); }
+        .holo { opacity: 0.12; mix-blend-mode: screen; }
       `}</style>
     </defs>
 
-    {/* 🔋 POWER SUPPLY */}
-    <g transform={`translate(60, ${svgH / 2})`}>
-      <rect
-        x="-26"
-        y="-36"
-        width="52"
-        height="72"
-        rx="12"
-        fill="#050505"
-        stroke="url(#voltagePulse)"
-        strokeWidth="2"
-        filter="url(#glowFilter)"
-      />
-      <text
-        x="-22"
-        y="-48"
-        fontSize="12"
-        fill="#39ff14"
-        fontFamily="monospace"
-      >
-        {params.Vsup} V
-      </text>
-      <circle
-        r="10"
-        cx="0"
-        cy="0"
-        fill="#39ff14"
-        filter="url(#glowFilter)"
-        style={{ animation: "neonFlicker 2s infinite" }}
-      />
-      <circle r="4" fill="#000" />
+    {/* Background & Ambient Panel */}
+    <defs>
+      <linearGradient id="panelBg" x1="0" x2="1">
+        <stop offset="0%" stopColor="#020205" />
+        <stop offset="100%" stopColor="#06060b" />
+      </linearGradient>
+    </defs>
+    <rect x="0" y="0" width="100%" height="100%" fill="url(#panelBg)" />
+
+    {/* Holographic grid / faint blueprint traces */}
+    <g opacity="0.07">
+      <rect x="0" y="0" width="100%" height="100%" fill="none" />
+      <g transform={`translate(0, ${svgH * 0.08})`} className="holo">
+        <path d={`M20 ${svgH*0.6} H ${1200}`} stroke="#00f0ff" strokeWidth="0.6" strokeDasharray="2 6" />
+      </g>
     </g>
 
-    {/* ⚡ MAIN CONDUCTING PATH */}
+    {/* ---- Circuit Loop Coordinates ----
+        We'll map main nodes across x positions for clarity:
+        battery: x=80, resistor: x=320, switch/junction: x=420, capacitor: x=640, return to battery via bottom trace
+    */}
+
+    {/* 🔋 BATTERY / DC SUPPLY MODULE */}
+    <g transform={`translate(80, ${svgH / 2 - 10})`} >
+      {/* battery housing */}
+      <rect x="-36" y="-44" width="72" height="88" rx="10" fill="#07070a" stroke="url(#batteryGlow)" strokeWidth="1.8" filter="url(#glowFilter)" />
+      {/* terminals */}
+      <rect x="-8" y="-52" width="16" height="6" rx="2" fill="#00f0ff" filter="url(#glowFilter)" />
+      <rect x="-8" y="46" width="16" height="6" rx="2" fill="#ff6b6b" filter="url(#glowFilter)" />
+      {/* + and - */}
+      <text x="-6" y="-58" fill="#00f0ff" fontSize="10" className="neonText">+</text>
+      <text x="-6" y="62" fill="#ff6b6b" fontSize="10" className="neonText">−</text>
+
+      {/* digital voltmeter embedded */}
+      <g transform="translate(0,8)">
+        <rect x="-30" y="-6" width="60" height="22" rx="4" fill="#010101" stroke="#002a2a" strokeWidth="0.6" />
+        <text x="-24" y="10" fontSize="12" fill="#00f0ff" className="neonText">{`Vs ${params.Vsup ?? 5} V`}</text>
+      </g>
+
+      {/* pulsing arcs at terminals */}
+      <g opacity="0.9">
+        <path d="M -2 -52 C -14 -56, 14 -56, 2 -52" stroke="#00f0ff" strokeWidth="1" fill="none" style={{ filter: 'url(#glowFilter)', opacity: 0.9 }} />
+        <path d="M -2 52 C -14 56, 14 56, 2 52" stroke="#ffd24a" strokeWidth="1" fill="none" style={{ filter: 'url(#glowFilter)', opacity: 0.85 }} />
+      </g>
+    </g>
+
+    {/* Wiring: top trace from battery to resistor to switch to capacitor */}
     <path
-      d={`M 110 ${svgH / 2} H 240 H 520`}
+      id="topWire"
+      d={`M 96 ${svgH / 2 - 10} H 220 Q 260 ${svgH / 2 - 10} 300 ${svgH / 2 - 10} H 370 H 520`}
       stroke="url(#wireGlow)"
-      strokeWidth="3.5"
+      strokeWidth="4"
       strokeLinecap="round"
       filter="url(#glowFilter)"
-      opacity="0.95"
+      style={{ strokeDasharray: 10, animation: running ? `wirePulse ${Math.max(0.9, speed/2)}s linear infinite` : 'none' }}
+      opacity="0.96"
     />
 
-    {/* 🔸 RESISTOR BLOCK */}
-    <g transform={`translate(240, ${svgH / 2})`}>
-      {/* metallic base */}
-      <rect
-        x="-34"
-        y="-18"
-        width="68"
-        height="36"
-        rx="10"
-        fill="#0a0a0a"
-        stroke="#00f0ff88"
-        strokeWidth="1.6"
-        filter="url(#innerGlow)"
-      />
-      {/* resistor waves */}
-      {Array.from({ length: 4 }).map((_, i) => (
-        <line
-          key={i}
-          x1={-26 + i * 14}
-          y1="-10"
-          x2={-18 + i * 14}
-          y2="10"
-          stroke="#39ff14"
-          strokeWidth="1.5"
-          opacity="0.8"
+    {/* Junction / Node markers along top wire */}
+    {[
+      { x: 220, label: 'J1' },
+      { x: 370, label: 'J2' },
+      { x: 520, label: 'J3' },
+    ].map((n, idx) => (
+      <g key={`node-${idx}`} transform={`translate(${n.x}, ${svgH / 2 - 10})`}>
+        <circle r="5" fill="#ffb86b" opacity="0.12" />
+        <circle r="3" fill="#ffd24a" filter="url(#glowFilter)" />
+      </g>
+    ))}
+
+    {/* 🔸 RESISTOR - cylindrical with neon waves */}
+    <g transform={`translate(320, ${svgH / 2 - 10})`} >
+      {/* cylinder body */}
+      <ellipse cx="0" cy="0" rx="42" ry="18" fill="#0b0b0b" stroke="#00f0ff55" strokeWidth="1" filter="url(#softInner)" />
+      <rect x="-42" y="-12" width="84" height="24" rx="12" fill="#0b0b0b" stroke="#00f0ff88" strokeWidth="0.8" />
+      {/* neon wave lines across body */}
+      {Array.from({ length: 8 }).map((_, i) => {
+        const y = -8 + i * 3.4;
+        return <path key={i} d={`M -38 ${y} Q 0 ${y + (i%2?3:-3)} 38 ${y}`} stroke="#39ff14" strokeWidth={1} opacity={0.85} filter="url(#glowFilter)" />;
+      })}
+      {/* resistor label & temperature shimmer */}
+      <text x="-24" y="-22" fontSize="12" fill="#39ff14" className="neonText">R = {params.R ?? 1000} Ω</text>
+      <rect x="-24" y="18" width="48" height="6" rx="3" fill="#ff8a3d" opacity="0.08" style={{ animation: running ? `flicker 3s ease-in-out infinite` : 'none' }} />
+      <text x="-30" y="36" fontSize="11" fill="#fff" fontFamily="monospace">I ≈ {round(I, 6)} A</text>
+    </g>
+
+    {/* Small Ammeter in series before resistor (series trace) */}
+    <g transform={`translate(220, ${svgH / 2 - 10})`}>
+      <rect x="-16" y="-16" width="32" height="32" rx="6" fill="#040404" stroke="#22c55e66" strokeWidth="1" filter="url(#glowFilter)" />
+      <text x="-10" y="6" fontSize="11" fill="#22c55e" className="neonText">A</text>
+      <text x="-22" y="26" fontSize="10" fill="#9af5b4">{round(Math.abs(I), 6)} A</text>
+    </g>
+
+    {/* Animated SPST SWITCH */}
+    <g transform={`translate(430, ${svgH / 2 - 10})`} style={{ cursor: 'pointer' }}>
+      <rect x="-22" y="-16" width="44" height="32" rx="6" fill="#0a0a0a" stroke="#00a3ff22" strokeWidth="1" />
+      {/* hinge and lever */}
+      <line x1="-10" y1="0" x2="16" y2={running ? -10 : 10} stroke="#00f0ff" strokeWidth="2.5" strokeLinecap="round" style={{ transformOrigin: 'center', transition: 'all 280ms ease' }} filter="url(#glowFilter)" />
+      <circle cx="-12" cy="0" r="3.2" fill="#39ff14" filter="url(#glowFilter)" />
+      <text x="-26" y="-22" fontSize="10" fill="#00f0ff" className="neonText">SW</text>
+    </g>
+
+    {/* ----- CAPACITOR MODULE ----- */}
+    <g transform={`translate(640, ${svgH / 2 - 10})`}>
+      {/* capacitor body */}
+      <rect x="-38" y="-40" width="76" height="80" rx="10" fill="#060607" stroke="#ffd24a88" strokeWidth="1.4" filter="url(#softInner)" />
+      {/* plates */}
+      <rect x="-22" y="-22" width="8" height="44" rx="3" fill="#ffd24a" style={{ filter: 'url(#glowFilter)', animation: running ? `flicker 2.2s infinite` : 'none' }} />
+      <rect x="14" y="-22" width="8" height="44" rx="3" fill="#ffd24a" style={{ filter: 'url(#glowFilter)', animation: running ? `flicker 2.2s infinite` : 'none' }} />
+      {/* dynamic charge fill between plates - clipped */}
+      <g transform="translate(0,10)">
+        <clipPath id="capClip">
+          <rect x="-14" y="-22" width="28" height="44" rx="2" />
+        </clipPath>
+        <rect
+          clipPath="url(#capClip)"
+          x="-14"
+          y={-22 + (1 - Math.min(1, (Vc ?? 0) / (params.Vsup ?? 5))) * 44}
+          width="28"
+          height={Math.max(0, Math.min(44, (Vc ?? 0) / (params.Vsup ?? 5) * 44))}
+          rx="2"
+          fill="url(#capFill)"
+          opacity="0.95"
+          style={{ transition: 'all 300ms linear' }}
         />
-      ))}
-      <text
-        x="-30"
-        y="-26"
-        fontSize="12"
-        fill="#39ff14"
-        fontFamily="monospace"
-      >
-        R = {params.R} Ω
-      </text>
-      <text
-        x="-28"
-        y="34"
-        fontSize="12"
-        fill="#fff"
-        fontFamily="monospace"
-      >
-        I ≈ {round(I, 6)} A
-      </text>
+      </g>
+
+      {/* labels */}
+      <text x="-32" y="-48" fontSize="12" fill="#ffd24a" className="neonText">C = {params.Cu ?? params.C ?? 100} μF</text>
+      <text x="-32" y="54" fontSize="11" fill="#fff" fontFamily="monospace">Vc(t) ≈ {round(Vc, 3)} V</text>
+
+      {/* voltmeter connected across capacitor */}
+      <g transform="translate(0, 82)">
+        <rect x="-28" y="-12" width="56" height="24" rx="4" fill="#040404" stroke="#ffb86b22" strokeWidth="0.8" />
+        <text x="-24" y="8" fontSize="12" fill="#ffb86b" className="neonText">V: {round(Vc, 3)} V</text>
+      </g>
     </g>
 
-    {/* 🧲 CAPACITOR */}
-    <g transform={`translate(520, ${svgH / 2})`}>
-      {/* glowing body */}
-      <rect
-        x="-32"
-        y="-26"
-        width="64"
-        height="52"
-        rx="10"
-        fill="#0a0a0a"
-        stroke="#ffd24a"
-        strokeWidth="1.5"
-        filter="url(#glowFilter)"
-      />
-      {/* two plates */}
-      <rect
-        x="-16"
-        y="-14"
-        width="4"
-        height="28"
-        rx="2"
-        fill="#ffd24a"
-        style={{ animation: "pulseCharge 2.2s ease-in-out infinite" }}
-      />
-      <rect
-        x="12"
-        y="-14"
-        width="4"
-        height="28"
-        rx="2"
-        fill="#ffd24a"
-        style={{ animation: "pulseCharge 2.2s ease-in-out infinite" }}
-      />
-      {/* inner charge bar */}
-      <rect
-        x="-10"
-        y="-6"
-        width="22"
-        height="12"
-        rx="2"
-        fill="url(#voltagePulse)"
-        opacity="0.7"
-      />
-      <text
-        x="-30"
-        y="-34"
-        fontSize="12"
-        fill="#ffd24a"
-        fontFamily="monospace"
-      >
-        C = {params.Cu || params.C} μF
-      </text>
-      <text
-        x="-28"
-        y="40"
-        fontSize="12"
-        fill="#fff"
-        fontFamily="monospace"
-      >
-        Vc ≈ {round(Vc, 3)} V
-      </text>
-    </g>
+    {/* Bottom return trace from capacitor back to battery (complete loop) */}
+    <path
+      id="bottomWire"
+      d={`M 520 ${svgH / 2 + 14} H 360 Q 320 ${svgH / 2 + 14} 280 ${svgH / 2 + 14} H 120 H 96`}
+      stroke="#ff8a3d"
+      strokeWidth="4"
+      strokeLinecap="round"
+      filter="url(#glowFilter)"
+      opacity="0.85"
+      style={{ strokeDasharray: 8, animation: running ? `wirePulse ${Math.max(0.9, speed/2)}s linear infinite` : 'none' }}
+    />
 
-    {/* 🔹 ELECTRON FLOW */}
-    {Array.from({ length: dotCount }).map((_, di) => {
-      const pathStr = `M 110 ${svgH / 2} H 240 H 520`;
-      const delay = (di / dotCount) * speed;
+    {/* Electron flow particles — follow topWire path when charging, reverse on discharge */}
+    {Array.from({ length: dotCount ?? 18 }).map((_, di) => {
+      // negative delay to stagger
+      const delay = (di / (dotCount || 18)) * (speed ?? 2);
+      // decide path based on charge/discharge (if Vc < Vs => charging forward)
+      const charging = (Vc ?? 0) < (params.Vsup ?? 5);
+      const pathTop = `path('M 96 ${svgH / 2 - 10} H 220 Q 260 ${svgH / 2 - 10} 300 ${svgH / 2 - 10} H 370 H 520')`;
+      const pathBottom = `path('M 520 ${svgH / 2 + 14} H 360 Q 320 ${svgH / 2 + 14} 280 ${svgH / 2 + 14} H 120 H 96')`;
       const style = {
-        offsetPath: `path('${pathStr}')`,
-        animationName: "flowExplainer",
-        animationDuration: `${speed}s`,
-        animationTimingFunction: "linear",
+        offsetPath: charging ? pathTop : pathBottom,
+        animationName: 'electronFlow',
+        animationDuration: `${Math.max(0.6, speed ?? 2)}s`,
+        animationTimingFunction: 'linear',
         animationDelay: `${-delay}s`,
-        animationIterationCount: "infinite",
-        animationPlayState: running ? "running" : "paused",
-        transformOrigin: "0 0",
-        filter: "url(#glowFilter)",
+        animationIterationCount: 'infinite',
+        animationPlayState: running ? 'running' : 'paused',
+        filter: 'url(#glowFilter)',
       };
       return (
         <circle
-          key={`dot-rc-${di}`}
-          r="3.2"
-          fill="#39ff14"
-          opacity="0.95"
+          key={`electron-${di}`}
+          r={3}
+          fill={charging ? '#39ff14' : '#00f0ff'}
+          opacity="0.96"
           style={style}
         />
       );
     })}
 
-    {/* ⚙️ Ambient voltage pulse line */}
-    <rect
-      x="110"
-      y={svgH / 2 - 2}
-      width="410"
-      height="4"
-      rx="2"
-      fill="url(#voltagePulse)"
-      opacity="0.2"
-    />
+    {/* Floating data particles and small waveform overlay */}
+    <g transform={`translate(${svgH * 0.02}, ${svgH * 0.07})`} opacity="0.06">
+      <circle cx="20" cy="20" r="3" fill="#00f0ff" />
+      <rect x="60" y="10" width="120" height="28" rx="4" fill="#000" />
+    </g>
+
+    {/* Ambient HUD frame & title */}
+    <g transform={`translate(24, 24)`}>
+      <text x="0" y="12" fontSize="14" fill="#00f0ff" className="neonText">RC Circuit </text>
+      <text x="0" y="28" fontSize="10" fill="#7f7f7f" fontFamily="monospace">Charging / Discharging Visualization</text>
+    </g>
+
+    {/* subtle micro-vibration when current is high */}
+    <g transform={`translate(0,0)` } style={{ transform: (Math.abs(I) > 0.02 ? `translateY(${Math.sin(Date.now()/120) * 0.3}px)` : 'none') }} />
+
   </>
 )}
+
 
 {concept === "rl" && (
   <>
     <defs>
-      {/* ✨ Neon gradients, electromagnetic glows */}
+      {/* ✨ Gradients and glow filters */}
       <linearGradient id="wireGlowRL" x1="0%" y1="0%" x2="100%" y2="0%">
         <stop offset="0%" stopColor="#00eaff" stopOpacity="0.6" />
         <stop offset="50%" stopColor="#00ffbf" stopOpacity="1" />
@@ -493,7 +506,6 @@ function ExplainerSVG({ concept, params, history = [], running }) {
         <stop offset="100%" stopColor="#ff2df1" />
       </linearGradient>
 
-      {/* Glowing filter for soft bloom */}
       <filter id="glowRL" x="-50%" y="-50%" width="200%" height="200%">
         <feGaussianBlur stdDeviation="3" result="blur" />
         <feMerge>
@@ -512,7 +524,7 @@ function ExplainerSVG({ concept, params, history = [], running }) {
       </filter>
 
       <style>{`
-        @keyframes flowExplainerInd {
+        @keyframes flowExplainerRL {
           0% { offset-distance: 0%; }
           100% { offset-distance: 100%; }
         }
@@ -526,13 +538,13 @@ function ExplainerSVG({ concept, params, history = [], running }) {
         }
         @keyframes coilFlicker {
           0%, 100% { opacity: 1; }
-          50% { opacity: 0.85; }
+          50% { opacity: 0.8; }
         }
       `}</style>
     </defs>
 
-    {/* 🔋 POWER SUPPLY */}
-    <g transform={`translate(60, ${svgH / 2})`}>
+    {/* 🔋 Power Supply */}
+    <g transform={`translate(60, ${svgH / 2 - 60})`}>
       <rect
         x="-26"
         y="-36"
@@ -540,12 +552,12 @@ function ExplainerSVG({ concept, params, history = [], running }) {
         height="72"
         rx="12"
         fill="#050505"
-        stroke="url(#currentPulse)"
+        stroke="url(#wireGlowRL)"
         strokeWidth="2"
         filter="url(#glowRL)"
       />
       <text
-        x="-22"
+        x="-24"
         y="-48"
         fontSize="12"
         fill="#00ffbf"
@@ -564,19 +576,25 @@ function ExplainerSVG({ concept, params, history = [], running }) {
       <circle r="4" fill="#000" />
     </g>
 
-    {/* ⚡ MAIN WIRE PATH */}
+    {/* ⚡ Clear Wiring Path (top → right → down → left → up) */}
     <path
-      d={`M 110 ${svgH / 2} H 420`}
+      id="rlWirePath"
+      d={`M 86 ${svgH / 2 - 60} 
+         H 420 
+         V ${svgH / 2 + 60} 
+         H 86 
+         Z`}
+      fill="none"
       stroke="url(#wireGlowRL)"
       strokeWidth="3.5"
       strokeLinecap="round"
+      strokeLinejoin="round"
       filter="url(#glowRL)"
       opacity="0.95"
     />
 
-    {/* 🌀 INDUCTOR */}
+    {/* 🌀 Inductor */}
     <g transform={`translate(420, ${svgH / 2})`}>
-      {/* Background casing */}
       <rect
         x="-44"
         y="-28"
@@ -588,8 +606,6 @@ function ExplainerSVG({ concept, params, history = [], running }) {
         strokeWidth="1.8"
         filter="url(#glowRL)"
       />
-
-      {/* Glowing electromagnetic field aura */}
       <circle
         cx="0"
         cy="0"
@@ -598,8 +614,6 @@ function ExplainerSVG({ concept, params, history = [], running }) {
         filter="url(#fieldGlow)"
         style={{ animation: "fieldPulse 2.2s infinite ease-in-out" }}
       />
-
-      {/* Metallic coil rings */}
       {Array.from({ length: 6 }).map((_, i) => (
         <ellipse
           key={i}
@@ -615,7 +629,6 @@ function ExplainerSVG({ concept, params, history = [], running }) {
         />
       ))}
 
-      {/* Coil data labels */}
       <text
         x="-38"
         y="-38"
@@ -636,13 +649,13 @@ function ExplainerSVG({ concept, params, history = [], running }) {
       </text>
     </g>
 
-    {/* ⚙️ Flowing energy particles */}
+    {/* ⚙️ Flowing Current Dots Following Entire Loop */}
     {Array.from({ length: dotCount }).map((_, di) => {
-      const pathStr = `M 110 ${svgH / 2} H 420`;
+      const pathStr = `M 86 ${svgH / 2 - 60} H 420 V ${svgH / 2 + 60} H 86 Z`;
       const delay = (di / dotCount) * speed;
       const style = {
         offsetPath: `path('${pathStr}')`,
-        animationName: "flowExplainerInd",
+        animationName: "flowExplainerRL",
         animationDuration: `${speed}s`,
         animationTimingFunction: "linear",
         animationDelay: `${-delay}s`,
@@ -662,11 +675,11 @@ function ExplainerSVG({ concept, params, history = [], running }) {
       );
     })}
 
-    {/* 💫 Dynamic magnetic field pulse line */}
+    {/* 💫 Subtle Energy Flow Highlight Line */}
     <rect
-      x="110"
-      y={svgH / 2 - 2}
-      width="310"
+      x="86"
+      y={svgH / 2 - 62}
+      width="334"
       height="4"
       rx="2"
       fill="url(#wireGlowRL)"
@@ -677,87 +690,690 @@ function ExplainerSVG({ concept, params, history = [], running }) {
 )}
 
 
-          {concept === "rlc" && (
-            <>
-              {/* R -> L -> C series depiction */}
-              <g transform={`translate(120, ${svgH / 2})`}>
-                <text x="-36" y="-36" fontSize="12" fill="#ffd24a">Series RLC</text>
-                <rect x="-40" y="-16" width="80" height="32" rx="8" fill="#0a0a0a" stroke="#222" />
-                <text x="-28" y="4" fontSize="11" fill="#ffb86b">R</text>
-                <text x="6" y="4" fontSize="11" fill="#ff6a9a">L</text>
-                <text x="32" y="4" fontSize="11" fill="#ffd24a">C</text>
-                <text x="-36" y="36" fontSize="12" fill="#fff">Iamp {`≈`} {latest.meta ? round(latest.meta.Iamp || 0, 4) : "—"}</text>
-              </g>
+  {concept === "rlc" && (
+  <>
+    <defs>
+      {/* ✨ Neon Gradients & Glow Filters */}
+      <linearGradient id="wireGlowRLC" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stopColor="#00eaff" stopOpacity="0.6" />
+        <stop offset="50%" stopColor="#00ffbf" stopOpacity="1" />
+        <stop offset="100%" stopColor="#00eaff" stopOpacity="0.6" />
+      </linearGradient>
 
-              {/* animated sinusoidal waveform (small sparkles) */}
-              {Array.from({ length: dotCount }).map((_, di) => {
-                const x0 = 300 + di * 18;
-                const y0 = svgH / 2 + Math.sin((Date.now() / 500 + di) / 6) * 18;
-                return <circle key={`spark-${di}`} cx={x0} cy={y0} r="3" fill="#ffd24a" opacity={0.85} />;
-              })}
-            </>
-          )}
+      <linearGradient id="resGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#ffb86b" />
+        <stop offset="100%" stopColor="#ff8c00" />
+      </linearGradient>
 
-          {concept === "divider" && (
-            <>
-              {/* R1, R2 vertical stack with Vout node */}
-              <g transform={`translate(420, ${svgH / 2 - 16})`}>
-                <rect x="-36" y="-26" width="72" height="18" rx="8" fill="#0a0a0a" stroke="#222" />
-                <text x="-30" y="-14" fontSize="11" fill="#ffb86b">R1 = {params.R1} Ω</text>
-                <rect x="-36" y="2" width="72" height="18" rx="8" fill="#0a0a0a" stroke="#222" />
-                <text x="-30" y="14" fontSize="11" fill="#ff9a4a">R2 = {params.R2} Ω</text>
-                <text x="-36" y="36" fontSize="12" fill="#fff">Vout {`=`} {round(latest.Vout ?? 0, 3)} V</text>
-              </g>
+      <linearGradient id="coilGlowRLC" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#ff6a9a" />
+        <stop offset="100%" stopColor="#ff2df1" />
+      </linearGradient>
 
-              {/* small dot flow */}
-              {Array.from({ length: dotCount }).map((_, di) => {
-                const pathStr = `M 104 ${svgH / 2} H 420`;
-                const delay = (di / dotCount) * speed;
-                const style = {
-                  offsetPath: `path('${pathStr}')`,
-                  animationName: "flowExplainer",
-                  animationDuration: `${speed}s`,
-                  animationTimingFunction: "linear",
-                  animationDelay: `${-delay}s`,
-                  animationIterationCount: "infinite",
-                  animationPlayState: running ? "running" : "paused",
-                  transformOrigin: "0 0",
-                };
-                return <circle key={`dot-divider-${di}`} r="4" fill="#ff9a4a" style={style} />;
-              })}
-            </>
-          )}
+      <linearGradient id="capGlow" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stopColor="#00fff7" />
+        <stop offset="100%" stopColor="#00baff" />
+      </linearGradient>
 
-          {concept === "led" && (
-            <>
-              {/* resistor + LED */}
-              <g transform={`translate(260, ${svgH / 2})`}>
-                <rect x="-50" y="-20" width="100" height="44" rx="10" fill="#0a0a0a" stroke="#222" />
-                <text x="-42" y="-28" fontSize="12" fill="#ffb86b">R = {params.R} Ω</text>
+      <filter id="glowRLC" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="3" result="blur" />
+        <feMerge>
+          <feMergeNode in="blur" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
 
-                <g transform={`translate(28,0)`}>
-                  <circle cx="0" cy="0" r="14" fill={on ? "#ffdd88" : "#222"} stroke={on ? "#ff6a00" : "#333"} strokeWidth="3" />
-                  <text x="-12" y="36" fontSize="12" fill="#fff">{on ? "LED ON" : "LED OFF"}</text>
-                </g>
-              </g>
+      <filter id="fieldPulse" x="-100%" y="-100%" width="300%" height="300%">
+        <feGaussianBlur stdDeviation="10" result="blur" />
+        <feColorMatrix
+          in="blur"
+          type="matrix"
+          values="0 0 0 0 0.8  0 0 0 0 0.2  0 0 0 0 0.6  0 0 0 1 0"
+        />
+      </filter>
 
-              {Array.from({ length: dotCount }).map((_, di) => {
-                const pathStr = `M 104 ${svgH / 2} H 260`;
-                const delay = (di / dotCount) * speed;
-                const style = {
-                  offsetPath: `path('${pathStr}')`,
-                  animationName: "flowExplainer",
-                  animationDuration: `${speed}s`,
-                  animationTimingFunction: "linear",
-                  animationDelay: `${-delay}s`,
-                  animationIterationCount: "infinite",
-                  animationPlayState: running ? "running" : "paused",
-                  transformOrigin: "0 0",
-                };
-                return <circle key={`dot-led-${di}`} r="4" fill={on ? "#ffd24a" : "#555"} style={style} />;
-              })}
-            </>
-          )}
+      <style>{`
+        @keyframes flowExplainerRLC {
+          0% { offset-distance: 0%; }
+          100% { offset-distance: 100%; }
+        }
+        @keyframes capPulse {
+          0%, 100% { opacity: 0.5; height: 30px; }
+          50% { opacity: 1; height: 38px; }
+        }
+        @keyframes fieldPulse {
+          0%, 100% { opacity: 0.4; transform: scale(1); }
+          50% { opacity: 0.9; transform: scale(1.05); }
+        }
+        @keyframes currentPulse {
+          0%, 100% { stop-color: #00ffbf; }
+          50% { stop-color: #00eaff; }
+        }
+        @keyframes coilFlicker {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.85; }
+        }
+      `}</style>
+    </defs>
+
+    {/* 🔋 Power Supply */}
+    <g transform={`translate(80, ${svgH / 2 - 60})`}>
+      <rect
+        x="-26"
+        y="-36"
+        width="52"
+        height="72"
+        rx="12"
+        fill="#050505"
+        stroke="url(#wireGlowRLC)"
+        strokeWidth="2"
+        filter="url(#glowRLC)"
+      />
+      <text x="-22" y="-48" fontSize="12" fill="#00ffbf" fontFamily="monospace">
+        {params.Vsup} V
+      </text>
+      <circle
+        r="9"
+        cx="0"
+        cy="0"
+        fill="#00ffbf"
+        filter="url(#glowRLC)"
+        style={{ animation: "coilFlicker 2s infinite" }}
+      />
+      <circle r="4" fill="#000" />
+    </g>
+
+    {/* ⚡ Complete Circuit Path (Rectangular Loop) */}
+    <path
+      id="rlcWirePath"
+      d={`M 110 ${svgH / 2 - 60} 
+          H 500 
+          V ${svgH / 2 + 60} 
+          H 110 Z`}
+      fill="none"
+      stroke="url(#wireGlowRLC)"
+      strokeWidth="3.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      filter="url(#glowRLC)"
+      opacity="0.95"
+    />
+
+    {/* 🧩 R-L-C COMPONENTS (Top Path) */}
+    <g transform={`translate(190, ${svgH / 2 - 60})`}>
+      {/* 🟧 Resistor */}
+      <rect
+        x="-30"
+        y="-12"
+        width="60"
+        height="24"
+        rx="4"
+        fill="#1a1a1a"
+        stroke="url(#resGlow)"
+        strokeWidth="2"
+        filter="url(#glowRLC)"
+      />
+      <text x="-10" y="-16" fontSize="11" fill="#ffb86b" fontFamily="monospace">
+        R
+      </text>
+    </g>
+
+    <g transform={`translate(310, ${svgH / 2 - 60})`}>
+      {/* 🌀 Inductor */}
+      <rect
+        x="-36"
+        y="-20"
+        width="72"
+        height="40"
+        rx="10"
+        fill="#0a0a0a"
+        stroke="url(#coilGlowRLC)"
+        strokeWidth="1.8"
+        filter="url(#glowRLC)"
+      />
+      {Array.from({ length: 6 }).map((_, i) => (
+        <ellipse
+          key={i}
+          cx={-20 + i * 8}
+          cy={0}
+          rx="5"
+          ry="12"
+          fill="none"
+          stroke="url(#coilGlowRLC)"
+          strokeWidth="2"
+          opacity="0.9"
+          style={{ animation: "coilFlicker 3s infinite" }}
+        />
+      ))}
+      <text x="-10" y="-24" fontSize="11" fill="#ff6a9a" fontFamily="monospace">
+        L
+      </text>
+    </g>
+
+    <g transform={`translate(430, ${svgH / 2 - 60})`}>
+      {/* 🧊 Capacitor */}
+      <rect
+        x="-14"
+        y="-20"
+        width="8"
+        height="40"
+        fill="url(#capGlow)"
+        filter="url(#glowRLC)"
+        style={{ animation: "capPulse 2s infinite ease-in-out" }}
+      />
+      <rect
+        x="6"
+        y="-20"
+        width="8"
+        height="40"
+        fill="url(#capGlow)"
+        filter="url(#glowRLC)"
+        style={{ animation: "capPulse 2s infinite ease-in-out" }}
+      />
+      <text x="-4" y="-28" fontSize="11" fill="#00fff7" fontFamily="monospace">
+        C
+      </text>
+    </g>
+
+    {/* 🧲 Magnetic Field Aura near Inductor */}
+    <circle
+      cx="310"
+      cy={svgH / 2 - 60}
+      r="40"
+      fill="#ff2df133"
+      filter="url(#fieldPulse)"
+      style={{ animation: "fieldPulse 2.5s infinite ease-in-out" }}
+    />
+
+    {/* ⚙️ Flowing Energy Particles */}
+    {Array.from({ length: dotCount }).map((_, di) => {
+      const pathStr = `M 110 ${svgH / 2 - 60} H 500 V ${svgH / 2 + 60} H 110 Z`;
+      const delay = (di / dotCount) * speed;
+      const style = {
+        offsetPath: `path('${pathStr}')`,
+        animationName: "flowExplainerRLC",
+        animationDuration: `${speed}s`,
+        animationTimingFunction: "linear",
+        animationDelay: `${-delay}s`,
+        animationIterationCount: "infinite",
+        animationPlayState: running ? "running" : "paused",
+        transformOrigin: "0 0",
+        filter: "url(#glowRLC)",
+      };
+      return (
+        <circle
+          key={`dot-rlc-${di}`}
+          r="3.5"
+          fill="#00ffbf"
+          opacity="0.95"
+          style={style}
+        />
+      );
+    })}
+
+    {/* ⚡ Waveform + Amplitude Label */}
+    <text
+      x="200"
+      y={svgH / 2 + 85}
+      fontSize="12"
+      fill="#fff"
+      fontFamily="monospace"
+    >
+      Iₐₘₚ ≈ {latest.meta ? round(latest.meta.Iamp || 0, 4) : "—"} A
+    </text>
+
+    <path
+      d={`M 180 ${svgH / 2 + 40} 
+          Q 200 ${svgH / 2 + 20}, 220 ${svgH / 2 + 40}
+          T 260 ${svgH / 2 + 40}
+          T 300 ${svgH / 2 + 40}
+          T 340 ${svgH / 2 + 40}
+          T 380 ${svgH / 2 + 40}`}
+      stroke="#ffd24a"
+      strokeWidth="2"
+      fill="none"
+      filter="url(#glowRLC)"
+      opacity="0.9"
+    />
+  </>
+)}
+
+{concept === "divider" && (
+  <>
+    <defs>
+      {/* ✨ Neon gradients & glow filters */}
+      <linearGradient id="wireGlowDivider" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stopColor="#00eaff" stopOpacity="0.6" />
+        <stop offset="50%" stopColor="#00ffbf" stopOpacity="1" />
+        <stop offset="100%" stopColor="#00eaff" stopOpacity="0.6" />
+      </linearGradient>
+
+      <linearGradient id="resGlow1" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#ffb86b" />
+        <stop offset="100%" stopColor="#ff9a4a" />
+      </linearGradient>
+
+      <filter id="glowDivider" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="3" result="blur" />
+        <feMerge>
+          <feMergeNode in="blur" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
+
+      <filter id="voutGlow" x="-100%" y="-100%" width="300%" height="300%">
+        <feGaussianBlur stdDeviation="10" result="blur" />
+        <feColorMatrix
+          in="blur"
+          type="matrix"
+          values="0 0 0 0 0.1  0 0 0 0 1  0 0 0 0 0.7  0 0 0 1 0"
+        />
+      </filter>
+
+      <style>{`
+        @keyframes flowExplainerDivider {
+          0% { offset-distance: 0%; }
+          100% { offset-distance: 100%; }
+        }
+        @keyframes resistorPulse {
+          0%, 100% { opacity: 0.9; }
+          50% { opacity: 0.7; }
+        }
+        @keyframes nodePulse {
+          0%, 100% { opacity: 0.5; transform: scale(1); }
+          50% { opacity: 1; transform: scale(1.2); }
+        }
+      `}</style>
+    </defs>
+
+    {/* 🔋 Voltage Source */}
+    <g transform={`translate(100, ${svgH / 2 - 70})`}>
+      <rect
+        x="-26"
+        y="-36"
+        width="52"
+        height="72"
+        rx="12"
+        fill="#050505"
+        stroke="url(#wireGlowDivider)"
+        strokeWidth="2"
+        filter="url(#glowDivider)"
+      />
+      <text
+        x="-22"
+        y="-48"
+        fontSize="12"
+        fill="#00ffbf"
+        fontFamily="monospace"
+      >
+        Vin {params.Vin || params.Vsup} V
+      </text>
+      <circle
+        r="9"
+        cx="0"
+        cy="0"
+        fill="#00ffbf"
+        filter="url(#glowDivider)"
+        style={{ animation: "nodePulse 2s infinite ease-in-out" }}
+      />
+      <circle r="4" fill="#000" />
+    </g>
+
+    {/* ⚡ Clear Wire Path (Top to Bottom) */}
+    <path
+      id="dividerWire"
+      d={`M 130 ${svgH / 2 - 70} 
+          H 420 
+          V ${svgH / 2 + 70} 
+          H 130 
+          Z`}
+      fill="none"
+      stroke="url(#wireGlowDivider)"
+      strokeWidth="3.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      filter="url(#glowDivider)"
+      opacity="0.95"
+    />
+
+    {/* 🧩 R1 (Top resistor) */}
+    <g transform={`translate(420, ${svgH / 2 - 30})`}>
+      <rect
+        x="-36"
+        y="-18"
+        width="72"
+        height="20"
+        rx="8"
+        fill="#0a0a0a"
+        stroke="url(#resGlow1)"
+        strokeWidth="2"
+        filter="url(#glowDivider)"
+        style={{ animation: "resistorPulse 2s infinite" }}
+      />
+      <text x="-30" y="-26" fontSize="11" fill="#ffb86b" fontFamily="monospace">
+        R₁ = {params.R1} Ω
+      </text>
+    </g>
+
+    {/* ⚡ Vout Node (Between R1 & R2) */}
+    <g transform={`translate(420, ${svgH / 2 + 10})`}>
+      <circle
+        r="6"
+        fill="#00ffff"
+        filter="url(#voutGlow)"
+        style={{ animation: "nodePulse 1.8s infinite" }}
+      />
+      <text
+        x="14"
+        y="4"
+        fontSize="12"
+        fill="#00ffea"
+        fontFamily="monospace"
+      >
+        Vout = {round(latest.Vout ?? 0, 3)} V
+      </text>
+    </g>
+
+    {/* 🧩 R2 (Bottom resistor) */}
+    <g transform={`translate(420, ${svgH / 2 + 40})`}>
+      <rect
+        x="-36"
+        y="0"
+        width="72"
+        height="20"
+        rx="8"
+        fill="#0a0a0a"
+        stroke="url(#resGlow1)"
+        strokeWidth="2"
+        filter="url(#glowDivider)"
+        style={{ animation: "resistorPulse 2s infinite" }}
+      />
+      <text x="-30" y="40" fontSize="11" fill="#ff9a4a" fontFamily="monospace">
+        R₂ = {params.R2} Ω
+      </text>
+    </g>
+
+    {/* ⚙️ Flowing Current Dots Along the Path */}
+    {Array.from({ length: dotCount }).map((_, di) => {
+      const pathStr = `M 130 ${svgH / 2 - 70} H 420 V ${svgH / 2 + 70} H 130 Z`;
+      const delay = (di / dotCount) * speed;
+      const style = {
+        offsetPath: `path('${pathStr}')`,
+        animationName: "flowExplainerDivider",
+        animationDuration: `${speed}s`,
+        animationTimingFunction: "linear",
+        animationDelay: `${-delay}s`,
+        animationIterationCount: "infinite",
+        animationPlayState: running ? "running" : "paused",
+        transformOrigin: "0 0",
+        filter: "url(#glowDivider)",
+      };
+      return (
+        <circle
+          key={`dot-divider-${di}`}
+          r="3.5"
+          fill="#00ffbf"
+          opacity="0.95"
+          style={style}
+        />
+      );
+    })}
+
+    {/* ⚡ Highlighted Vin → Vout voltage drop effect */}
+    <rect
+      x="130"
+      y={svgH / 2 - 72}
+      width="290"
+      height="3"
+      rx="2"
+      fill="url(#wireGlowDivider)"
+      opacity="0.3"
+      style={{ animation: "resistorPulse 1.5s infinite" }}
+    />
+
+    {/* ⚡ Ground Label */}
+    <g transform={`translate(130, ${svgH / 2 + 72})`}>
+      <line x1="-10" y1="0" x2="10" y2="0" stroke="#888" strokeWidth="1.2" />
+      <line x1="-6" y1="4" x2="6" y2="4" stroke="#888" strokeWidth="1.2" />
+      <line x1="-2" y1="8" x2="2" y2="8" stroke="#888" strokeWidth="1.2" />
+      <text x="12" y="4" fontSize="10" fill="#ccc" fontFamily="monospace">
+        GND
+      </text>
+    </g>
+  </>
+)}
+
+{concept === "led" && (
+  <>
+    <defs>
+      {/* ⚡ Neon gradients */}
+      <linearGradient id="wireFlowLED" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stopColor="#00f5ff" stopOpacity="0.6" />
+        <stop offset="50%" stopColor="#00ffaa" stopOpacity="1" />
+        <stop offset="100%" stopColor="#00f5ff" stopOpacity="0.6" />
+      </linearGradient>
+
+      <linearGradient id="resBodyLED" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#7a5230" />
+        <stop offset="50%" stopColor="#fcb45a" />
+        <stop offset="100%" stopColor="#7a5230" />
+      </linearGradient>
+
+      <radialGradient id="ledCore" cx="50%" cy="50%" r="70%">
+        <stop offset="0%" stopColor="#fff8cc" />
+        <stop offset="50%" stopColor="#ffca3a" />
+        <stop offset="100%" stopColor="#ff6500" />
+      </radialGradient>
+
+      <radialGradient id="ledHalo" cx="50%" cy="50%" r="80%">
+        <stop offset="0%" stopColor="#ffcc55" stopOpacity="0.8" />
+        <stop offset="100%" stopColor="#ff3300" stopOpacity="0" />
+      </radialGradient>
+
+      <filter id="bloom" x="-100%" y="-100%" width="300%" height="300%">
+        <feGaussianBlur stdDeviation="8" result="blur" />
+        <feMerge>
+          <feMergeNode in="blur" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
+
+      <filter id="softShadow" x="-50%" y="-50%" width="200%" height="200%">
+        <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#00ffaa44" />
+      </filter>
+
+      <filter id="ledHaloEffect" x="-100%" y="-100%" width="300%" height="300%">
+        <feGaussianBlur stdDeviation="12" result="blur" />
+        <feColorMatrix
+          in="blur"
+          type="matrix"
+          values="1 0 0 0 0  0.4 1 0 0 0  0 0 0.6 0 0  0 0 0 2 0"
+        />
+      </filter>
+
+      <style>{`
+        @keyframes flowParticles {
+          0% { offset-distance: 0%; }
+          100% { offset-distance: 100%; }
+        }
+        @keyframes heatPulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.8; }
+        }
+        @keyframes ledGlowPulse {
+          0%, 100% { transform: scale(1); opacity: 0.9; }
+          50% { transform: scale(1.05); opacity: 1; }
+        }
+        @keyframes flicker {
+          0%, 100% { opacity: 1; }
+          45% { opacity: 0.8; }
+          50% { opacity: 1; }
+          55% { opacity: 0.9; }
+          60% { opacity: 1; }
+        }
+      `}</style>
+    </defs>
+
+    {/* 🔋 Power source */}
+    <g transform={`translate(100, ${svgH / 2})`}>
+      <rect
+        x="-25"
+        y="-36"
+        width="50"
+        height="72"
+        rx="12"
+        fill="#050505"
+        stroke="url(#wireFlowLED)"
+        strokeWidth="2.5"
+        filter="url(#bloom)"
+      />
+      <text x="-22" y="-48" fontSize="12" fill="#00ffaa" fontFamily="monospace">
+        Vin {params.Vin || params.Vsup} V
+      </text>
+      <circle cx="0" cy="0" r="8" fill="#00ffaa" filter="url(#bloom)" />
+    </g>
+
+    {/* ⚡ Main conductive wire */}
+    <path
+      id="ledWire"
+      d={`M 130 ${svgH / 2} H 320`}
+      stroke="url(#wireFlowLED)"
+      strokeWidth="4"
+      strokeLinecap="round"
+      filter="url(#bloom)"
+      opacity="0.9"
+    />
+
+    {/* ⚙️ Resistor */}
+    <g transform={`translate(210, ${svgH / 2})`}>
+      <rect
+        x="-46"
+        y="-18"
+        width="92"
+        height="36"
+        rx="10"
+        fill="url(#resBodyLED)"
+        stroke="#ffb86b"
+        strokeWidth="1.6"
+        filter="url(#softShadow)"
+        style={{ animation: "heatPulse 2s infinite ease-in-out" }}
+      />
+      <text
+        x="-40"
+        y="-28"
+        fontSize="12"
+        fill="#ffb86b"
+        fontFamily="monospace"
+      >
+        R = {params.R} Ω
+      </text>
+
+      {/* Metallic sheen */}
+      <rect
+        x="-46"
+        y="-18"
+        width="92"
+        height="36"
+        rx="10"
+        fill="url(#wireFlowLED)"
+        opacity="0.15"
+      />
+    </g>
+
+    {/* 💡 LED */}
+    <g transform={`translate(340, ${svgH / 2})`}>
+      {/* LED body */}
+      <circle
+        cx="0"
+        cy="0"
+        r="16"
+        fill={on ? "url(#ledCore)" : "#111"}
+        stroke={on ? "#ffcc00" : "#444"}
+        strokeWidth="3"
+        filter={on ? "url(#ledHaloEffect)" : "url(#softShadow)"}
+        style={{
+          animation: on
+            ? "ledGlowPulse 2s infinite ease-in-out, flicker 3s infinite"
+            : "none",
+        }}
+      />
+
+      {/* LED filament lines */}
+      {on && (
+        <>
+          <line
+            x1="-6"
+            y1="0"
+            x2="6"
+            y2="0"
+            stroke="#fff8cc"
+            strokeWidth="1.4"
+            opacity="0.9"
+            filter="url(#bloom)"
+          />
+          <circle cx="0" cy="0" r="4" fill="#fff8cc" opacity="0.9" />
+        </>
+      )}
+
+      {/* Radiant glow cone */}
+      {on && (
+        <polygon
+          points="16,-6 80,0 16,6"
+          fill="url(#ledHalo)"
+          opacity="0.7"
+          filter="url(#ledHaloEffect)"
+        />
+      )}
+
+      <text
+        x="-20"
+        y="34"
+        fontSize="12"
+        fill={on ? "#ffd966" : "#777"}
+        fontFamily="monospace"
+      >
+        {on ? "LED ON" : "LED OFF"}
+      </text>
+    </g>
+
+    {/* ⚡ Flowing current particles */}
+    {Array.from({ length: dotCount }).map((_, di) => {
+      const pathStr = `M 130 ${svgH / 2} H 340`;
+      const delay = (di / dotCount) * speed;
+      const style = {
+        offsetPath: `path('${pathStr}')`,
+        animationName: "flowParticles",
+        animationDuration: `${speed}s`,
+        animationTimingFunction: "linear",
+        animationDelay: `${-delay}s`,
+        animationIterationCount: "infinite",
+        animationPlayState: running ? "running" : "paused",
+        transformOrigin: "0 0",
+        filter: "url(#bloom)",
+      };
+      return (
+        <circle
+          key={`dot-led-${di}`}
+          r="3.5"
+          fill={on ? "#ffdd66" : "#444"}
+          opacity={on ? 0.95 : 0.4}
+          style={style}
+        />
+      );
+    })}
+
+    {/* 🪨 Ground reference */}
+    <g transform={`translate(100, ${svgH / 2 + 44})`}>
+      <line x1="-10" y1="0" x2="10" y2="0" stroke="#666" strokeWidth="1.2" />
+      <line x1="-6" y1="4" x2="6" y2="4" stroke="#666" strokeWidth="1.2" />
+      <line x1="-2" y1="8" x2="2" y2="8" stroke="#666" strokeWidth="1.2" />
+      <text x="12" y="5" fontSize="10" fill="#ccc" fontFamily="monospace">
+        GND
+      </text>
+    </g>
+  </>
+)}
+
 
           {/* readout panel */}
           <g transform={`translate(${svgW - 220},28)`}>
@@ -1312,23 +1928,23 @@ onClick={snapshotPNG}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                       <div className="text-xs text-zinc-400">Latest (t)</div>
-                      <div className="text-lg font-semibold text-[#ff9a4a]">{latest ? round(latest.t ?? 0, 3) : "—"} s</div>
+                      <div className="text-lg font-semibold text-[#ff9a4a] truncate">{latest ? round(latest.t ?? 0, 3) : "—"} s</div>
                       <div className="text-xs text-zinc-400 mt-1">Simulation time</div>
                     </div>
 
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                       <div className="text-xs text-zinc-400">Instant Current</div>
-                      <div className="text-lg font-semibold text-[#00ffbf]">{latest ? round(latest.I ?? 0, 6) : "—"} A</div>
+                      <div className="text-lg font-semibold text-[#00ffbf] truncate">{latest ? round(latest.I ?? 0, 6) : "—"} A</div>
                     </div>
 
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                       <div className="text-xs text-zinc-400">Instant Voltage</div>
-                      <div className="text-lg font-semibold text-[#ffd24a]">{latest ? round(latest.Vc ?? latest.Vout ?? 0, 6) : "—"} V</div>
+                      <div className="text-lg font-semibold text-[#ffd24a] truncate">{latest ? round(latest.Vc ?? latest.Vout ?? 0, 6) : "—"} V</div>
                     </div>
 
                     <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800">
                       <div className="text-xs text-zinc-400">Power</div>
-                      <div className="text-lg font-semibold text-[#ff9a4a]">{latest ? round(latest.P ?? 0, 6) : "—"} W</div>
+                      <div className="text-lg font-semibold text-[#ff9a4a] truncate">{latest ? round(latest.P ?? 0, 6) : "—"} W</div>
                     </div>
                   </div>
 

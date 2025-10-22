@@ -19,6 +19,13 @@ import {
   CircleDashed,
   Zap as Lightning,
   Activity,
+  User,
+  BarChart2,
+  BookOpen,
+  FlipHorizontal,
+  ChevronLeft,
+  FastForward,
+  ChevronRight,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
@@ -44,6 +51,7 @@ import {
   Tooltip as ReTooltip,
   Legend,
 } from "recharts";
+import { toPng } from "html-to-image";
 
 /* ============================
    Utilities
@@ -246,7 +254,7 @@ function MemoryVisualizer({ decks = [], activeDeckId = null, running = true, his
 
   return (
     <div className="w-full rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start flex-wrap justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
             <Brain className="w-5 h-5" />
@@ -479,6 +487,32 @@ export default function FlashCardPage() {
     }
   };
 
+  const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
+
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
+
   /* ---------------------------
      Small helpers for UI
      --------------------------- */
@@ -490,7 +524,7 @@ export default function FlashCardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#05060a]
+    <div className="min-h-screen pb-20 bg-[#05060a]
                  bg-[radial-gradient(circle,_rgba(255,122,28,0.18)_1px,transparent_1px)]
                  bg-[length:20px_20px] text-white overflow-x-hidden">
       <Toaster position="top-center" richColors />
@@ -510,8 +544,8 @@ export default function FlashCardPage() {
                 <Zap className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 text-black" />
               </div>
               <div className="truncate">
-                <div className="text-sm sm:text-base md:text-lg font-semibold text-zinc-200 truncate">SparkLab — Flashcards</div>
-                <div className="text-xs sm:text-sm md:text-sm text-zinc-400 -mt-0.5 truncate">Interactive memory practice • realtime visualizer</div>
+                <div className="text-sm sm:text-base md:text-lg font-semibold text-zinc-200 truncate">SparkLab </div>
+                <div className="text-xs sm:text-sm md:text-sm text-zinc-400 -mt-0.5 truncate">Interactive memory practice </div>
               </div>
             </motion.div>
 
@@ -537,16 +571,22 @@ export default function FlashCardPage() {
                     <SelectValue placeholder="Mode" />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                    <SelectItem value="learn" className="text-white hover:bg-orange-500/20">Learn</SelectItem>
-                    <SelectItem value="review" className="text-white hover:bg-orange-500/20">Review</SelectItem>
-                    <SelectItem value="quiz" className="text-white hover:bg-orange-500/20">Quiz</SelectItem>
+                    <SelectItem value="learn"     className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Learn</SelectItem>
+                    <SelectItem value="review"     className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Review</SelectItem>
+                    <SelectItem value="quiz"     className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Quiz</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="flex items-center gap-2">
-                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer font-semibold text-sm px-3 py-1 rounded-lg shadow-md hover:scale-105 transition-transform duration-200"
-                  onClick={() => toast.success("Snapshot saved")}>Snapshot</Button>
+                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer font-semibold text-sm px-3 py-1 rounded-lg shadow-md hover:scale-105 transition-transform duration-200" onClick={snapshotPNG}
+>Snapshot</Button>
 
                 <Button variant="ghost" className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg hover:bg-zinc-800 hover:text-orange-400 transition-colors duration-200" onClick={() => { setRunning((r) => { const nxt = !r; toast(nxt ? "Visualizer resumed" : "Visualizer paused"); return nxt; }); }}>
                   {running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
@@ -563,7 +603,7 @@ export default function FlashCardPage() {
             </div>
 
             <div className="md:hidden">
-              <Button variant="ghost" className="border cursor-pointer border-zinc-800 p-2 rounded-lg" onClick={() => setMobileOpen(!mobileOpen)}>{mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}</Button>
+              <Button variant="ghost" className="border cursor-pointer text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 border-zinc-800 p-2 rounded-lg" onClick={() => setMobileOpen(!mobileOpen)}>{mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}</Button>
             </div>
           </div>
 
@@ -578,7 +618,9 @@ export default function FlashCardPage() {
                     </SelectTrigger>
                     <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
                       {decks.map((d) => (
-                        <SelectItem key={d.id} value={d.id} className="text-white hover:bg-orange-500/20">{d.title}</SelectItem>
+                        <SelectItem key={d.id} value={d.id}     className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">{d.title}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -590,17 +632,23 @@ export default function FlashCardPage() {
                       <SelectValue placeholder="Mode" />
                     </SelectTrigger>
                     <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                      <SelectItem value="learn">Learn</SelectItem>
-                      <SelectItem value="review">Review</SelectItem>
-                      <SelectItem value="quiz">Quiz</SelectItem>
+                      <SelectItem     className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="learn">Learn</SelectItem>
+                      <SelectItem     className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="review">Review</SelectItem>
+                      <SelectItem     className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="quiz">Quiz</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
 
               <div className="flex gap-2">
-                <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2 rounded-md" onClick={() => toast.success("Snapshot saved")}>Snapshot</Button>
-                <Button variant="ghost" className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2 rounded-md" onClick={() => { setRunning((r) => !r); }}>{running ? "Pause" : "Play"}</Button>
+                <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer text-xs py-2 rounded-md" onClick={snapshotPNG}>Snapshot</Button>
+                <Button variant="ghost" className="flex-1 border cursor-pointer text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 border-zinc-800 text-xs py-2 rounded-md" onClick={() => { setRunning((r) => !r); }}>{running ? "Pause" : "Play"}</Button>
               </div>
             </div>
           </div>
@@ -614,89 +662,176 @@ export default function FlashCardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left: controls / add card / deck list */}
           <div className="lg:col-span-4 space-y-4">
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden w-full max-w-full">
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
-                        <Book className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="text-lg font-semibold text-[#ffd24a]">Study Controls</div>
-                        <div className="text-xs text-zinc-400">Modes • Deck • User • Add cards</div>
-                      </div>
-                    </div>
+ <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.28 }}
+    >
+      <Card className="bg-gradient-to-b from-black/70 via-zinc-900/70 to-black/80 border border-zinc-800 rounded-2xl overflow-hidden w-full max-w-full shadow-lg shadow-orange-500/10 backdrop-blur-lg">
+        {/* HEADER */}
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center shadow-md shadow-orange-500/30">
+                <Book className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-lg font-semibold text-[#ffd24a] tracking-wide">
+                  Study Controls
+                </div>
+                <div className="text-xs text-zinc-400">
+                  Modes • Deck • User • Add Cards
+                </div>
+              </div>
+            </div>
 
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-black/80 border border-orange-500 text-orange-300 px-3 py-1 rounded-full">Mode</Badge>
-                    </div>
-                  </CardTitle>
-                </CardHeader>
+            <Badge className="bg-black/80 border border-orange-500/60 text-orange-300 shadow-md shadow-orange-500/20 rounded-full px-3 py-1 text-[11px] backdrop-blur-sm">
+              Mode
+            </Badge>
+          </CardTitle>
+        </CardHeader>
 
-                <CardContent className="space-y-4">
-                  <div>
-                    <label className="text-xs text-zinc-400">Select User</label>
-                    <Input value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)} type="text" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                    <div className="text-xs text-zinc-500 mt-1">Choose a profile (affects scheduling heuristics)</div>
-                  </div>
+        {/* CONTENT */}
+        <CardContent className="space-y-5">
+          {/* USER SELECT */}
+          <div>
+            <label className="text-xs text-zinc-400 flex items-center gap-1 mb-1">
+              <User className="w-3.5 h-3.5 text-orange-400" /> Select User
+            </label>
+            <Input
+              value={selectedUser}
+              onChange={(e) => setSelectedUser(e.target.value)}
+              type="text"
+              placeholder="Enter user name"
+              className="bg-zinc-900/60 border border-zinc-800 text-white focus:border-orange-400/60 transition-colors"
+            />
+            <div className="text-xs text-zinc-500 mt-1">
+              Choose a profile (affects scheduling heuristics)
+            </div>
+          </div>
 
-                  <div>
-                    <label className="text-xs text-zinc-400">Quick Stats</label>
-                    <div className="mt-2 flex gap-2">
-                      <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800 flex-1">
-                        <div className="text-xs text-zinc-400">Deck</div>
-                        <div className="text-lg font-semibold text-[#ff9a4a]">{activeDeck.title}</div>
-                        <div className="text-xs text-zinc-400 mt-1">Cards: {activeDeck.cards.length}</div>
-                      </div>
-                      <div className="rounded-md p-3 bg-zinc-900/40 border border-zinc-800 w-32">
-                        <div className="text-xs text-zinc-400">Avg Strength</div>
-                        <div className="text-lg font-semibold text-[#00ffbf]">{round(metrics.avgStrength, 3)}</div>
-                      </div>
-                    </div>
-                  </div>
+          {/* QUICK STATS */}
+          <div>
+            <label className="text-xs text-zinc-400 flex items-center gap-1">
+              <BarChart2 className="w-3.5 h-3.5 text-orange-400" /> Quick Stats
+            </label>
+            <div className="mt-2 flex flex-wrap gap-3">
+              <div className="rounded-xl p-3 bg-black/40 border border-zinc-800 flex-1 min-w-[160px] backdrop-blur-md hover:border-orange-500/40 transition-colors">
+                <div className="text-xs text-zinc-400">Deck</div>
+                <div className="text-lg font-semibold text-[#ff9a4a]">
+                  {activeDeck.title}
+                </div>
+                <div className="text-xs text-zinc-500 mt-1">
+                  Cards: {activeDeck.cards.length}
+                </div>
+              </div>
 
-                  {/* Add card */}
-                  <div className="border border-zinc-800 rounded-lg p-3">
-                    <div className="text-sm font-medium text-zinc-300 mb-2">Add Card</div>
-                    <Input value={newFront} onChange={(e) => setNewFront(e.target.value)} placeholder="Front (question)" className="bg-zinc-900/60 mb-2" />
-                    <Input value={newBack} onChange={(e) => setNewBack(e.target.value)} placeholder="Back (answer)" className="bg-zinc-900/60 mb-2" />
-                    <div className="flex gap-2">
-                      <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]" onClick={handleAddCard}><Plus className="w-4 h-4 mr-2" /> Add</Button>
-                      <Button variant="ghost" className="flex-1 border border-zinc-800" onClick={() => { setNewFront(""); setNewBack(""); }}>Clear</Button>
-                    </div>
-                  </div>
+              <div className="rounded-xl p-3 bg-black/40 border border-zinc-800 w-32 text-center backdrop-blur-md hover:border-orange-500/40 transition-colors">
+                <div className="text-xs text-zinc-400">Avg Strength</div>
+                <div className="text-lg font-semibold text-[#00ffbf]">
+                  {round(metrics.avgStrength, 3)}
+                </div>
+              </div>
+            </div>
+          </div>
 
-                  <div className="flex items-center gap-2 justify-between mt-2">
-                    <div className="flex gap-2">
-                      <Button className="px-3 py-2 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]" onClick={() => { setRunning(true); toast("Visualizer running"); }}><Play className="w-4 h-4 mr-2" /> Run</Button>
-                      <Button variant="outline" className="px-3 py-2 border-zinc-700 text-black" onClick={() => { setRunning(false); toast("Visualizer paused"); }}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
-                    </div>
+          {/* ADD CARD */}
+          <div className="border border-zinc-800 rounded-xl p-4 bg-black/40 backdrop-blur-md hover:border-orange-500/40 transition-colors">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm font-medium text-zinc-300 flex items-center gap-2">
+                <Layers className="w-4 h-4 text-orange-400" />
+                Add Card
+              </div>
+              <Badge className="bg-zinc-900/80 border border-orange-400/60 text-orange-300 px-2 py-0.5 rounded-full text-[10px]">
+                Deck Builder
+              </Badge>
+            </div>
+            <Input
+              value={newFront}
+              onChange={(e) => setNewFront(e.target.value)}
+              placeholder="Front (question)"
+              className="bg-zinc-900/60 mb-2 border border-zinc-800 text-white focus:border-orange-400/60 transition-colors"
+            />
+            <Input
+              value={newBack}
+              onChange={(e) => setNewBack(e.target.value)}
+              placeholder="Back (answer)"
+              className="bg-zinc-900/60 mb-3 border border-zinc-800 text-white focus:border-orange-400/60 transition-colors"
+            />
+            <div className="flex gap-2">
+              <Button
+                className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black hover:brightness-110 cursor-pointer transition-all"
+                onClick={handleAddCard}
+              >
+                <Plus className="w-4 h-4 mr-2" /> Add
+              </Button>
+              <Button
+                variant="ghost"
+                className="flex-1 border border-zinc-800 text-zinc-300 hover:text-orange-400 cursor-pointer transition-colors"
+                onClick={() => {
+                  setNewFront("");
+                  setNewBack("");
+                  toast("Cleared inputs");
+                }}
+              >
+                Clear
+              </Button>
+            </div>
+          </div>
 
-                    <div className="flex gap-2">
-                      <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-zinc-300 p-2" onClick={() => {
-                        // export deck as JSON
-                        const payload = JSON.stringify(activeDeck, null, 2);
-                        const blob = new Blob([payload], { type: "application/json" });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = `${activeDeck.title.replace(/\s+/g, "_")}-${Date.now()}.json`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                        toast.success("Deck exported");
-                      }}><Layers className="w-4 h-4" /></Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
+          {/* CONTROLS */}
+          <div className="flex items-center gap-2 justify-between pt-2">
+            <div className="flex gap-2">
+              <Button
+                className="px-3 py-2 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] hover:brightness-110 cursor-pointer transition-all"
+                onClick={() => {
+                  setRunning(true);
+                  toast.success("Visualizer running");
+                }}
+              >
+                <Play className="w-4 h-4 mr-2" /> Run
+              </Button>
+
+              <Button
+                variant="outline"
+                className="px-3 py-2 border-zinc-700 bg-zinc-900/70 text-white hover:text-orange-400 hover:border-orange-500 cursor-pointer transition-all"
+                onClick={() => {
+                  setRunning(false);
+                  toast("Visualizer paused");
+                }}
+              >
+                <Pause className="w-4 h-4 mr-2" /> Pause
+              </Button>
+            </div>
+
+            {/* EXPORT */}
+            <Button
+              variant="ghost"
+              className="border cursor-pointer border-zinc-800 text-zinc-300 p-2 hover:border-orange-500 hover:text-orange-400 transition-all"
+              onClick={() => {
+                const payload = JSON.stringify(activeDeck, null, 2);
+                const blob = new Blob([payload], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `${activeDeck.title.replace(/\s+/g, "_")}-${Date.now()}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                toast.success("Deck exported");
+              }}
+            >
+              <Layers className="w-4 h-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </motion.div>
           </div>
 
           {/* Right: Visual + Cards */}
           <div className="lg:col-span-8 space-y-4">
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl w-full max-w-full overflow-hidden">
+              <Card className="bg-black/70 border snapshot border-zinc-800 rounded-2xl w-full max-w-full overflow-hidden">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-3">
@@ -719,63 +854,139 @@ export default function FlashCardPage() {
 
                 <CardContent className="w-full max-w-full overflow-hidden space-y-4">
                   <MemoryVisualizer decks={decks} activeDeckId={activeDeck.id} running={running} history={history} onSelectCard={onSelectCardNode} />
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                </CardContent>
+              </Card>
+                  <div className="grid grid-cols-1 py-5 md:grid-cols-2 gap-4">
                     <StrengthOscilloscope history={history} running={running} />
 
                     {/* Card viewer */}
-                    <div className="rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden">
-                      <div className="flex items-center justify-between mb-2">
-                        <div>
-                          <div className="text-sm font-medium text-orange-400">Flashcard</div>
-                          <div className="text-xs text-zinc-400">{activeDeck.title} • {currentCard ? `${currentCardIndex + 1}/${activeDeck.cards.length}` : "No cards"}</div>
-                        </div>
-                        <div className="text-xs text-zinc-400">{currentCard ? `strength: ${round(currentCard.strength, 3)}` : ""}</div>
-                      </div>
+<motion.div
+  initial={{ opacity: 0, y: 8 }}
+  animate={{ opacity: 1, y: 0 }}
+  transition={{ duration: 0.25 }}
+>
+  <div className="rounded-2xl p-4 bg-gradient-to-b from-black/60 via-zinc-900/40 to-zinc-950/30 border border-zinc-800 shadow-[0_0_20px_rgba(255,122,45,0.08)] backdrop-blur-sm overflow-hidden">
+    
+    {/* Header */}
+    <div className="flex items-center justify-between mb-3">
+      <div>
+        <div className="text-sm font-semibold text-[#ffb84a] flex items-center gap-1">
+          <BookOpen className="w-4 h-4 text-orange-400" /> Flashcard
+        </div>
+        <div className="text-xs text-zinc-400">
+          {activeDeck.title} •{" "}
+          {currentCard ? (
+            <span className="text-orange-400 font-medium">
+              {currentCardIndex + 1}/{activeDeck.cards.length}
+            </span>
+          ) : (
+            "No cards"
+          )}
+        </div>
+      </div>
 
-                      {!currentCard ? (
-                        <div className="h-40 flex items-center justify-center text-zinc-400">No cards in deck. Add some to begin.</div>
-                      ) : (
-                        <div>
-                          <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
-                            <div className="rounded-lg p-6 bg-black/60 border border-zinc-800 min-h-[120px]">
-                              <div className="text-sm text-zinc-400 mb-2">Front</div>
-                              <div className="text-lg font-semibold text-white">{currentCard.front}</div>
+      {currentCard && (
+        <div className="px-2 py-1 rounded-full bg-zinc-900/60 border border-orange-500 text-xs text-orange-300 backdrop-blur-sm">
+          ⚡ strength: {round(currentCard.strength, 4)}
+        </div>
+      )}
+    </div>
 
-                              {showBack && (
-                                <div className="mt-4">
-                                  <div className="text-sm text-zinc-400 mb-2">Back</div>
-                                  <div className="text-md text-zinc-100">{currentCard.back}</div>
-                                </div>
-                              )}
-                            </div>
+    {/* Flashcard Content */}
+    {!currentCard ? (
+      <div className="h-40 flex items-center justify-center text-zinc-500 italic">
+        No cards in deck. Add some to begin.
+      </div>
+    ) : (
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+      >
+        <div className="rounded-xl p-6 bg-gradient-to-b from-zinc-900/60 to-black/70 border border-zinc-800 hover:shadow-[0_0_20px_rgba(255,180,80,0.08)] transition-all duration-300">
+          <div className="text-sm text-zinc-400 mb-2">Front</div>
+          <div className="text-lg font-semibold text-white leading-relaxed">
+            {currentCard.front}
+          </div>
 
-                            <div className="mt-3 flex flex-wrap gap-2 items-center">
-                              <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]" onClick={flipCard}><Lightning className="w-4 h-4 mr-2" /> {showBack ? "Hide" : "Reveal"}</Button>
+          {showBack && (
+            <div className="mt-4 border-t border-zinc-800 pt-3">
+              <div className="text-sm text-zinc-400 mb-1">Back</div>
+              <div className="text-md text-zinc-100 leading-relaxed">
+                {currentCard.back}
+              </div>
+            </div>
+          )}
+        </div>
 
-                              <Button className="flex-1 bg-green-600/80 hover:bg-green-600" onClick={() => markAnswer(true)}><Check className="w-4 h-4 mr-2" /> Correct</Button>
+        {/* Actions */}
+        <div className="mt-4 flex flex-wrap gap-2 items-center">
+          <Button
+            onClick={flipCard}
+            className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] hover:opacity-90 text-black font-medium cursor-pointer"
+          >
+            <FlipHorizontal className="w-4 h-4 mr-2" />
+            {showBack ? "Hide" : "Reveal"}
+          </Button>
 
-                              <Button className="flex-1 bg-red-600/80 hover:bg-red-600" onClick={() => markAnswer(false)}><X className="w-4 h-4 mr-2" /> Incorrect</Button>
-                            </div>
+          <Button
+            onClick={() => markAnswer(true)}
+            className="flex-1 bg-green-500/80 hover:bg-green-500 text-black font-medium cursor-pointer"
+          >
+            <Check className="w-4 h-4 mr-2" /> Correct
+          </Button>
 
-                            <div className="mt-3 flex items-center gap-2 justify-between">
-                              <div className="flex gap-2">
-                                <Button variant="ghost" className="border border-zinc-800" onClick={prevCard}>Prev</Button>
-                                <Button variant="ghost" className="border border-zinc-800" onClick={skipCard}>Skip</Button>
-                                <Button variant="ghost" className="border border-zinc-800" onClick={nextCard}>Next</Button>
-                              </div>
+          <Button
+            onClick={() => markAnswer(false)}
+            className="flex-1 bg-red-500/80 hover:bg-red-500 text-black font-medium cursor-pointer"
+          >
+            <X className="w-4 h-4 mr-2" /> Incorrect
+          </Button>
+        </div>
 
-                              <div className="flex items-center gap-2">
-                                <Button variant="destructive" className="border border-zinc-800" onClick={() => currentCard && deleteCard(currentCard.id)}><Trash2 className="w-4 h-4" /></Button>
-                              </div>
-                            </div>
-                          </motion.div>
-                        </div>
-                      )}
-                    </div>
+        {/* Navigation Controls */}
+        <div className="mt-4 flex items-center justify-between">
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              className="border border-zinc-700 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer"
+              onClick={prevCard}
+            >
+              <ChevronLeft className="w-4 h-4 mr-1" /> Prev
+            </Button>
+
+            <Button
+              variant="ghost"
+              className="border border-zinc-700 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer"
+              onClick={skipCard}
+            >
+              <FastForward className="w-4 h-4 mr-1" /> Skip
+            </Button>
+
+            <Button
+              variant="ghost"
+              className="border border-zinc-700 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500  cursor-pointer"
+              onClick={nextCard}
+            >
+              Next <ChevronRight className="w-4 h-4 " />
+            </Button>
+          </div>
+
+          <Button
+            variant="destructive"
+            className="border border-zinc-800 bg-zinc-900/60 hover:bg-red-600/70 text-red-400 cursor-pointer"
+            onClick={() => currentCard && deleteCard(currentCard.id)}
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        </div>
+      </motion.div>
+    )}
+  </div>
+</motion.div>
+
                   </div>
-                </CardContent>
-              </Card>
+                
             </motion.div>
           </div>
         </div>
@@ -785,11 +996,11 @@ export default function FlashCardPage() {
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-60 w-[92%] sm:w-auto sm:left-auto sm:translate-x-0 sm:bottom-6 sm:right-6 lg:hidden" role="region" aria-label="Mobile controls">
         <div className="flex items-center justify-between gap-3 bg-black/80 border border-zinc-800 p-3 rounded-full shadow-lg">
           <div className="flex items-center gap-2">
-            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-zinc-300 text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
+            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" className="border border-zinc-800 text-zinc-300 p-2" onClick={() => {
+            <Button variant="ghost" className="border border-zinc-800 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer p-2" onClick={() => {
               const payload = JSON.stringify(activeDeck, null, 2);
               const blob = new Blob([payload], { type: "application/json" });
               const url = URL.createObjectURL(blob);

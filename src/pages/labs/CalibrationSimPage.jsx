@@ -26,6 +26,9 @@ import {
   BarChart2,
   Eye,
   ZapOff,
+  Wrench,
+  RotateCcw,
+  ActivitySquare,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
@@ -50,6 +53,7 @@ import {
   Tooltip as ReTooltip,
   Legend,
 } from "recharts";
+import { toPng } from "html-to-image";
 
 /* ============================
    Utilities
@@ -227,133 +231,262 @@ function NeedleGauge({ value = 0, min = -10, max = 10, label = "V", units = "V",
    Visualizer: circuit + animated flow + probes
    - Animated dots driven by measured value to simulate current flow
    ============================ */
-function CalibrationVisualizer({ device, history, latest, running, probes = {}, width = "100%" }) {
-  // latest.meas used for visual intensity
+ function CalibrationVisualizer({
+  device,
+  history,
+  latest,
+  running,
+  probes = {},
+  width = "100%",
+}) {
   const val = latest ? latest.meas || 0 : 0;
   const absVal = Math.abs(val);
-  const dotCount = clamp(Math.round(3 + absVal * 6), 3, 26);
-  const speed = clamp(1.0 / (absVal + 0.02), 0.16, 3.2);
-
-  // svg layout constants
-  const svgH = 260;
-  const svgW = 980;
-
-  // meter positions
-  const meterX = 720;
-  const meterY = 90;
-
-  // helper to format value
-  const fmt = (v) => (Number.isFinite(v) ? round(v, 6) : "--");
+  const dotCount = clamp(Math.round(6 + absVal * 8), 6, 30);
+  const speed = clamp(1.0 / (absVal + 0.02), 0.15, 2.5);
+  const svgW = 1000;
+  const svgH = 280;
+  const fmt = (v) => (Number.isFinite(v) ? round(v, 4) : "--");
 
   return (
-    <div className="w-full rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden">
-      <div className="flex items-start flex-col sm:flex-row justify-between gap-3">
-        <div className="flex items-center  flex-row gap-3">
-          
-          <div className="flex items-center gap-2 flex-row">
-            <div className="w-11 h-11 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
-            <CircuitBoard className="w-5 h-5" />
-            </div>
-            <div className="flex items-start flex-col">
-            <div className="text-lg font-semibold text-[#ffd24a]">Calibration Visualizer</div>
-            <div className="text-xs text-zinc-400">Interactive probes • live meters • scope</div>
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.6 }}
+      className="relative w-full rounded-xl p-5 bg-gradient-to-b from-black/70 to-zinc-900/50 border border-zinc-800 overflow-hidden shadow-[0_0_25px_#000_inset]"
+    >
+      {/* Neon glow background lines */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute w-full h-[2px] top-0 bg-gradient-to-r from-[#ff7a2d40] via-[#ffd24a70] to-[#ff7a2d40] blur-sm animate-pulse" />
+        <div className="absolute bottom-0 w-full h-[1px] bg-gradient-to-r from-[#ffd24a20] via-[#00ffbf40] to-[#ff9a4a30]" />
+      </div>
+
+      {/* Header */}
+      <div className="flex items-start flex-col sm:flex-row justify-between gap-3 z-10 relative">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center shadow-[0_0_20px_#ffb84d60]">
+            <CircuitBoard className="w-6 h-6" />
           </div>
+          <div>
+            <div className="text-lg font-semibold text-[#ffd24a] tracking-wide">
+              Calibration Visualizer
+            </div>
+            <div className="text-xs text-zinc-400">
+              Real-time flow • active probes • precision meters
+            </div>
           </div>
         </div>
 
         <div className="flex gap-3 items-center flex-wrap">
-          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">Device: <span className="text-[#ffd24a] ml-1">{device}</span></Badge>
-          <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">Measured: <span className="text-[#00ffbf] ml-1">{fmt(latest ? latest.meas : 0)}</span></Badge>
+          <Badge className="bg-zinc-900/80 border border-zinc-700 text-zinc-300 px-3 py-1 rounded-full backdrop-blur">
+            Device:
+            <span className="text-[#ffd24a] ml-1 font-medium">{device}</span>
+          </Badge>
+          <Badge className="bg-zinc-900/80 border border-zinc-700 text-zinc-300 px-3 py-1 rounded-full backdrop-blur">
+            Measured:
+            <span className="text-[#00ffbf] ml-1 font-medium">
+              {fmt(latest ? latest.meas : 0)}
+            </span>
+          </Badge>
         </div>
       </div>
 
-      <div className="mt-3 w-full overflow-x-auto">
-        <svg viewBox={`0 0 ${svgW} ${svgH}`} preserveAspectRatio="xMidYMid meet" className="w-full h-64">
-          {/* main bus */}
-          <rect x="40" y={svgH / 2 - 26} width={svgW - 80} height="52" rx="8" fill="#0a0a0a" stroke="#111" />
-          {/* source block */}
-          <g transform={`translate(80,${svgH / 2 - 10})`}>
-            <rect x="-34" y="-26" width="68" height="52" rx="8" fill="#060606" stroke="#222" />
-            <text x="0" y="6" fontSize="12" fill="#ffd24a" textAnchor="middle">Signal Source</text>
+      {/* SVG VISUALIZATION */}
+      <div className="mt-4 w-full overflow-x-auto">
+        <svg
+          viewBox={`0 0 ${svgW} ${svgH}`}
+          preserveAspectRatio="xMidYMid meet"
+          className="w-full h-72"
+        >
+          {/* main circuit bus */}
+          <rect
+            x="60"
+            y={svgH / 2 - 22}
+            width={svgW - 120}
+            height="44"
+            rx="10"
+            fill="url(#busGrad)"
+            stroke="#222"
+            strokeWidth="1.2"
+          />
+
+          {/* source */}
+          <g transform={`translate(110,${svgH / 2 - 10})`}>
+            <rect
+              x="-36"
+              y="-30"
+              width="72"
+              height="60"
+              rx="10"
+              fill="url(#blockGrad)"
+              stroke="#333"
+            />
+            <text
+              x="0"
+              y="6"
+              fontSize="12"
+              fill="#ffd24a"
+              textAnchor="middle"
+              fontFamily="monospace"
+            >
+              Source
+            </text>
           </g>
 
-          {/* load block */}
-          <g transform={`translate(${svgW - 160},${svgH / 2 - 10})`}>
-            <rect x="-34" y="-26" width="68" height="52" rx="8" fill="#060606" stroke="#222" />
-            <text x="0" y="6" fontSize="12" fill="#ff9a4a" textAnchor="middle">Load</text>
+          {/* load */}
+          <g transform={`translate(${svgW - 60},${svgH / 2 - 10})`}>
+            <rect
+              x="-36"
+              y="-30"
+              width="72"
+              height="60"
+              rx="10"
+              fill="url(#blockGrad)"
+              stroke="#333"
+            />
+            <text
+              x="0"
+              y="6"
+              fontSize="12"
+              fill="#ff9a4a"
+              textAnchor="middle"
+              fontFamily="monospace"
+            >
+              Load
+            </text>
           </g>
 
-          {/* probes */}
-          {/* probe A */}
-          <g transform={`translate(${svgW / 2 - 80},${svgH / 2 - 70})`}>
-            <rect x="-30" y="-18" width="60" height="36" rx="6" fill="#060606" stroke="#222" />
-            <text x="0" y="4" fontSize="11" fill="#fff" textAnchor="middle">Probe A</text>
-            <text x="0" y="18" fontSize="10" fill="#ffd24a" textAnchor="middle">{fmt(probes.A ?? latest.meas)}</text>
-          </g>
-          {/* probe B */}
-          <g transform={`translate(${svgW / 2 + 120},${svgH / 2 - 70})`}>
-            <rect x="-30" y="-18" width="60" height="36" rx="6" fill="#060606" stroke="#222" />
-            <text x="0" y="4" fontSize="11" fill="#fff" textAnchor="middle">Probe B</text>
-            <text x="0" y="18" fontSize="10" fill="#ffd24a" textAnchor="middle">{fmt(probes.B ?? latest.meas)}</text>
-          </g>
-
-          {/* animated dots along bus (simulate current flow) */}
+          {/* glowing current flow */}
           {Array.from({ length: dotCount }).map((_, di) => {
-            const frac = (di / dotCount);
-            // position along bus
-            const x = 120 + frac * (svgW - 240) + ((Math.sin((di + (Date.now() % 1000) / 1000) * 3.14) * 6) || 0);
+            const frac = di / dotCount;
+            const x =
+              160 + frac * (svgW - 320) +
+              Math.sin((di + (Date.now() % 1000) / 200) * 3.14) * 4;
             const y = svgH / 2;
             const delay = (di / dotCount) * speed;
+            const color = val >= 0 ? "#ffd24a" : "#ff6a9a";
+            const glow = val >= 0 ? "#ffd24a88" : "#ff6a9a88";
             const style = {
-              animationName: "calibFlow",
-              animationDuration: `${Math.max(0.8, speed)}s`,
+              animationName: "flowPulse",
+              animationDuration: `${speed}s`,
               animationTimingFunction: "linear",
               animationDelay: `${-delay}s`,
               animationIterationCount: "infinite",
               animationPlayState: running ? "running" : "paused",
             };
-            const color = val >= 0 ? "#ffd24a" : "#ff6a9a";
-            return <circle key={`dot-${di}`} cx={x} cy={y} r="4.2" fill={color} style={style} />;
+            return (
+              <circle
+                key={`dot-${di}`}
+                cx={x}
+                cy={y}
+                r="4.5"
+                fill={color}
+                stroke={glow}
+                strokeWidth="1.4"
+                style={style}
+              />
+            );
           })}
 
           {/* meters area */}
-          <g transform={`translate(${meterX},${meterY})`}>
+          <g transform={`translate(${svgW / 2 + 180},${svgH / 2 - 60})`}>
             <foreignObject x="-140" y="-22" width="280" height="140">
               <div className="w-full h-full flex items-center justify-center">
-                {/* two inline gauges */}
-                <div className="flex gap-2">
-                  <div className="w-36"><NeedleGauge value={latest ? latest.meas : 0} min={-10} max={10} label={device === "multimeter" ? "V" : "A"} units={device === "multimeter" ? "V" : "A"} size={120} /></div>
-                  <div className="w-36"><NeedleGauge value={(history && history.length) ? history[history.length - 1].raw : 0} min={-10} max={10} label="Raw" units="" size={120} /></div>
+                <div className="flex gap-3">
+                  <div className="w-36 backdrop-blur bg-zinc-900/40 p-1 rounded-xl border border-zinc-800/70 shadow-[0_0_15px_#ffb84d20]">
+                    <NeedleGauge
+                      value={latest ? latest.meas : 0}
+                      min={-10}
+                      max={10}
+                      label={device === "multimeter" ? "V" : "A"}
+                      units={device === "multimeter" ? "V" : "A"}
+                      size={120}
+                    />
+                  </div>
+                  <div className="w-36 backdrop-blur bg-zinc-900/40 p-1 rounded-xl border border-zinc-800/70 shadow-[0_0_15px_#00ffbf20]">
+                    <NeedleGauge
+                      value={
+                        history && history.length
+                          ? history[history.length - 1].raw
+                          : 0
+                      }
+                      min={-10}
+                      max={10}
+                      label="Raw"
+                      units=""
+                      size={120}
+                    />
+                  </div>
                 </div>
               </div>
             </foreignObject>
           </g>
 
-          {/* small readout panel */}
-          <g transform={`translate(${svgW - 140},20)`}>
-            <rect x="-78" y="-14" width="156" height="88" rx="8" fill="#060606" stroke="#222" />
-            <text x="-60" y="6" fontSize="11" fill="#ffb57a">Readouts</text>
-            <text x="-60" y="26" fontSize="12" fill="#fff">Measured: <tspan fill="#ffd24a">{fmt(latest ? latest.meas : 0)}</tspan></text>
-            <text x="-60" y="46" fontSize="12" fill="#fff">Raw: <tspan fill="#00ffbf">{fmt(latest ? latest.raw : 0)}</tspan></text>
-            <text x="-60" y="66" fontSize="11" fill="#777">Mode: <tspan fill="#ff9a4a">{device}</tspan></text>
-          </g>
+          {/* probe A & B */}
+          {[
+            { x: svgW / 2 - 120, label: "Probe A", val: probes.A },
+            { x: svgW / 2 + 80, label: "Probe B", val: probes.B },
+          ].map((p, i) => (
+            <g key={i} transform={`translate(${p.x},${svgH / 2 - 80})`}>
+              <rect
+                x="-32"
+                y="-20"
+                width="64"
+                height="40"
+                rx="8"
+                fill="url(#blockGrad)"
+                stroke="#222"
+              />
+              <text
+                x="0"
+                y="0"
+                fontSize="11"
+                fill="#fff"
+                textAnchor="middle"
+                fontFamily="monospace"
+              >
+                {p.label}
+              </text>
+              <text
+                x="0"
+                y="15"
+                fontSize="10"
+                fill="#ffd24a"
+                textAnchor="middle"
+                fontFamily="monospace"
+              >
+                {fmt(p.val ?? latest.meas)}
+              </text>
+            </g>
+          ))}
+
+          {/* defs for gradients */}
+          <defs>
+            <linearGradient id="busGrad" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#202020" />
+              <stop offset="50%" stopColor="#333" />
+              <stop offset="100%" stopColor="#202020" />
+            </linearGradient>
+            <linearGradient id="blockGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#111" />
+              <stop offset="100%" stopColor="#1e1e1e" />
+            </linearGradient>
+          </defs>
 
           <style>{`
-            @keyframes calibFlow {
-              0% { transform: translateX(-6px) scale(0.9); opacity: 0.95; }
-              40% { transform: translateX(0px) scale(1.06); opacity: 0.95; }
-              100% { transform: translateX(6px) scale(0.85); opacity: 0; }
+            @keyframes flowPulse {
+              0% { transform: translateX(-3px); opacity: 0.7; }
+              50% { transform: translateX(3px); opacity: 1; }
+              100% { transform: translateX(-3px); opacity: 0.7; }
             }
             circle[style] { will-change: transform, opacity; }
-            @media (max-width: 640px) {
-              text { font-size: 9px; }
-            }
+            text { user-select: none; }
           `}</style>
         </svg>
       </div>
-    </div>
+    </motion.div>
   );
 }
+
 
 /* ============================
    Oscilloscope/Plot
@@ -490,9 +623,34 @@ export default function CalibrationSimPage() {
     setPreset(p);
     toast(`Applied preset: ${p}`);
   };
+  
+  const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
 
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
   return (
-    <div className="min-h-screen bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.18)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
+    <div className="min-h-screen pb-20 bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.18)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
       <Toaster position="top-center" richColors />
 
       {/* Header */}
@@ -518,25 +676,31 @@ export default function CalibrationSimPage() {
                   </SelectTrigger>
 
                   <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                    <SelectItem value="multimeter" className="text-white">Multimeter</SelectItem>
-                    <SelectItem value="oscilloscope" className="text-white">Oscilloscope</SelectItem>
-                    <SelectItem value="functionGenerator" className="text-white">Function Generator</SelectItem>
+                    <SelectItem value="multimeter"       className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Multimeter</SelectItem>
+                    <SelectItem value="oscilloscope"       className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Oscilloscope</SelectItem>
+                    <SelectItem value="functionGenerator"       className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Function Generator</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="flex items-center gap-2">
-                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-1 rounded-lg" onClick={() => toast.success("Snapshot saved")}>Snapshot</Button>
-                <Button variant="ghost" className="border border-zinc-700 text-zinc-300 p-2 rounded-lg" onClick={toggleRunning} title={running ? "Pause" : "Play"}>
+                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-1 cursor-pointer rounded-lg" onClick={snapshotPNG}>Snapshot</Button>
+                <Button variant="ghost" className="border border-zinc-700 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer p-2 rounded-lg" onClick={toggleRunning} title={running ? "Pause" : "Play"}>
                   {running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
                 </Button>
-                <Button variant="ghost" className="border border-zinc-700 text-zinc-300 p-2 rounded-lg" onClick={resetAll}><Settings className="w-5 h-5" /></Button>
+                <Button variant="ghost" className="border border-zinc-700 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer p-2 rounded-lg" onClick={resetAll}><Settings className="w-5 h-5" /></Button>
               </div>
             </div>
 
             {/* mobile toggle */}
             <div className="md:hidden">
-              <Button variant="ghost" className="border border-zinc-800 p-2 rounded-lg" onClick={() => setMobileOpen(!mobileOpen)}>
+              <Button variant="ghost" className="border border-zinc-800 p-2 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer rounded-lg" onClick={() => setMobileOpen(!mobileOpen)}>
                 {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </Button>
             </div>
@@ -547,20 +711,26 @@ export default function CalibrationSimPage() {
             <div className="flex flex-col gap-2">
               <div className="flex gap-2">
                 <Select value={device} onValueChange={(v) => setDevice(v)}>
-                  <SelectTrigger className="w-full bg-black/80 border cursor-pointer border-zinc-800 text-white text-sm rounded-md shadow-sm hover:border-orange-500 focus:ring-2 focus:ring-orange-500">
+                  <SelectTrigger className="w-full bg-black/80  border cursor-pointer border-zinc-800 text-white text-sm rounded-md shadow-sm hover:border-orange-500 focus:ring-2 focus:ring-orange-500">
                     <SelectValue placeholder="Device" />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                    <SelectItem value="multimeter" className="text-white">Multimeter</SelectItem>
-                    <SelectItem value="oscilloscope" className="text-white">Oscilloscope</SelectItem>
-                    <SelectItem value="functionGenerator" className="text-white">Function Generator</SelectItem>
+                    <SelectItem value="multimeter"       className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Multimeter</SelectItem>
+                    <SelectItem value="oscilloscope"       className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Oscilloscope</SelectItem>
+                    <SelectItem value="functionGenerator"       className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Function Generator</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="flex gap-2">
-                <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2 rounded-md">Snapshot</Button>
-                <Button variant="ghost" className="flex-1 border border-zinc-800 text-xs py-2 rounded-md" onClick={toggleRunning}>{running ? "Pause" : "Play"}</Button>
-                <Button variant="ghost" className="flex-1 border border-zinc-800 text-xs py-2 rounded-md" onClick={resetAll}>Reset</Button>
+                <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2 cursor-pointer rounded-md" onClick={snapshotPNG} >Snapshot</Button>
+                <Button variant="ghost" className="flex-1 border border-zinc-800 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer text-xs py-2 rounded-md" onClick={toggleRunning}>{running ? "Pause" : "Play"}</Button>
+                <Button variant="ghost" className="flex-1 border border-zinc-800 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer text-xs py-2 rounded-md" onClick={resetAll}>Reset</Button>
               </div>
             </div>
           </div>
@@ -572,126 +742,228 @@ export default function CalibrationSimPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left: Controls */}
-          <div className="lg:col-span-4 space-y-4">
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden w-full">
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
-                        <Activity className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="text-lg font-semibold text-[#ffd24a]">Calibration Controls</div>
-                        <div className="text-xs text-zinc-400">Select device • set target • apply calibration</div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-black/80 border border-orange-500 text-orange-300 px-3 py-1 rounded-full shadow-sm">Mode</Badge>
-                    </div>
-                  </CardTitle>
-                </CardHeader>
-
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 gap-2">
-                    <div>
-                      <label className="text-xs text-zinc-400">Target Value (V / amplitude)</label>
-                      <Input value={targetValue} onChange={(e) => setTargetValue(e.target.value)} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                    </div>
-
-                    <div>
-                      <label className="text-xs text-zinc-400">Series Resistance (Ω)</label>
-                      <Input value={seriesResistance} onChange={(e) => setSeriesResistance(e.target.value)} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                    </div>
-
-                    <div>
-                      <label className="text-xs text-zinc-400">Manual Override (raw)</label>
-                      <Input value={manualOverride} onChange={(e) => setManualOverride(e.target.value)} placeholder="Leave empty for simulated" type="text" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                      <div className="text-xs text-zinc-500 mt-1">Use to inject a fixed raw value (e.g., test probe reading).</div>
-                    </div>
-                  </div>
-
-                  {/* Calibration editor */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-xs text-zinc-400">Calibration</div>
-                        <div className="text-sm text-white">Offset & Gain</div>
-                      </div>
-                      <div className="text-xs text-zinc-400">Applied: <span className="text-[#ffd24a] font-semibold">{calibration.gain} × + {calibration.offset}</span></div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input value={calOffset} onChange={(e) => setCalOffset(e.target.value)} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                      <Input value={calGain} onChange={(e) => setCalGain(e.target.value)} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]" onClick={quickAutoCalibrate}><Tool className="w-4 h-4 mr-2" />Auto Calibrate</Button>
-                      <Button variant="ghost" className="border border-zinc-800" onClick={() => { setCalGain("1.0"); setCalOffset("0"); toast("Calibration reset"); }}>Reset</Button>
-                    </div>
-                  </div>
-
-                  {/* probes */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="text-xs text-zinc-400">Probes</div>
-                      <div className="text-xs text-zinc-400">Simulated probe values</div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input placeholder="Probe A (optional)" value={probeA} onChange={(e) => setProbeA(e.target.value)} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                      <Input placeholder="Probe B (optional)" value={probeB} onChange={(e) => setProbeB(e.target.value)} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                    </div>
-                  </div>
-
-                  {/* group actions */}
-                  <div className="flex items-center gap-2 justify-between">
-                    <div className="flex gap-2">
-                      <Button className="px-3 py-2 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-                      <Button variant="outline" className="px-3 py-2 border-zinc-700" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
-                    </div>
-                  </div>
-
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            {/* presets */}
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden">
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
-                        <Sliders className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="text-lg font-semibold text-[#ffd24a]">Presets</div>
-                        <div className="text-xs text-zinc-400">Quick start configurations</div>
-                      </div>
-                    </div>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex gap-2">
-                    <Button className="flex-1" onClick={() => applyPreset("default")}>Default</Button>
-                    <Button className="flex-1" onClick={() => applyPreset("low-voltage")}>Low V</Button>
-                    <Button className="flex-1" onClick={() => applyPreset("audio-scope")}>Audio Scope</Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
+<div className="lg:col-span-4 space-y-6">
+  {/* Calibration Controls */}
+  <motion.div
+    initial={{ opacity: 0, y: 8 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.28 }}
+  >
+    <Card className="bg-gradient-to-b from-black/60 via-zinc-900/40 to-zinc-950/30 border border-zinc-800 rounded-2xl shadow-[0_0_25px_rgba(255,122,45,0.08)] backdrop-blur-sm overflow-hidden w-full">
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center shadow-md">
+              <Activity className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-lg font-semibold text-[#ffd24a]">Calibration Controls</div>
+              <div className="text-xs text-zinc-400">Select device • Set target • Apply calibration</div>
+            </div>
           </div>
+
+          <Badge className="bg-zinc-900/60 border border-orange-500 text-orange-300 px-3 py-1 rounded-full shadow-[0_0_10px_rgba(255,160,60,0.3)] backdrop-blur-sm">
+            <Gauge className="w-3.5 h-3.5 mr-1" /> Mode
+          </Badge>
+        </CardTitle>
+      </CardHeader>
+
+      <CardContent className="space-y-5">
+        {/* Target & Resistance */}
+        <div className="grid grid-cols-1 gap-3">
+          <div>
+            <label className="text-xs text-zinc-400">Target Value (V / amplitude)</label>
+            <Input
+              value={targetValue}
+              onChange={(e) => setTargetValue(e.target.value)}
+              type="number"
+              className="bg-zinc-900/60 border border-zinc-800 text-white placeholder:text-zinc-500 focus:ring-1 focus:ring-[#ff7a2d]"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs text-zinc-400">Series Resistance (Ω)</label>
+            <Input
+              value={seriesResistance}
+              onChange={(e) => setSeriesResistance(e.target.value)}
+              type="number"
+              className="bg-zinc-900/60 border border-zinc-800 text-white placeholder:text-zinc-500 focus:ring-1 focus:ring-[#ffd24a]"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs text-zinc-400">Manual Override (raw)</label>
+            <Input
+              value={manualOverride}
+              onChange={(e) => setManualOverride(e.target.value)}
+              placeholder="Leave empty for simulated"
+              type="text"
+              className="bg-zinc-900/60 border border-zinc-800 text-white placeholder:text-zinc-500 focus:ring-1 focus:ring-orange-500"
+            />
+            <div className="text-xs text-zinc-500 mt-1">
+              Use to inject a fixed raw value (e.g., test probe reading)
+            </div>
+          </div>
+        </div>
+
+        {/* Calibration Section */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs text-zinc-400">Calibration</div>
+              <div className="text-sm text-white font-medium">Offset & Gain</div>
+            </div>
+            <Badge className="bg-zinc-900/60 border border-orange-400 text-orange-300 rounded-full px-3 py-1 shadow-[0_0_10px_rgba(255,180,60,0.2)]">
+              <Wrench className="w-3.5 h-3.5 mr-1" />
+              {calibration.gain}× + {calibration.offset}
+            </Badge>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              value={calOffset}
+              onChange={(e) => setCalOffset(e.target.value)}
+              type="number"
+              className="bg-zinc-900/60 border border-zinc-800 text-white placeholder:text-zinc-500 focus:ring-1 focus:ring-[#ff7a2d]"
+            />
+            <Input
+              value={calGain}
+              onChange={(e) => setCalGain(e.target.value)}
+              type="number"
+              className="bg-zinc-900/60 border border-zinc-800 text-white placeholder:text-zinc-500 focus:ring-1 focus:ring-[#ffd24a]"
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <Button
+              className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] hover:opacity-90 cursor-pointer"
+              onClick={quickAutoCalibrate}
+            >
+              <Tool className="w-4 h-4 mr-2" /> Auto Calibrate
+            </Button>
+
+            <Button
+              variant="ghost"
+              className="flex-1 border border-zinc-800 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 bg-black cursor-pointer"
+              onClick={() => {
+                setCalGain("1.0");
+                setCalOffset("0");
+                toast("Calibration reset");
+              }}
+            >
+              <RotateCcw className="w-4 h-4 mr-2" /> Reset
+            </Button>
+          </div>
+        </div>
+
+        {/* Probes */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="text-xs text-zinc-400 flex items-center gap-1">
+              <ActivitySquare className="w-3.5 h-3.5" /> Probes
+            </div>
+            <div className="text-xs text-zinc-400">Simulated probe values</div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              placeholder="Probe A (optional)"
+              value={probeA}
+              onChange={(e) => setProbeA(e.target.value)}
+              type="number"
+              className="bg-zinc-900/60 border border-zinc-800 text-white focus:ring-1 focus:ring-[#ff7a2d]"
+            />
+            <Input
+              placeholder="Probe B (optional)"
+              value={probeB}
+              onChange={(e) => setProbeB(e.target.value)}
+              type="number"
+              className="bg-zinc-900/60 border border-zinc-800 text-white focus:ring-1 focus:ring-[#ffd24a]"
+            />
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center justify-between pt-2">
+          <div className="flex gap-2">
+            <Button
+              className="px-3 py-2 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer hover:opacity-90"
+              onClick={() => setRunning(true)}
+            >
+              <Play className="w-4 h-4 mr-2" /> Run
+            </Button>
+            <Button
+              variant="outline"
+              className="px-3 py-2 border border-zinc-700 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 bg-black cursor-pointer"
+              onClick={() => setRunning(false)}
+            >
+              <Pause className="w-4 h-4 mr-2" /> Pause
+            </Button>
+          </div>
+
+          <Button
+            variant="ghost"
+            className="border border-zinc-800  p-2 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer"
+            onClick={exportCSV}
+          >
+            <Download className="w-4 h-4" />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  </motion.div>
+
+  {/* Presets */}
+  <motion.div
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.35 }}
+  >
+    <Card className="bg-gradient-to-b from-black/60 via-zinc-900/40 to-zinc-950/30 border border-zinc-800 rounded-2xl shadow-[0_0_25px_rgba(255,122,45,0.08)] overflow-hidden backdrop-blur-sm">
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center shadow-md">
+              <Sliders className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-lg font-semibold text-[#ffd24a]">Presets</div>
+              <div className="text-xs text-zinc-400">Quick start configurations</div>
+            </div>
+          </div>
+        </CardTitle>
+      </CardHeader>
+
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] hover:opacity-90 cursor-pointer"
+            onClick={() => applyPreset('default')}
+          >
+            Default
+          </Button>
+          <Button
+            className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] hover:opacity-90 cursor-pointer"
+            onClick={() => applyPreset('low-voltage')}
+          >
+            Low V
+          </Button>
+          <Button
+            className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] hover:opacity-90 cursor-pointer"
+            onClick={() => applyPreset('audio-scope')}
+          >
+            Audio Scope
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  </motion.div>
+</div>
+
 
           {/* Right: Visual + Scope + Summary */}
           <div className="lg:col-span-8 space-y-4">
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl w-full overflow-hidden">
+              <Card className="bg-black/70 border snapshot border-zinc-800 rounded-2xl w-full overflow-hidden">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-3">
@@ -774,11 +1046,11 @@ export default function CalibrationSimPage() {
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-60 w-[92%] sm:w-auto sm:left-auto sm:translate-x-0 sm:bottom-6 sm:right-6 lg:hidden" role="region" aria-label="Mobile controls">
         <div className="flex items-center justify-between gap-3 bg-black/80 border border-zinc-800 p-3 rounded-full shadow-lg">
           <div className="flex items-center gap-2">
-            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-zinc-300 text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm cursor-pointer" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
+            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer bg-black text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" className="border border-zinc-800 text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
+            <Button variant="ghost" className="border border-zinc-800 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
           </div>
         </div>
       </div>

@@ -769,7 +769,7 @@ const snapshotPNG = async () => {
 
   // responsive layout guard classes used below to prevent overflow (max-w-full)
   return (
-    <div className="min-h-screen bg-[#05060a]
+    <div className="min-h-screen pb-20 bg-[#05060a]
                  bg-[radial-gradient(circle,_rgba(255,122,28,0.25)_1px,transparent_1px)]
                  bg-[length:20px_20px] text-white">
       <Toaster position="top-right" richColors />

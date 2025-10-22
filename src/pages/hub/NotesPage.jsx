@@ -24,9 +24,16 @@ import {
   Tag,
   Sparkles,
   ListPlus,
+  GraduationCap,
+  FlaskConical,
+  FileQuestion,
+  Eye,
+  PenTool,
+  Wand2,
+
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
-
+import { Label } from "@/components/ui/label";
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,19 +73,42 @@ const uid = (prefix = "") => `${prefix}${Math.random().toString(36).slice(2, 9)}
    Simulation hook (re-uses logic from calculator)
    Takes a note's diagram (groups) and preset values (Vsup, Rs)
    ============================ */
-function useNoteSim({ running, compType = "capacitor", groups = [], Vsup = 12, seriesResistance = 10, timestep = 80 }) {
-  const historyRef = useRef(Array.from({ length: 160 }, (_, i) => ({ t: i, P: 0, V: 0, I: 0, E: 0 })));
+ function useNoteSim({
+  running,
+  compType = "capacitor",
+  groups = [],
+  Vsup = 12,
+  seriesResistance = 10,
+  manualI = 0,
+  timestep = 80,
+}) {
+  // --- Simulation state ---
+  const historyRef = useRef(
+    Array.from({ length: 160 }, (_, i) => ({ t: i, P: 0, V: 0, I: 0, E: 0 }))
+  );
   const [history, setHistory] = useState(historyRef.current);
   const tRef = useRef(0);
   const lastRef = useRef(performance.now());
   const rafRef = useRef(null);
 
+  // --- Equivalent component computation ---
   const computeEquivalent = useCallback(
     (groupsLocal) => {
-      if (!groupsLocal || groupsLocal.length === 0) return { totalReq: 0, groupReqs: [] };
-      const toSI = (val) => (compType === "capacitor" ? val * 1e-6 : val * 1e-3);
+      // fallback if user hasn't created groups yet
+      if (!groupsLocal || groupsLocal.length === 0) {
+        console.warn("⚠️ No groups found — using default single component");
+        const val = compType === "capacitor" ? 100e-6 : 10e-3; // 100μF or 10mH
+        return { totalReq: val, groupReqs: [{ Req: val, vals: [val] }] };
+      }
+
+      const toSI = (val) =>
+        compType === "capacitor" ? val * 1e-6 : val * 1e-3;
+
       const groupReqs = groupsLocal.map((g) => {
-        const vals = g.values.map((v) => (Number.isFinite(v) && v > 0 ? toSI(v) : NaN));
+        const vals = g.values.map((v) =>
+          Number.isFinite(v) && v > 0 ? toSI(v) : NaN
+        );
+
         if (compType === "capacitor") {
           if (g.type === "series") {
             let denom = 0;
@@ -88,12 +118,18 @@ function useNoteSim({ running, compType = "capacitor", groups = [], Vsup = 12, s
             const Ceq = denom > 0 ? 1 / denom : 0;
             return { Req: Ceq, vals };
           } else {
-            const Ceq = vals.reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0);
+            const Ceq = vals.reduce(
+              (a, b) => a + (Number.isFinite(b) ? b : 0),
+              0
+            );
             return { Req: Ceq, vals };
           }
         } else {
           if (g.type === "series") {
-            const Leq = vals.reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0);
+            const Leq = vals.reduce(
+              (a, b) => a + (Number.isFinite(b) ? b : 0),
+              0
+            );
             return { Req: Leq, vals };
           } else {
             let denom = 0;
@@ -108,7 +144,10 @@ function useNoteSim({ running, compType = "capacitor", groups = [], Vsup = 12, s
 
       let totalReq = 0;
       if (compType === "capacitor") {
-        totalReq = groupReqs.reduce((a, b) => a + (Number.isFinite(b.Req) ? b.Req : 0), 0);
+        totalReq = groupReqs.reduce(
+          (a, b) => a + (Number.isFinite(b.Req) ? b.Req : 0),
+          0
+        );
       } else {
         let denom = 0;
         groupReqs.forEach((g) => {
@@ -116,15 +155,29 @@ function useNoteSim({ running, compType = "capacitor", groups = [], Vsup = 12, s
         });
         totalReq = denom > 0 ? 1 / denom : 0;
       }
+
       return { totalReq, groupReqs };
     },
     [compType]
   );
 
+  // --- Instantaneous physics computation ---
   const computeInstant = useCallback(
     (tSeconds, totalReq) => {
       const R = Math.max(1e-6, seriesResistance);
-      if (!Number.isFinite(totalReq) || totalReq <= 0) return { Vt: 0, It: 0, Pt: 0, energy: 0 };
+
+      if (!Number.isFinite(totalReq) || totalReq <= 0)
+        return { Vt: 0, It: 0, Pt: 0, energy: 0 };
+
+      if (manualI > 0) {
+        // manual override current mode
+        const It = manualI;
+        const Vt = It * R;
+        const Pt = Vt * It;
+        const energy = Pt * tSeconds;
+        return { Vt, It, Pt, energy };
+      }
+
       if (compType === "capacitor") {
         const C = totalReq;
         const tau = clamp(R * C, 1e-6, 1e6);
@@ -146,28 +199,41 @@ function useNoteSim({ running, compType = "capacitor", groups = [], Vsup = 12, s
         return { Vt: Vl, It, Pt, energy };
       }
     },
-    [compType, Vsup, seriesResistance]
+    [compType, Vsup, seriesResistance, manualI]
   );
 
+  // --- Equivalent cached ---
   const eq = useMemo(() => computeEquivalent(groups), [groups, computeEquivalent]);
 
+  // --- Simulation loop ---
   useEffect(() => {
     let alive = true;
     lastRef.current = performance.now();
+
+    // reset time on restart
+    if (!running) tRef.current = 0;
+
     const step = (ts) => {
       if (!alive) return;
       rafRef.current = requestAnimationFrame(step);
+
       if (!running) {
         lastRef.current = ts;
         return;
       }
+
       const dt = ts - lastRef.current;
       if (dt < timestep) return;
+
       lastRef.current = ts;
       tRef.current += dt;
       const tSeconds = tRef.current / 1000;
+
       const totalReq = eq.totalReq;
       const { Vt, It, Pt, energy } = computeInstant(tSeconds, totalReq);
+
+      // debugging logs (optional)
+      // console.log({ tSeconds, totalReq, Vt, It, Pt, energy });
 
       setHistory((h) => {
         const next = h.slice();
@@ -187,6 +253,7 @@ function useNoteSim({ running, compType = "capacitor", groups = [], Vsup = 12, s
 
   return { history, eq };
 }
+
 
 /* ============================
    Visualizer SVG for notes
@@ -250,7 +317,7 @@ function NoteVisualizer({
 
   return (
     <div className="w-full rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start flex-wrap justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
             <CircuitBoard className="w-5 h-5" />
@@ -271,94 +338,139 @@ function NoteVisualizer({
       </div>
 
       <div className="mt-3 w-full overflow-x-auto">
-        <svg viewBox={`0 0 ${svgWidth} 320`} preserveAspectRatio="xMidYMid meet" className="w-full h-64">
-          <g transform={`translate(${busStart - 60},160)`}>
-            <rect x="-22" y="-36" width="44" height="72" rx="6" fill="#060606" stroke="#222" />
-            <text x="-36" y="-46" fontSize="12" fill="#ffd24a">{Vsup} V</text>
-          </g>
+<svg viewBox={`0 0 ${svgWidth} 340`} className="w-full h-72" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <linearGradient id="busGlow" x1="0%" x2="100%">
+      <stop offset="0%" stopColor="#00eaff" />
+      <stop offset="50%" stopColor="#00ffbf" />
+      <stop offset="100%" stopColor="#ffd24a" />
+    </linearGradient>
 
-          <path d={`M ${busStart} 160 H ${busEnd}`} stroke="#111" strokeWidth="6" strokeLinecap="round" />
+    <radialGradient id="orbGradient">
+      <stop offset="0%" stopColor="#ffffff" />
+      <stop offset="30%" stopColor="#00ffbf" />
+      <stop offset="100%" stopColor="transparent" />
+    </radialGradient>
 
-          {groups.map((g, i) => {
-            const x = startX + i * spacing;
-            const label = g.type ? g.type.toUpperCase() : "GROUP";
-            const groupReqStr = formatGroupReq(g);
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
 
-            return (
-              <g key={`grp-${i}`}>
-                <path d={`M ${x} 160 V 60`} stroke="#111" strokeWidth="6" strokeLinecap="round" />
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="0" stdDeviation="2" floodColor="#00ffbf" floodOpacity="0.6" />
+    </filter>
+  </defs>
 
-                {g.values.map((v, idx) => {
-                  const y = 80 + idx * 48;
-                  const fill = compType === "capacitor" ? "#ffb86b" : "#ff6a9a";
-                  const subLabel = compType === "capacitor" ? `${v} μF` : `${v} mH`;
-                  return (
-                    <g
-                      key={`cmp-${i}-${idx}`}
-                      transform={`translate(${x},${y})`}
-                      className="component-block cursor-pointer"
-                      onClick={() => onEditComponent(i, idx)}
-                    >
-                      <rect x="-28" y="-10" width="56" height="20" rx="6" fill="#0a0a0a" stroke="#222" />
-                      <rect x="-22" y="-6" width="44" height="12" rx="4" fill={fill} opacity={0.95} />
-                      <text x="-18" y="-16" fontSize="10" fill="#ffd24a">{subLabel}</text>
-                    </g>
-                  );
-                })}
+  {/* Background pulse aura */}
+  <radialGradient id="bgAura" cx="50%" cy="50%" r="50%">
+    <stop offset="0%" stopColor="#0f172a" />
+    <stop offset="90%" stopColor="#000000" />
+  </radialGradient>
+  <rect width="100%" height="100%" fill="url(#bgAura)" />
 
-                <g transform={`translate(${x}, 40)`}>
-                  <rect x="-48" y="-20" width="96" height="36" rx="8" fill="#060606" stroke="#222" />
-                  <text x="-40" y="-6" fontSize="11" fill="#ff9a4a">{label}</text>
-                  <text x="-40" y="12" fontSize="11" fill="#fff">{groupReqStr}</text>
-                </g>
+  {/* Power source block */}
+  <g transform={`translate(${busStart - 60},160)`}>
+    <rect x="-22" y="-36" width="44" height="72" rx="8"
+      fill="#070707" stroke="url(#busGlow)" strokeWidth="1.2" filter="url(#softGlow)" />
+    <text x="-38" y="-48" fontSize="12" fill="#ffd24a" filter="url(#shadow)">
+      {Vsup} V
+    </text>
+  </g>
 
-                {Array.from({ length: dotCount }).map((_, di) => {
-                  const pathStr = `M ${x} 60 V 160 H ${x + 24}`;
-                  const delay = (di / dotCount) * speed;
-                  const style = {
-                    offsetPath: `path('${pathStr}')`,
-                    animationName: compType === "capacitor" ? "flowCap" : "flowInd",
-                    animationDuration: `${speed}s`,
-                    animationTimingFunction: "linear",
-                    animationDelay: `${-delay}s`,
-                    animationIterationCount: "infinite",
-                    animationPlayState: running ? "running" : "paused",
-                    transformOrigin: "0 0",
-                  };
-                  const dotColor = absI >= 0 && ItUsed >= 0 ? "#ffd24a" : "#ff6a9a";
-                  return <circle key={`dot-${i}-${di}`} r="4" fill={dotColor} style={style} />;
-                })}
-              </g>
-            );
-          })}
+  {/* Main bus line */}
+  <path d={`M ${busStart} 160 H ${busEnd}`}
+    stroke="url(#busGlow)" strokeWidth="5" strokeLinecap="round" filter="url(#softGlow)" />
 
-          <g transform={`translate(${svgWidth - 140},40)`}>
-            <rect x="-80" y="-34" width="160" height="140" rx="10" fill="#060606" stroke="#222" />
-            <text x="-70" y="-12" fontSize="12" fill="#ffb57a">Readouts</text>
+  {groups.map((g, i) => {
+    const x = startX + i * spacing;
+    const label = g.type?.toUpperCase() ?? "GROUP";
+    const groupReqStr = formatGroupReq(g);
 
-            <text x="-70" y="8" fontSize="12" fill="#fff">V(t): <tspan fill="#ffd24a">{round(latest.V, 6)} V</tspan></text>
-            <text x="-70" y="30" fontSize="12" fill="#fff">I(t): <tspan fill="#00ffbf">{round(ItSim, 9)} A</tspan></text>
-            <text x="-70" y="52" fontSize="12" fill="#fff">P(t): <tspan fill="#ff9a4a">{round(latest.P, 8)} W</tspan></text>
-            <text x="-70" y="74" fontSize="12" fill="#fff">E: <tspan fill="#9ee6ff">{round(latest.E, 8)}</tspan></text>
-          </g>
+    return (
+      <g key={`grp-${i}`}>
+        {/* Vertical connection */}
+        <path d={`M ${x} 160 V 60`}
+          stroke="url(#busGlow)" strokeWidth="3" strokeLinecap="round" opacity="0.7"
+          filter="url(#softGlow)" />
 
-          <style>{`
-            @keyframes flowCap {
-              0% { offset-distance: 0%; opacity: 0.95; transform: translate(-2px,-2px) scale(0.95); }
-              45% { opacity: 0.9; transform: translate(0,0) scale(1.05); }
-              100% { offset-distance: 100%; opacity: 0; transform: translate(6px,6px) scale(0.8); }
-            }
-            @keyframes flowInd {
-              0% { offset-distance: 0%; opacity: 0.95; transform: translate(2px,-2px) scale(0.95); }
-              45% { opacity: 0.9; transform: translate(0,0) scale(1.06); }
-              100% { offset-distance: 100%; opacity: 0; transform: translate(-6px,6px) scale(0.82); }
-            }
-            circle[style] { will-change: offset-distance, transform, opacity; }
-            @media (max-width: 640px) {
-              text { font-size: 9px; }
-            }
-          `}</style>
-        </svg>
+        {/* Components */}
+        {g.values.map((v, idx) => {
+          const y = 80 + idx * 52;
+          const subLabel = compType === "capacitor" ? `${v} μF` : `${v} mH`;
+          const color = compType === "capacitor" ? "#00ffbf" : "#ff4fa3";
+          return (
+            <g key={`cmp-${i}-${idx}`} transform={`translate(${x},${y})`}
+              className="component-block cursor-pointer hover:scale-[1.08] transition-transform duration-200"
+              onClick={() => onEditComponent(i, idx)}>
+              <rect x="-28" y="-10" width="56" height="20" rx="6"
+                fill="#0a0a0a" stroke={color} strokeWidth="1.3"
+                filter="url(#softGlow)" />
+              <text x="-22" y="-16" fontSize="10" fill="#9ee6ff">{subLabel}</text>
+            </g>
+          );
+        })}
+
+        {/* Group label */}
+        <g transform={`translate(${x}, 40)`}>
+          <rect x="-52" y="-22" width="104" height="38" rx="8"
+            fill="#060606" stroke="url(#busGlow)" strokeWidth="1.2" filter="url(#softGlow)" />
+          <text x="-42" y="-6" fontSize="11" fill="#ff9a4a">{label}</text>
+          <text x="-42" y="12" fontSize="11" fill="#ffffff">{groupReqStr}</text>
+        </g>
+
+        {/* Energy orbs */}
+        {Array.from({ length: dotCount }).map((_, di) => {
+          const pathStr = `M ${x} 60 V 160 H ${x + 24}`;
+          const delay = (di / dotCount) * speed;
+          const style = {
+            offsetPath: `path('${pathStr}')`,
+            animationName: compType === "capacitor" ? "orbFlowCap" : "orbFlowInd",
+            animationDuration: `${speed}s`,
+            animationTimingFunction: "linear",
+            animationDelay: `${-delay}s`,
+            animationIterationCount: "infinite",
+            animationPlayState: running ? "running" : "paused",
+          };
+          return (
+            <circle key={`orb-${i}-${di}`} r="5"
+              fill="url(#orbGradient)" style={style}
+              filter="url(#softGlow)" />
+          );
+        })}
+      </g>
+    );
+  })}
+
+  {/* Readout panel */}
+  <g transform={`translate(${svgWidth - 140},40)`}>
+    <rect x="-80" y="-34" width="160" height="140" rx="10"
+      fill="#0a0a0a" stroke="url(#busGlow)" strokeWidth="1.2"
+      filter="url(#softGlow)" />
+    <text x="-70" y="-12" fontSize="12" fill="#00ffbf">Readouts</text>
+    <text x="-70" y="8" fontSize="12" fill="#fff">V(t): <tspan fill="#ffd24a">{round(latest.V,6)} V</tspan></text>
+    <text x="-70" y="30" fontSize="12" fill="#fff">I(t): <tspan fill="#00ffbf">{round(latest.I,9)} A</tspan></text>
+    <text x="-70" y="52" fontSize="12" fill="#fff">P(t): <tspan fill="#ff9a4a">{round(latest.P,8)} W</tspan></text>
+    <text x="-70" y="74" fontSize="12" fill="#fff">E: <tspan fill="#9ee6ff">{round(latest.E,8)}</tspan></text>
+  </g>
+
+  <style>{`
+    @keyframes orbFlowCap {
+      0% { offset-distance: 0%; opacity: 1; transform: scale(1.1); }
+      50% { opacity: 0.9; transform: scale(0.95); }
+      100% { offset-distance: 100%; opacity: 0; transform: scale(1.2); }
+    }
+    @keyframes orbFlowInd {
+      0% { offset-distance: 0%; opacity: 1; transform: scale(1.1); }
+      50% { opacity: 0.8; transform: scale(1); }
+      100% { offset-distance: 100%; opacity: 0; transform: scale(1.3); }
+    }
+  `}</style>
+</svg>
+
       </div>
     </div>
   );
@@ -473,6 +585,7 @@ export default function NotesPage() {
     groups: activeNote?.diagram?.groups ?? [],
     Vsup: activeNote?.preset?.Vsup ?? 12,
     seriesResistance: activeNote?.preset?.Rs ?? 10,
+    manualI:activeNote?.preset?. manualI??0,
     timestep: 80,
   };
   const { history, eq } = useNoteSim(simInputs);
@@ -606,58 +719,142 @@ export default function NotesPage() {
      Render
      ============================ */
   return (
-    <div className="min-h-screen bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.18)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
+    <div className="min-h-screen pb-20 bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.18)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
       <Toaster position="top-center" richColors />
 
       {/* Header */}
-      <header className="fixed w-full top-0 z-50 backdrop-blur-lg bg-black/70 border-b border-zinc-800 shadow-lg py-2">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14">
-            <motion.div initial={{ y: -6, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.36 }} className="flex items-center gap-3 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
-              <div className="w-11 h-11 rounded-lg bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center shadow-md">
-                <Zap className="w-6 h-6 text-black" />
-              </div>
-              <div className="truncate">
-                <div className="text-sm md:text-lg font-semibold text-zinc-200">SparkLab</div>
-                <div className="text-xs md:text-sm text-zinc-400 -mt-0.5">Short Notes & Diagrams</div>
-              </div>
-            </motion.div>
-
-            <div className="hidden sm:flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <Select value={selectedUserView} onValueChange={(v) => setSelectedUserView(v)}>
-                  <SelectTrigger className="w-44 bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm">
-                    <SelectValue placeholder="Viewer" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                    <SelectItem value="student" className="text-white cursor-pointer">Student View</SelectItem>
-                    <SelectItem value="instructor" className="text-white cursor-pointer">Instructor View</SelectItem>
-                    <SelectItem value="research" className="text-white cursor-pointer">Researcher View</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-1 rounded-lg" onClick={addNote}><Plus className="w-4 h-4 mr-2" /> New</Button>
-                <Button variant="ghost" className="border border-zinc-800 text-zinc-300 p-2 rounded-lg" onClick={() => setMobileOpen((s) => !s)}><Settings className="w-5 h-5" /></Button>
-              </div>
-            </div>
-
-            <div className="md:hidden">
-              <Button variant="ghost" className="border border-zinc-800 p-2 rounded-lg" onClick={() => setMobileOpen((s) => !s)}>
-                {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-              </Button>
-            </div>
-          </div>
-
-          <div className={`md:hidden transition-all duration-300 overflow-hidden ${mobileOpen ? "max-h-60 py-3" : "max-h-0"}`}>
-            <div className="flex gap-2">
-              <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={addNote}><Plus /> New</Button>
-              <Button variant="ghost" className="flex-1 border border-zinc-800" onClick={() => setSelectedUserView("student")}>View</Button>
-            </div>
-          </div>
+<header className="fixed top-0 w-full z-50 backdrop-blur-xl bg-gradient-to-b from-black/80 to-zinc-950/80 border-b border-zinc-800 shadow-lg">
+  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="flex items-center justify-between h-16">
+      {/* Logo + Title */}
+      <motion.div
+        initial={{ y: -8, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.4 }}
+        className="flex items-center gap-3 cursor-pointer group"
+        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+      >
+        <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-orange-500 to-yellow-400 flex items-center justify-center shadow-md group-hover:scale-105 transition-transform">
+          <Zap className="w-6 h-6 text-black" />
         </div>
-      </header>
+        <div>
+          <h1 className="text-lg font-semibold text-zinc-100 tracking-tight">SparkLab</h1>
+          <p className="text-xs text-zinc-400 group-hover:text-zinc-300 transition-colors">
+            Notes • Diagrams • Tutorials
+          </p>
+        </div>
+      </motion.div>
+
+      {/* Desktop Actions */}
+      <div className="hidden md:flex items-center gap-3">
+        <Select value={selectedUserView} onValueChange={(v) => setSelectedUserView(v)}>
+          <SelectTrigger className="w-48 cursor-pointer bg-zinc-900/70 border border-zinc-800 text-zinc-200 text-sm rounded-md shadow-md hover:border-orange-500 transition-colors">
+            <SelectValue placeholder="Select Mode" />
+          </SelectTrigger>
+          <SelectContent className="bg-zinc-950 border border-zinc-800 rounded-md shadow-lg">
+            <SelectItem value="student"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">
+              <GraduationCap className="inline w-4 h-4 mr-2 text-orange-400" /> Student View
+            </SelectItem>
+            <SelectItem value="instructor"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">
+              <User className="inline w-4 h-4 mr-2 text-orange-400" /> Instructor View
+            </SelectItem>
+            <SelectItem value="research"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">
+              <FlaskConical className="inline w-4 h-4 mr-2 text-orange-400" /> Researcher View
+            </SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Button
+          className="bg-gradient-to-tr from-orange-500 to-yellow-400 text-black cursor-pointer font-medium px-3 py-2 rounded-lg hover:opacity-90 hover:scale-[1.03] transition-all duration-200"
+          onClick={addNote}
+        >
+          <Plus className="w-4 h-4 mr-2" /> New
+        </Button>
+
+        <Button
+          variant="ghost"
+          className="border border-zinc-800 cursor-pointer text-zinc-300 p-2 rounded-lg hover:border-orange-500 hover:text-orange-400 transition-all duration-200"
+          onClick={() => setMobileOpen((s) => !s)}
+        >
+          <Settings className="w-5 h-5" />
+        </Button>
+      </div>
+
+      {/* Mobile Toggle */}
+      <div className="md:hidden">
+        <Button
+          variant="ghost"
+          className="border text-orange-500 cursor-pointer hover:bg-black hover:text-orange-500  border-zinc-800 p-2 rounded-lg hover:border-orange-500 transition-all duration-200"
+          onClick={() => setMobileOpen((s) => !s)}
+        >
+          {mobileOpen ? (
+            <X className="w-5 h-5 text-orange-400" />
+          ) : (
+            <Menu className="w-5 h-5 " />
+          )}
+        </Button>
+      </div>
+    </div>
+
+    {/* Mobile Dropdown Menu */}
+    <motion.div
+      initial={false}
+      animate={mobileOpen ? "open" : "closed"}
+      variants={{
+        open: { opacity: 1, height: "auto", transition: { duration: 0.35 } },
+        closed: { opacity: 0, height: 0, transition: { duration: 0.25 } },
+      }}
+      className="md:hidden overflow-hidden"
+    >
+      <div className="mt-3 space-y-3 pb-4">
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-3 shadow-lg">
+          <Label className="text-xs text-zinc-500 uppercase tracking-wide">
+            Mode
+          </Label>
+          <Select value={selectedUserView} onValueChange={(v) => setSelectedUserView(v)}>
+            <SelectTrigger className="w-full cursor-pointer bg-zinc-950/80 border border-zinc-800 text-zinc-300 text-sm mt-1">
+              <SelectValue placeholder="Viewer" />
+            </SelectTrigger>
+            <SelectContent className="bg-zinc-950 border border-zinc-800">
+              <SelectItem value="student"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Student</SelectItem>
+              <SelectItem value="instructor"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Instructor</SelectItem>
+              <SelectItem value="research"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Researcher</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex gap-2">
+          <Button
+            className="flex-1 bg-gradient-to-tr from-orange-500 to-yellow-400 text-black cursor-pointer font-semibold hover:scale-[1.02] transition-all"
+            onClick={addNote}
+          >
+            <Plus className="w-4 h-4 mr-1" /> New Note
+          </Button>
+          <Button
+            variant="outline"
+            className="flex-1 border border-orange-500 text-orange-400 hover:bg-orange-500/10 cursor-pointer hover:text-orange-500 transition-all"
+            onClick={() => setSelectedUserView("student")}
+          >
+            <User className="w-4 h-4 mr-1" /> View
+          </Button>
+        </div>
+      </div>
+    </motion.div>
+  </div>
+</header>
+
 
       <div className="h-16"></div>
 
@@ -665,208 +862,476 @@ export default function NotesPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left: notes list */}
-          <div className="lg:col-span-4 space-y-4">
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden">
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center">
-                        <BookOpen className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="text-lg font-semibold text-[#ffd24a]">Short Notes</div>
-                        <div className="text-xs text-zinc-400">Bite-sized theory & diagrams</div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-black/80 border border-orange-500 text-orange-300 px-3 py-1 rounded-full">Mode</Badge>
-                    </div>
-                  </CardTitle>
-                </CardHeader>
-
-                <CardContent className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-2 bg-zinc-900 rounded-md px-2 py-1 w-full">
-                      <Search className="w-4 h-4 text-zinc-400" />
-                      <Input placeholder="Search notes..." value={search} onChange={(e) => setSearch(e.target.value)} className="bg-transparent border-0 focus:ring-0 text-orange-100 text-sm" />
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2 overflow-x-auto pb-2">
-                    <button onClick={() => setFilterTag("")} className={`px-3 py-1 rounded-full text-xs ${filterTag === "" ? "bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" : "bg-zinc-900 text-zinc-300 border border-zinc-800"}`}>All</button>
-                    {allTags.map((t) => (
-                      <button key={t} onClick={() => setFilterTag(t)} className={`px-3 py-1 rounded-full text-xs ${filterTag === t ? "bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" : "bg-zinc-900 text-zinc-300 border border-zinc-800"}`}>#{t}</button>
-                    ))}
-                  </div>
-
-                  <div className="space-y-2 max-h-[52vh] overflow-y-auto pr-2">
-                    {visibleNotes.map((n) => (
-                      <div key={n.id} onClick={() => setActiveNoteId(n.id)} className={`p-3 rounded-lg cursor-pointer transition-colors ${n.id === activeNoteId ? "bg-gradient-to-tr from-[#1f1200] to-[#2b1600] border border-orange-500" : "bg-zinc-900/40 border border-zinc-800"}`}>
-                        <div className="flex items-start gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <div className="text-sm font-semibold text-white truncate">{n.title}</div>
-                              <div className="text-xs text-zinc-400 ml-auto">{new Date(n.updatedAt).toLocaleDateString()}</div>
-                            </div>
-                            <div className="text-xs text-zinc-400 mt-1 line-clamp-3">{n.body}</div>
-                            <div className="flex gap-2 mt-2 flex-wrap">
-                              {(n.tags || []).map((t) => <Badge key={t} className="bg-zinc-900 text-zinc-300 border border-zinc-800">{t}</Badge>)}
-                            </div>
-                          </div>
-
-                          <div className="flex flex-col gap-2 items-center ml-2">
-                            <Button variant="ghost" className="p-1 border text-orange-400 cursor-pointer  hover:bg-black hover:text-orange-500
-
- border-zinc-800" onClick={(e) => { e.stopPropagation(); setActiveNoteId(n.id); toast("Opened"); }}><Edit2 className="w-4 h-4" /></Button>
-                            <Button variant="ghost" className="p-1 border border-zinc-800  cursor-pointer  hover:bg-red-600 bg-red-600 text-black" onClick={(e) => { e.stopPropagation(); deleteNote(n.id); }}><Trash2 className="w-4 h-4" /></Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    {visibleNotes.length === 0 && <div className="text-zinc-400 text-sm">No notes — create one</div>}
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
+   <div
+  className="lg:col-span-4 space-y-4"
+>
+  <Card className="bg-gradient-to-b from-black/80 to-zinc-950/80 backdrop-blur-xl border border-zinc-800/70 rounded-2xl overflow-hidden shadow-lg shadow-orange-500/10">
+    <CardHeader>
+      <CardTitle className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center shadow-md shadow-orange-400/30">
+            <BookOpen className="w-5 h-5 text-black" />
           </div>
+          <div>
+            <div className="text-lg font-semibold text-[#ffd24a] tracking-wide">
+              Short Notes
+            </div>
+            <div className="text-xs text-zinc-400">Bite-sized theory & diagrams</div>
+          </div>
+        </div>
+
+        <Badge
+          className="bg-gradient-to-r from-[#ff7a2d]/30 to-[#ffd24a]/30 border border-orange-500/40 text-orange-300
+                     backdrop-blur-md rounded-full px-4 py-1 shadow-inner"
+        >
+          <Zap className="w-3 h-3 mr-1 text-orange-400" /> Active
+        </Badge>
+      </CardTitle>
+    </CardHeader>
+
+    <CardContent className="space-y-4">
+      {/* Search Bar */}
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 bg-zinc-900/60 border border-zinc-800/80 rounded-xl px-3 py-2 w-full focus-within:border-orange-400/40 transition-colors">
+          <Search className="w-4 h-4 text-zinc-400" />
+          <Input
+            placeholder="Search notes..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="bg-transparent border-0 focus:ring-0 text-orange-100 text-sm placeholder:text-zinc-500"
+          />
+        </div>
+      </div>
+
+      {/* Tags Filter */}
+      <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+        <button
+          onClick={() => setFilterTag("")}
+          className={`px-4 py-1.5 cursor-pointer rounded-full text-xs transition-all ${
+            filterTag === ""
+              ? "bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black font-medium shadow-md shadow-orange-500/30"
+              : "bg-zinc-900/40 text-zinc-300 border border-zinc-800 hover:border-orange-400/40"
+          }`}
+        >
+          All
+        </button>
+
+        {allTags.map((t) => (
+          <button
+            key={t}
+            onClick={() => setFilterTag(t)}
+            className={`px-4 py-1.5 cursor-pointer rounded-full text-xs transition-all backdrop-blur-md ${
+              filterTag === t
+                ? "bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black font-medium shadow-md shadow-orange-500/30"
+                : "bg-black/50 border border-zinc-800/60 text-zinc-300 hover:text-orange-400 hover:border-orange-400/40"
+            }`}
+          >
+            #{t}
+          </button>
+        ))}
+      </div>
+
+      {/* Notes List */}
+      <div className="space-y-3 max-h-[52vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent">
+        {visibleNotes.map((n, index) => (
+          <motion.div
+            key={n.id}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: index * 0.03 }}
+            onClick={() => setActiveNoteId(n.id)}
+            className={`group p-4 rounded-xl cursor-pointer transition-all ${
+              n.id === activeNoteId
+                ? "bg-gradient-to-tr from-[#1f1200] to-[#2b1600] border border-orange-500/50 shadow-md shadow-orange-400/20"
+                : "bg-zinc-900/40 border border-zinc-800 hover:border-orange-400/40"
+            }`}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-semibold text-white truncate">
+                    {n.title}
+                  </div>
+                  <div className="text-xs text-zinc-500 ml-2">
+                    {new Date(n.updatedAt).toLocaleDateString()}
+                  </div>
+                </div>
+                <div className="text-xs text-zinc-400 mt-1 line-clamp-3">
+                  {n.body}
+                </div>
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  {(n.tags || []).map((t) => (
+                    <Badge
+                      key={t}
+                      className="bg-gradient-to-r from-zinc-900/70 to-black/60 border border-zinc-800/80 text-zinc-300 text-[11px] backdrop-blur-md rounded-full px-2 py-0.5 hover:border-orange-400/30"
+                    >
+                      <Tag className="w-3 h-3 mr-1 text-orange-400/80" /> {t}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 items-center ml-2">
+                <Button
+                  variant="ghost"
+                  className="p-1 border cursor-pointer border-zinc-800 text-orange-400 hover:bg-black hover:text-orange-500 hover:border-orange-500 transition-all"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveNoteId(n.id);
+                    toast("Opened");
+                  }}
+                >
+                  <Edit2 className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="p-1 border cursor-pointer border-zinc-800 text-red-400 hover:bg-red-600/20 hover:text-red-500 hover:border-red-500 transition-all"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteNote(n.id);
+                  }}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        ))}
+
+        {visibleNotes.length === 0 && (
+          <div className="text-zinc-500 text-sm text-center py-4">
+            <FileQuestion className="w-5 h-5 inline-block mr-1 text-zinc-500" /> 
+            No notes yet — create one!
+          </div>
+        )}
+      </div>
+    </CardContent>
+  </Card>
+</div>
+
 
           {/* Right: editor + visualizer */}
           <div className="lg:col-span-8 space-y-4">
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl w-full overflow-hidden">
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center">
-                        <FileText className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="text-lg font-semibold text-[#ffd24a]">{activeNote?.title ?? "Select a note"}</div>
-                        <div className="text-xs text-zinc-400">Edit text, tags and diagram</div>
-                      </div>
-                    </div>
+     <Card className="bg-gradient-to-b from-black/80 to-zinc-950/80 border border-zinc-800/70 backdrop-blur-xl rounded-2xl overflow-hidden shadow-lg shadow-orange-500/10">
+  <CardHeader className="pb-4 border-b border-zinc-800/50">
+    <CardTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center shadow-md shadow-orange-400/30">
+          <FileText className="w-5 h-5 text-black" />
+        </div>
+        <div>
+          <div className="text-lg font-semibold text-[#ffd24a] leading-tight">
+            {activeNote?.title ?? "Select a Note"}
+          </div>
+          <div className="text-xs text-zinc-400">
+            Edit note text, tags, and diagram details
+          </div>
+        </div>
+      </div>
 
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 py-1 rounded-full">View: <span className="text-[#ffd24a] ml-1">{selectedUserView}</span></Badge>
-                      <Button className="px-3 py-2 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer" onClick={() => exportNoteCSV()}><Download className="w-4 h-4 mr-2" />Export</Button>
-                    </div>
-                  </CardTitle>
-                </CardHeader>
+      <div className="flex items-center gap-2">
+        <Badge className="bg-black/60 border border-orange-500/50 text-orange-300 backdrop-blur-md px-3 py-1 rounded-full shadow-inner">
+          <Eye className="w-3.5 h-3.5 mr-1 text-orange-400" />
+          {selectedUserView}
+        </Badge>
+        <Button
+          className="px-3 py-2 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black font-medium cursor-pointer hover:shadow-lg hover:shadow-orange-400/30 transition-all"
+          onClick={() => exportNoteCSV()}
+        >
+          <Download className="w-4 h-4 mr-2" />
+          Export
+        </Button>
+      </div>
+    </CardTitle>
+  </CardHeader>
 
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div className="md:col-span-2 space-y-2">
-                      <Input value={activeNote?.title ?? ""} onChange={(e) => onActiveFieldChange({ title: e.target.value })} placeholder="Title" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                      <Textarea value={activeNote?.body ?? ""} onChange={(e) => onActiveFieldChange({ body: e.target.value })} placeholder="Bite-sized theory..." className="bg-zinc-900/60 border border-zinc-800 text-white h-28" />
-                      <div className="flex gap-2 items-center">
-                        <Input value={(activeNote?.tags || []).join(", ")} onChange={(e) => {
-                          const tags = e.target.value.split(",").map(s => s.trim()).filter(Boolean);
-                          onActiveFieldChange({ tags });
-                        }} placeholder="tags (comma separated)" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                        <Select value={activeNote?.compType ?? compType} onValueChange={(v) => onActiveFieldChange({ compType: v })}>
-                          <SelectTrigger className="w-44 cursor-pointer bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm">
-                            <SelectValue placeholder="Component" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                            <SelectItem value="capacitor"   className="text-white hover:bg-orange-500/20 
-                 data-[highlighted]:text-orange-200 cursor-pointer 
-                 data-[highlighted]:bg-orange-500/30 rounded-md">Capacitor (μF)</SelectItem>
-                            <SelectItem value="inductor"   className="text-white hover:bg-orange-500/20 
-                 data-[highlighted]:text-orange-200 cursor-pointer 
-                 data-[highlighted]:bg-orange-500/30 rounded-md">Inductor (mH)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
+  <CardContent className="space-y-6 pt-4">
+    {/* Fields Section */}
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* Left - Text Fields */}
+      <div className="lg:col-span-2 space-y-3">
+        <Input
+          value={activeNote?.title ?? ""}
+          onChange={(e) => onActiveFieldChange({ title: e.target.value })}
+          placeholder="Note title"
+          className="bg-zinc-900/60 border border-zinc-800 text-white focus:ring-0 focus:border-orange-500/50 rounded-md"
+        />
 
-                    <div className="space-y-2">
-                      <div className="text-xs text-zinc-400">Preset values</div>
-                      <Input value={activeNote?.preset?.Vsup ?? ""} onChange={(e) => onActiveFieldChange({ preset: { ...(activeNote?.preset ?? {}), Vsup: e.target.value } })} type="number" placeholder="Vsup (V)" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                      <Input value={activeNote?.preset?.Rs ?? ""} onChange={(e) => onActiveFieldChange({ preset: { ...(activeNote?.preset ?? {}), Rs: e.target.value } })} type="number" placeholder="Series R (Ω)" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                      <Input value={activeNote?.preset?.manualI ?? ""} onChange={(e) => onActiveFieldChange({ preset: { ...(activeNote?.preset ?? {}), manualI: e.target.value } })} placeholder="Manual I (A)" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                      <div className="flex gap-2 mt-2">
-                        <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={() => { setRunning(true); toast.success("Simulation running"); }}><Play className="w-4 h-4 mr-2" />Run</Button>
-                        <Button variant="ghost" className="flex-1 border border-zinc-800 text-orange-400 hover:bg-black hover:text-orange-500
- cursor-pointer" onClick={() => { setRunning(false); toast("Paused"); }}><Pause className="w-4 h-4 mr-2" />Pause</Button>
-                      </div>
-                      <div className="mt-2 flex gap-2">
-                        <Button variant="outline" onClick={() => resetActivePreset()} className="flex-1 cursor-pointer">Reset</Button>
-                        <Button variant="outline" onClick={() => exportNoteCSV()} className="flex-1 cursor-pointer text-orange-400 bg-black border border-zinc-500/40 hover:bg-black hover:text-orange-500
- ">Export CSV</Button>
-                      </div>
-                    </div>
-                  </div>
+        <Textarea
+          value={activeNote?.body ?? ""}
+          onChange={(e) => onActiveFieldChange({ body: e.target.value })}
+          placeholder="Write theory or notes here..."
+          className="bg-zinc-900/60 border border-zinc-800 text-white h-28 focus:ring-0 focus:border-orange-500/50 rounded-md"
+        />
 
-                  {/* diagram editor */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm text-zinc-300">Diagram</div>
-                      <div className="flex gap-2">
-                        <Button variant="ghost" onClick={() => addGroup()} className="border border-zinc-800 bg-white cursor-pointer">Add Group</Button>
-                      </div>
-                    </div>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Input
+            value={(activeNote?.tags || []).join(", ")}
+            onChange={(e) => {
+              const tags = e.target.value
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean);
+              onActiveFieldChange({ tags });
+            }}
+            placeholder="Tags (comma separated)"
+            className="bg-zinc-900/60 border border-zinc-800 text-white flex-1"
+          />
 
-                    <div className="space-y-2">
-                      {(activeNote?.diagram?.groups || []).map((g, gi) => (
-                        <div key={gi} className="border border-zinc-800 rounded-lg p-3 bg-zinc-900/30">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <Badge className="bg-black/80 border border-orange-500 text-orange-300 px-3 py-1 rounded-full">{g.type.toUpperCase()}</Badge>
-                              <div className="text-xs text-zinc-400">{activeNote?.compType === "capacitor" ? "μF per component" : "mH per component"}</div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Select value={g.type} onValueChange={(v) => {
-                                const ng = activeNote.diagram.groups.map((gg, i) => (i === gi ? { ...gg, type: v } : gg));
-                                onActiveFieldChange({ diagram: { groups: ng } });
-                              }}>
-                                <SelectTrigger className="w-32 cursor-pointer bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm">
-                                  <SelectValue placeholder="Type" />
-                                </SelectTrigger>
-                                <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                                  <SelectItem value="series" 
-      className="text-white hover:bg-orange-500/20 
-                 data-[highlighted]:text-orange-200 cursor-pointer 
-                 data-[highlighted]:bg-orange-500/30 rounded-md">Series</SelectItem>
-                                  <SelectItem value="parallel" 
-      className="text-white hover:bg-orange-500/20 
-                 data-[highlighted]:text-orange-200 cursor-pointer 
-                 data-[highlighted]:bg-orange-500/30 rounded-md">Parallel</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <Button variant="ghost" className="border border-zinc-800 text-orange-400 hover:bg-black hover:text-orange-500
- cursor-pointer" onClick={() => removeGroup(gi)}>Remove</Button>
-                            </div>
-                          </div>
+          <Select
+            value={activeNote?.compType ?? compType}
+            onValueChange={(v) => onActiveFieldChange({ compType: v })}
+          >
+            <SelectTrigger className="w-full sm:w-44 bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm cursor-pointer">
+              <SelectValue placeholder="Component" />
+            </SelectTrigger>
+            <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
+              <SelectItem
+                value="capacitor"
+                className="text-white hover:bg-orange-500/20 data-[highlighted]:text-orange-200 data-[highlighted]:bg-orange-500/30 rounded-md cursor-pointer"
+              >
+                Capacitor (μF)
+              </SelectItem>
+              <SelectItem
+                value="inductor"
+                className="text-white hover:bg-orange-500/20 data-[highlighted]:text-orange-200 data-[highlighted]:bg-orange-500/30 rounded-md cursor-pointer"
+              >
+                Inductor (mH)
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
-                          <div className="space-y-2">
-                            {g.values.map((val, ri) => (
-                              <div key={ri} className="flex items-center gap-2">
-                                <Input value={val} onChange={(e) => {
-                                  const vv = Number(e.target.value);
-                                  const ng = activeNote.diagram.groups.map((gg, i) => i === gi ? { ...gg, values: gg.values.map((v, idx) => idx === ri ? (Number.isFinite(vv) ? vv : v) : v) } : gg);
-                                  onActiveFieldChange({ diagram: { groups: ng } });
-                                }} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                                <div className="flex gap-1 ml-auto">
-                                  <Button variant="ghost" onClick={() => removeComponentFromGroup(gi, ri)} className="p-1 border border-zinc-800 bg-red-500 cursor-pointer hover:bg-red-600 text-black"><Trash2 className="w-4 h-4" /></Button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
+      {/* Right - Presets & Controls */}
+      <div className="space-y-3">
+        <div className="text-xs text-zinc-400 uppercase tracking-wide">
+          Preset Values
+        </div>
+        <Input
+          value={activeNote?.preset?.Vsup ?? ""}
+          onChange={(e) =>
+            onActiveFieldChange({
+              preset: { ...(activeNote?.preset ?? {}), Vsup: e.target.value },
+            })
+          }
+          type="number"
+          placeholder="Vsup (V)"
+          className="bg-zinc-900/60 border border-zinc-800 text-white"
+        />
+        <Input
+          value={activeNote?.preset?.Rs ?? ""}
+          onChange={(e) =>
+            onActiveFieldChange({
+              preset: { ...(activeNote?.preset ?? {}), Rs: e.target.value },
+            })
+          }
+          type="number"
+          placeholder="Series R (Ω)"
+          className="bg-zinc-900/60 border border-zinc-800 text-white"
+        />
+        <Input
+          value={activeNote?.preset?.manualI ?? ""}
+          onChange={(e) =>
+            onActiveFieldChange({
+              preset: {
+                ...(activeNote?.preset ?? {}),
+                manualI: e.target.value,
+              },
+            })
+          }
+          placeholder="Manual I (A)"
+          className="bg-zinc-900/60 border border-zinc-800 text-white"
+        />
 
-                          <div className="mt-3 flex gap-2">
-                            <Button variant="outline" onClick={() => addComponentToGroup(gi)} className="flex-1 border border-zinc-800 text-orange-400 hover:bg-black hover:text-orange-500
- cursor-pointer bg-black"><ListPlus className="w-4 h-4 mr-2" /> Add</Button>
-                            <Button variant="ghost" className="border border-zinc-800 cursor-pointer hover:bg-orange-500 bg-orange-400" onClick={() => { /* quick auto-scale */ const ng = activeNote.diagram.groups.map((gg, i) => (i === gi ? { ...gg, values: gg.values.map(v => Math.max(1, Math.round(v))) } : gg)); onActiveFieldChange({ diagram: { groups: ng } }); }}>Normalize</Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+        {/* Simulation Buttons */}
+        <div className="flex gap-2 mt-3">
+          <Button
+            className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black font-medium hover:shadow-md hover:shadow-orange-500/30 cursor-pointer"
+            onClick={() => {
+              setRunning(true);
+              toast.success("Simulation running");
+            }}
+          >
+            <Play className="w-4 h-4 mr-2" />
+            Run
+          </Button>
+          <Button
+            variant="ghost"
+            className="flex-1 border border-zinc-800 text-orange-400 hover:bg-black hover:text-orange-500 cursor-pointer"
+            onClick={() => {
+              setRunning(false);
+              toast("Paused");
+            }}
+          >
+            <Pause className="w-4 h-4 mr-2" />
+            Pause
+          </Button>
+        </div>
 
-                </CardContent>
-              </Card>
+        <div className="mt-3 flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => resetActivePreset()}
+            className="flex-1 border border-zinc-700 hover:border-orange-400/50 cursor-pointer text-zinc-300 hover:text-orange-400"
+          >
+            Reset
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => exportNoteCSV()}
+            className="flex-1 border border-zinc-700 text-orange-400 bg-black hover:text-orange-500 hover:border-orange-400 cursor-pointer"
+          >
+            Export CSV
+          </Button>
+        </div>
+      </div>
+    </div>
+
+    {/* Diagram Section */}
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-zinc-300 font-medium flex items-center gap-2">
+          <PenTool className="w-4 h-4 text-orange-400" /> Diagram Builder
+        </div>
+        <Button
+          variant="ghost"
+          onClick={() => addGroup()}
+          className="border border-orange-500/40 hover:text-orange-500 text-orange-300 hover:bg-orange-500/20 cursor-pointer px-3 py-1.5 rounded-md"
+        >
+          <Plus className="w-4 h-4 mr-1" /> Add Group
+        </Button>
+      </div>
+
+      <div className="space-y-3">
+        {(activeNote?.diagram?.groups || []).map((g, gi) => (
+          <div
+            key={gi}
+            className="border border-zinc-800/70 rounded-xl p-3 bg-zinc-900/40 backdrop-blur-md shadow-sm shadow-orange-500/10"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Badge className="bg-black/70 border border-orange-500 text-orange-300 px-3 py-1 rounded-full">
+                  {g.type.toUpperCase()}
+                </Badge>
+                <span className="text-xs text-zinc-400">
+                  {activeNote?.compType === "capacitor"
+                    ? "μF per component"
+                    : "mH per component"}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Select
+                  value={g.type}
+                  onValueChange={(v) => {
+                    const ng = activeNote.diagram.groups.map((gg, i) =>
+                      i === gi ? { ...gg, type: v } : gg
+                    );
+                    onActiveFieldChange({ diagram: { groups: ng } });
+                  }}
+                >
+                  <SelectTrigger className="w-32 bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm cursor-pointer">
+                    <SelectValue placeholder="Type" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
+                    <SelectItem
+                      value="series"
+                      className="text-white hover:bg-orange-500/20 data-[highlighted]:bg-orange-500/30 data-[highlighted]:text-orange-200 rounded-md"
+                    >
+                      Series
+                    </SelectItem>
+                    <SelectItem
+                      value="parallel"
+                      className="text-white hover:bg-orange-500/20 data-[highlighted]:bg-orange-500/30 data-[highlighted]:text-orange-200 rounded-md"
+                    >
+                      Parallel
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="ghost"
+                  className="border border-zinc-800 text-red-400 hover:bg-red-600/20 hover:text-red-500 cursor-pointer"
+                  onClick={() => removeGroup(gi)}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {g.values.map((val, ri) => (
+                <div key={ri} className="flex items-center gap-2">
+                  <Input
+                    value={val}
+                    onChange={(e) => {
+                      const vv = Number(e.target.value);
+                      const ng = activeNote.diagram.groups.map((gg, i) =>
+                        i === gi
+                          ? {
+                              ...gg,
+                              values: gg.values.map((v, idx) =>
+                                idx === ri
+                                  ? Number.isFinite(vv)
+                                    ? vv
+                                    : v
+                                  : v
+                              ),
+                            }
+                          : gg
+                      );
+                      onActiveFieldChange({ diagram: { groups: ng } });
+                    }}
+                    type="number"
+                    className="bg-zinc-900/60 border border-zinc-800 text-white"
+                  />
+                  <Button
+                    variant="ghost"
+                    onClick={() => removeComponentFromGroup(gi, ri)}
+                    className="p-1 border border-zinc-800 text-red-400 hover:bg-red-600/20 hover:text-red-500 cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-3 flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => addComponentToGroup(gi)}
+                className="flex-1 border border-zinc-800 text-orange-400 hover:bg-black hover:text-orange-500 cursor-pointer bg-black"
+              >
+                <ListPlus className="w-4 h-4 mr-2" /> Add
+              </Button>
+              <Button
+                variant="ghost"
+                className="flex-1 border border-zinc-800 text-white bg-gradient-to-tr from-[#ff7a2d]/80 to-[#ffd24a]/80 hover:from-[#ff7a2d] hover:to-[#ffd24a] transition-all cursor-pointer"
+                onClick={() => {
+                  const ng = activeNote.diagram.groups.map((gg, i) =>
+                    i === gi
+                      ? {
+                          ...gg,
+                          values: gg.values.map((v) =>
+                            Math.max(1, Math.round(v))
+                          ),
+                        }
+                      : gg
+                  );
+                  onActiveFieldChange({ diagram: { groups: ng } });
+                }}
+              >
+                <Wand2 className="w-4 h-4 mr-2" /> Normalize
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </CardContent>
+</Card>
+
             </motion.div>
 
             {/* Visualizer + right-side summary */}
@@ -914,24 +1379,21 @@ export default function NotesPage() {
                     <div className="grid grid-cols-1 gap-3">
                       <div className="rounded-md p-3 bg-zinc-900/30 border border-zinc-800">
                         <div className="text-xs text-zinc-400">Equivalent</div>
-                        <div className="text-lg font-semibold text-[#ff9a4a]">{activeNote?.compType === "capacitor" ? (eq && Number.isFinite(eq.totalReq) ? `${round(eq.totalReq * 1e6, 6)} μF` : "--") : (eq && Number.isFinite(eq.totalReq) ? `${round(eq.totalReq * 1e3, 6)} mH` : "--")}</div>
+                        <div className="text-lg font-semibold text-[#ff9a4a] truncate">{activeNote?.compType === "capacitor" ? (eq && Number.isFinite(eq.totalReq) ? `${round(eq.totalReq * 1e6, 6)} μF` : "--") : (eq && Number.isFinite(eq.totalReq) ? `${round(eq.totalReq * 1e3, 6)} mH` : "--")}</div>
                         <div className="text-xs text-zinc-400 mt-1">Ceq / Leq</div>
                       </div>
 
                       <div className="rounded-md p-3 bg-zinc-900/30 border border-zinc-800">
                         <div className="text-xs text-zinc-400">Last Power (sim)</div>
-                        <div className="text-lg font-semibold text-[#ff9a4a]">{round(history.length ? history[history.length - 1].P : 0, 8)} W</div>
+                        <div className="text-lg font-semibold text-[#ff9a4a] truncate">{round(history.length ? history[history.length - 1].P : 0, 8)} W</div>
                       </div>
 
                       <div className="rounded-md p-3 bg-zinc-900/30 border border-zinc-800">
                         <div className="text-xs text-zinc-400">Stored Energy</div>
-                        <div className="text-lg font-semibold text-[#9ee6ff]">{round(history.length ? history[history.length - 1].E : 0, 8)} J</div>
+                        <div className="text-lg font-semibold text-[#9ee6ff] truncate">{round(history.length ? history[history.length - 1].E : 0, 8)} J</div>
                       </div>
 
-                      <div className="rounded-md p-3 bg-zinc-900/30 border border-zinc-800">
-                        <div className="text-xs text-zinc-400">Manual Current</div>
-                        <div className="text-lg font-semibold text-[#ffd24a]">{activeNote?.preset?.manualI === "" ? "—" : `${activeNote.preset.manualI} A`}</div>
-                      </div>
+                    
 
                     </div>
 

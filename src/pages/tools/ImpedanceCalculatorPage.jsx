@@ -975,7 +975,7 @@ export default function ImpedanceCalculatorPage() {
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32 }}>
               <Card className="bg-black/70 border border-zinc-800 rounded-2xl w-full overflow-hidden">
                 <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
+                  <CardTitle className="flex items-center flex-wrap gap-3 justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
                         <CircuitBoard className="w-5 h-5" />

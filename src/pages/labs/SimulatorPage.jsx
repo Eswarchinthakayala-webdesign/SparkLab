@@ -42,6 +42,7 @@ import {
   Tooltip as ReTooltip,
   Legend,
 } from "recharts";
+import { toPng } from "html-to-image";
 
 /* ===========================
    Utilities
@@ -610,6 +611,32 @@ export default function SimulatorPage() {
     toast("Defaults restored");
   };
 
+  const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
+
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
+
   // small computed summary
   const summary = useMemo(() => {
     return {
@@ -665,18 +692,18 @@ export default function SimulatorPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <Button className="cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-1 rounded-lg shadow-md" onClick={snapshot}>Snapshot</Button>
-                <Button variant="ghost" className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg" onClick={toggleRunning} title={running ? "Pause" : "Play"}>
+                <Button className="cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-1 rounded-lg shadow-md" onClick={snapshotPNG}>Snapshot</Button>
+                <Button variant="ghost" className="border cursor-pointer border-zinc-700 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 p-2 rounded-lg" onClick={toggleRunning} title={running ? "Pause" : "Play"}>
                   {running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
                 </Button>
-                <Button variant="ghost" className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg" onClick={resetDefaults} title="Reset">
+                <Button variant="ghost" className="border cursor-pointer border-zinc-700 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 p-2 rounded-lg" onClick={resetDefaults} title="Reset">
                   <Settings className="w-5 h-5" />
                 </Button>
               </div>
             </div>
 
             <div className="md:hidden">
-              <Button variant="ghost" className="border cursor-pointer border-zinc-800 p-2 rounded-lg" onClick={() => setMobileOpen((s) => !s)}>
+              <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 p-2 rounded-lg" onClick={() => setMobileOpen((s) => !s)}>
                 {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </Button>
             </div>
@@ -702,12 +729,12 @@ export default function SimulatorPage() {
                   </SelectContent>
                 </Select>
 
-                <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={snapshot}>Snapshot</Button>
+                <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={snapshotPNG}>Snapshot</Button>
               </div>
 
               <div className="flex gap-2">
-                <Button variant="ghost" className="flex-1 cursor-pointer border border-zinc-800" onClick={toggleRunning}>{running ? "Pause" : "Run"}</Button>
-                <Button variant="ghost" className="flex-1 cursor-pointer border border-zinc-800" onClick={exportCSV}>Export</Button>
+                <Button variant="ghost" className="flex-1 cursor-pointer border text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 border-zinc-800" onClick={toggleRunning}>{running ? "Pause" : "Run"}</Button>
+                <Button variant="ghost" className="flex-1 cursor-pointer border text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 border-zinc-800" onClick={exportCSV}>Export</Button>
               </div>
             </div>
           </div>
@@ -794,17 +821,17 @@ export default function SimulatorPage() {
                   <div className="space-y-2">
                     <div className="flex gap-2">
                       <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={() => setProbesConnected((s) => !s)}>{probesConnected ? "Disconnect Probes" : "Connect Probes"}</Button>
-                      <Button variant="ghost" className="border cursor-pointer bg-white border-zinc-800" onClick={() => { setManualOverride(""); toast("Manual override cleared"); }}>Clear</Button>
+                      <Button variant="ghost" className="border cursor-pointer text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 border-zinc-800" onClick={() => { setManualOverride(""); toast("Manual override cleared"); }}>Clear</Button>
                     </div>
 
                     <div className="flex gap-2">
                       <Button className="px-3 cursor-pointer py-2 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-                      <Button variant="outline" className="px-3 py-2 cursor-pointer border-zinc-700 text-black" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+                      <Button variant="outline" className="px-3 py-2 cursor-pointer border-zinc-700 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
                     </div>
 
                     <div className="flex gap-2 mt-2">
-                      <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
-                      <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-zinc-300 p-2" onClick={resetDefaults}><Settings className="w-4 h-4" /></Button>
+                      <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
+                      <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 p-2" onClick={resetDefaults}><Settings className="w-4 h-4" /></Button>
                     </div>
                   </div>
 
@@ -827,7 +854,7 @@ export default function SimulatorPage() {
           {/* Visual + Scope (right) */}
           <div className="lg:col-span-8 space-y-4">
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl w-full overflow-hidden">
+              <Card className="bg-black/70 border snapshot border-zinc-800 rounded-2xl w-full overflow-hidden">
                 <CardHeader>
                   <CardTitle className="flex items-start md:flex-row flex-col md:items-center justify-between gap-2">
                     <div className="flex items-center gap-3">
@@ -886,10 +913,10 @@ export default function SimulatorPage() {
         <div className="flex items-center justify-between gap-3 bg-black/80 border border-zinc-800 p-3 rounded-full shadow-lg">
           <div className="flex items-center gap-2">
             <Button className="px-3 cursor-pointer py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-            <Button variant="outline" className="px-3 py-2 cursor-pointer border-zinc-700 text-black text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+            <Button variant="outline" className="px-3 py-2 cursor-pointer border-zinc-700 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 bg-black text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
+            <Button variant="ghost" className="border cursor-pointer border-zinc-800 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
           </div>
         </div>
       </div>

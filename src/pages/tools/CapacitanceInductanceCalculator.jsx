@@ -261,7 +261,7 @@ function VisualizerSVG({ compType, groups = [], Vsup, history = [], running, man
 
   return (
     <div className=" w-full rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden snapshot">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start flex-wrap justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
             <CircuitBoard className="w-5 h-5" />
@@ -567,7 +567,7 @@ export default function CapacitanceInductanceCalculatorPage() {
   };
 
   return (
-    <div className="min-h-screen  bg-[#05060a]
+    <div className="min-h-screen pb-20  bg-[#05060a]
                  bg-[radial-gradient(circle,_rgba(255,122,28,0.25)_1px,transparent_1px)]
                  bg-[length:20px_20px] text-white overflow-x-hidden">
       <Toaster position="top-center" richColors />

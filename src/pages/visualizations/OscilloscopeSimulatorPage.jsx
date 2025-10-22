@@ -328,7 +328,7 @@ function CircuitVisualizerSVG({ chSample = 0, Vsup = 1, R = 10, running = true }
 
   return (
     <div className="w-full rounded-xl p-3 bg-black/70 border border-zinc-800">
-      <div className="flex items-start justify-between">
+      <div className="flex items-start flex-wrap gap-3 justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center text-black">
             <Monitor className="w-5 h-5" />
@@ -913,7 +913,7 @@ export default function OscilloscopeSimulatorPage() {
                       {idx + 1}
                     </div>
                     <div>
-                      <div className="text-sm font-semibold">{ch.name}</div>
+                      <div className="text-sm  text-orange-400 font-semibold">{ch.name}</div>
                       <div className="text-xs text-zinc-400">
                         {ch.type} • {ch.freq} Hz
                       </div>
@@ -1004,7 +1004,7 @@ export default function OscilloscopeSimulatorPage() {
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32 }}>
               <Card className="bg-black/70 border border-zinc-800 rounded-2xl w-full overflow-hidden">
                 <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
+                  <CardTitle className="flex items-center flex-wrap gap-3 justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
                         <WaveSquare className="w-5 h-5" />

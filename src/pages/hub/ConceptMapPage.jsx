@@ -396,7 +396,7 @@ function ConceptMapSVG({
   // SVG render
   return (
     <div className="w-full rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start flex-wrap justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
             <Map className="w-5 h-5" />
@@ -678,7 +678,7 @@ export default function ConceptMapPage() {
   const theme = { accent: "#ff7a2d", accent2: "#ffd24a", bg: "#05060a" };
 
   return (
-    <div className="min-h-screen bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.25)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
+    <div className="min-h-screen pb-20 bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.25)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
       <Toaster position="top-center" richColors />
       {/* Header */}
       <header className="fixed w-full top-0 z-50 backdrop-blur-lg bg-black/70 border-b border-zinc-800 shadow-lg py-2">
@@ -701,9 +701,15 @@ export default function ConceptMapPage() {
                     <SelectValue placeholder="Layout" />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                    <SelectItem value="force" className="text-white cursor-pointer">Force</SelectItem>
-                    <SelectItem value="radial" className="text-white cursor-pointer">Radial</SelectItem>
-                    <SelectItem value="grid" className="text-white cursor-pointer">Grid</SelectItem>
+                    <SelectItem value="force"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Force</SelectItem>
+                    <SelectItem value="radial"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Radial</SelectItem>
+                    <SelectItem value="grid"  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Grid</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -724,7 +730,7 @@ export default function ConceptMapPage() {
             </div>
 
             <div className="md:hidden">
-              <Button variant="ghost" className="border cursor-pointer border-zinc-800 p-2 rounded-lg" onClick={() => setMobileOpen(!mobileOpen)}>
+              <Button variant="ghost" className="border text-orange-400 hover:bg-black hover:text-orange-500 cursor-pointer border-zinc-800 p-2 rounded-lg" onClick={() => setMobileOpen(!mobileOpen)}>
                 {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </Button>
             </div>
@@ -735,8 +741,8 @@ export default function ConceptMapPage() {
             <div className="flex flex-col gap-2 mb-3">
               <div className="flex flex-row gap-2">
                 <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2 rounded-md" onClick={addNode}><Plus className="w-4 h-4 mr-2" />Add</Button>
-                <Button variant="ghost" className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2 rounded-md" onClick={toggleRunning}>{running ? "Pause" : "Run"}</Button>
-                <Button variant="ghost" className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2 rounded-md" onClick={exportJSON}><Download className="w-4 h-4" /></Button>
+                <Button variant="ghost" className="flex-1 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 border cursor-pointer border-zinc-800 text-xs py-2 rounded-md" onClick={toggleRunning}>{running ? "Pause" : "Run"}</Button>
+                <Button variant="ghost" className="flex-1 border cursor-pointer border-zinc-800 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 text-xs py-2 rounded-md" onClick={exportJSON}><Download className="w-4 h-4" /></Button>
               </div>
             </div>
           </div>
@@ -773,13 +779,19 @@ export default function ConceptMapPage() {
                   <div>
                     <label className="text-xs text-zinc-400">Layout</label>
                     <Select value={layout} onValueChange={(v) => setLayout(v)}>
-                      <SelectTrigger className="w-full bg-zinc-900/60 border border-zinc-800 text-white text-sm rounded-md">
+                      <SelectTrigger className="w-full cursor-pointer bg-zinc-900/60 border border-zinc-800 text-white text-sm rounded-md">
                         <SelectValue placeholder="Layout" />
                       </SelectTrigger>
                       <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                        <SelectItem value="force">Force</SelectItem>
-                        <SelectItem value="radial">Radial</SelectItem>
-                        <SelectItem value="grid">Grid</SelectItem>
+                        <SelectItem  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="force">Force</SelectItem>
+                        <SelectItem  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="radial">Radial</SelectItem>
+                        <SelectItem  className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md" value="grid">Grid</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -802,13 +814,13 @@ export default function ConceptMapPage() {
                   </div>
 
                   <div className="flex gap-2">
-                    <Button className="flex-1 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a]" onClick={() => { addNode(); }}> <Plus className="w-4 h-4 mr-2" /> Add Node</Button>
-                    <Button variant="outline" className="flex-1 border-zinc-700 text-black" onClick={startLinkMode}><LinkIcon className="w-4 h-4 mr-2" /> Link</Button>
+                    <Button className="flex-1 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] cursor-pointer" onClick={() => { addNode(); }}> <Plus className="w-4 h-4 mr-2" /> Add Node</Button>
+                    <Button variant="outline" className="flex-1 border-zinc-700 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 bg-black cursor-pointer  hover:text-orange-500 " onClick={startLinkMode}><LinkIcon className="w-4 h-4 mr-2" /> Link</Button>
                   </div>
 
                   <div className="flex gap-2">
-                    <Button variant="ghost" className="flex-1 border border-zinc-800 text-zinc-300 cursor-pointer" onClick={() => clearMap()}> Clear</Button>
-                    <Button variant="ghost" className="flex-1 border border-zinc-800 text-zinc-300 cursor-pointer" onClick={() => exportJSON()}> Export</Button>
+                    <Button variant="ghost" className="flex-1 border border-zinc-800 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer" onClick={() => clearMap()}> Clear</Button>
+                    <Button variant="ghost" className="flex-1 border border-zinc-800 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer" onClick={() => exportJSON()}> Export</Button>
                   </div>
 
                   <div className="bg-black/70 border border-orange-500/30 text-white px-3 py-2 rounded-md shadow-sm backdrop-blur-sm text-xs">
@@ -923,11 +935,11 @@ export default function ConceptMapPage() {
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-60 w-[92%] sm:w-auto sm:left-auto sm:translate-x-0 sm:bottom-6 sm:right-6 lg:hidden" role="region" aria-label="Mobile controls">
         <div className="flex items-center justify-between gap-3 bg-black/80 border border-zinc-800 p-3 rounded-full shadow-lg">
           <div className="flex items-center gap-2">
-            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm" onClick={addNode}><Plus className="w-4 h-4 mr-2" /> Add</Button>
-            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-zinc-300 text-sm" onClick={() => startLinkMode()}><LinkIcon className="w-4 h-4" /></Button>
+            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm cursor-pointer" onClick={addNode}><Plus className="w-4 h-4 mr-2" /> Add</Button>
+            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-orange-400 hover:bg-black hover:text-orange-500 cursor-pointer bg-black text-sm" onClick={() => startLinkMode()}><LinkIcon className="w-4 h-4" /></Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" className="border border-zinc-800 text-zinc-300 p-2" onClick={exportJSON}><Download className="w-4 h-4" /></Button>
+            <Button variant="ghost" className="border border-zinc-800 text-orange-400 hover:bg-black hover:text-orange-500 cursor-pointer p-2" onClick={exportJSON}><Download className="w-4 h-4" /></Button>
           </div>
         </div>
       </div>

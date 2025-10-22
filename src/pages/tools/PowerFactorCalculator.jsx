@@ -736,7 +736,7 @@ const snapshotPNG = async () => {
         <div className="lg:col-span-8 space-y-4 ">
           <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden">
             <CardHeader className="p-4">
-              <div className="flex items-center justify-between w-full">
+              <div className="flex items-center flex-wrap gap-3 justify-between w-full">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center text-black">
                     <Zap className="w-5 h-5" />

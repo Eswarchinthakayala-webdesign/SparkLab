@@ -18,10 +18,8 @@ import {
   Menu,
   X,
   Lightbulb,
-  Sliders,
-  BookOpen,
-  Eye,
-  ServerCog,
+  Bolt, Battery, Radio, ListChecks,
+  RotateCcw,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
@@ -36,6 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { toPng } from "html-to-image";  
 
 import {
   ResponsiveContainer,
@@ -311,7 +310,7 @@ function SolverVisualizer({
 
   return (
     <div className="w-full rounded-xl p-3 bg-gradient-to-b from-black/30 to-zinc-900/10 border border-zinc-800 overflow-hidden">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start flex-wrap justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black flex items-center justify-center">
             <Cpu className="w-5 h-5" />
@@ -652,12 +651,38 @@ export default function SolverPage() {
   // I simulation last
   const Isim = history.length ? history[history.length - 1].I : 0;
   const Iused = Number.isFinite(Number(manualCurrent)) && manualCurrent !== "" ? Number(manualCurrent) : Isim;
+  
+  
+const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
 
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
   /* ============================
      UI
      ============================ */
   return (
-    <div className="min-h-screen bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.18)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
+    <div className="min-h-screen pb-20 bg-[#05060a] bg-[radial-gradient(circle,_rgba(255,122,28,0.18)_1px,transparent_1px)] bg-[length:20px_20px] text-white overflow-x-hidden">
       <Toaster position="top-center" richColors />
 
       {/* Header */}
@@ -669,34 +694,40 @@ export default function SolverPage() {
                 <Zap className="w-6 h-6 text-black" />
               </div>
               <div className="truncate">
-                <div className="text-sm font-semibold text-zinc-200">SparkLab — Solver</div>
-                <div className="text-xs text-zinc-400 -mt-0.5">Step-by-step circuit solver • Live visualizer</div>
+                <div className="text-sm font-semibold text-zinc-200">SparkLab </div>
+                <div className="text-xs text-zinc-400 -mt-0.5">Step-by-step circuit solver</div>
               </div>
             </motion.div>
 
             <div className="hidden md:flex items-center gap-4">
               <div className="w-44">
                 <Select value={problemType} onValueChange={(v) => setProblemType(v)}>
-                  <SelectTrigger className="w-full bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm hover:border-orange-500 focus:ring-2 focus:ring-orange-500">
+                  <SelectTrigger className="w-full bg-black/80 border cursor-pointer border-zinc-800 text-white text-sm rounded-md shadow-sm hover:border-orange-500 focus:ring-2 focus:ring-orange-500">
                     <SelectValue placeholder="Problem type" />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                    <SelectItem value="resistors" className="text-white">Resistor Network</SelectItem>
-                    <SelectItem value="rc" className="text-white">RC Transient</SelectItem>
-                    <SelectItem value="rl" className="text-white">RL Transient</SelectItem>
+                    <SelectItem value="resistors"      className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Resistor Network</SelectItem>
+                    <SelectItem value="rc"      className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">RC Transient</SelectItem>
+                    <SelectItem value="rl"      className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">RL Transient</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="flex items-center gap-2">
-                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-1 rounded-lg shadow-md" onClick={() => toast.success("Snapshot saved")}>Snapshot</Button>
-                <Button variant="ghost" className="border border-zinc-700 text-zinc-300 p-2 rounded-lg" onClick={toggleRunning} title={running ? "Pause" : "Play"}>{running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}</Button>
-                <Button variant="ghost" className="border border-zinc-700 text-zinc-300 p-2 rounded-lg" onClick={resetDefaults} title="Reset"><Settings className="w-5 h-5" /></Button>
+                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black px-3 py-1 cursor-pointer rounded-lg shadow-md" onClick={snapshotPNG}>Snapshot</Button>
+                <Button variant="ghost" className="border border-zinc-700 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer p-2 rounded-lg" onClick={toggleRunning} title={running ? "Pause" : "Play"}>{running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}</Button>
+                <Button variant="ghost" className="border border-zinc-700 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer p-2 rounded-lg" onClick={resetDefaults} title="Reset"><Settings className="w-5 h-5" /></Button>
               </div>
             </div>
 
             <div className="md:hidden">
-              <Button variant="ghost" className="border border-zinc-800 p-2 rounded-lg" onClick={() => setMobileOpen(!mobileOpen)}>{mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}</Button>
+              <Button variant="ghost" className="border border-zinc-800 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer p-2 rounded-lg" onClick={() => setMobileOpen(!mobileOpen)}>{mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}</Button>
             </div>
           </div>
 
@@ -704,16 +735,22 @@ export default function SolverPage() {
           <div className={`md:hidden transition-all duration-300 overflow-hidden ${mobileOpen ? "max-h-60 py-3" : "max-h-0"}`}>
             <div className="flex gap-2">
               <Select value={problemType} onValueChange={(v) => setProblemType(v)}>
-                <SelectTrigger className="w-full bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm hover:border-orange-500">
+                <SelectTrigger className="w-full cursor-pointer focus:border-orange-400 bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm hover:border-orange-500">
                   <SelectValue placeholder="Type" />
                 </SelectTrigger>
                 <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                  <SelectItem value="resistors" className="text-white">Resistor Network</SelectItem>
-                  <SelectItem value="rc" className="text-white">RC Transient</SelectItem>
-                  <SelectItem value="rl" className="text-white">RL Transient</SelectItem>
+                  <SelectItem value="resistors"       className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">Resistor Network</SelectItem>
+                  <SelectItem value="rc"       className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">RC Transient</SelectItem>
+                  <SelectItem value="rl"       className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md">RL Transient</SelectItem>
                 </SelectContent>
               </Select>
-              <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black" onClick={() => toast.success("Snapshot saved")}>Snapshot</Button>
+              <Button className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] cursor-pointer text-black" onClick={snapshotPNG}>Snapshot</Button>
             </div>
           </div>
         </div>
@@ -725,114 +762,247 @@ export default function SolverPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Controls column */}
           <div className="lg:col-span-4 space-y-4">
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden">
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-md bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center">
-                        <Activity className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="text-lg font-semibold text-[#ffd24a]">Solver: {problemType === "resistors" ? "Resistors" : problemType === "rc" ? "RC Transient" : "RL Transient"}</div>
-                        <div className="text-xs text-zinc-400">Interactive step-by-step & real-time visualizer</div>
-                      </div>
-                    </div>
+            <motion.div
+  initial={{ opacity: 0, y: 8 }}
+  animate={{ opacity: 1, y: 0 }}
+  transition={{ duration: 0.3 }}
+>
+  <Card className="bg-black/60 backdrop-blur-xl border border-zinc-800/60 shadow-lg rounded-2xl overflow-hidden w-full transition-all duration-300 hover:shadow-orange-500/10">
+    <CardHeader>
+      <CardTitle className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] flex items-center justify-center shadow-md">
+            <Activity className="w-5 h-5 text-black" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-[#ffd24a]">
+              Solver:{" "}
+              {problemType === "resistors"
+                ? "Resistors"
+                : problemType === "rc"
+                ? "RC Transient"
+                : "RL Transient"}
+            </h2>
+            <p className="text-xs text-zinc-400">
+              Interactive step-by-step & real-time visualizer
+            </p>
+          </div>
+        </div>
 
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-black/80 border border-orange-500 text-orange-300 px-3 py-1 rounded-full">Mode</Badge>
-                    </div>
-                  </CardTitle>
-                </CardHeader>
+        <Badge
+          className="px-3 py-1 text-xs font-medium text-orange-300 border border-orange-500/60 rounded-full
+          bg-black/50 backdrop-blur-md shadow-md"
+        >
+          Mode
+        </Badge>
+      </CardTitle>
+    </CardHeader>
 
-                <CardContent className="space-y-4">
-                  <div>
-                    <label className="text-xs text-zinc-400">Supply Voltage (V)</label>
-                    <Input value={Vsup} onChange={(e) => setVsup(e.target.value)} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                  </div>
+    <CardContent className="space-y-6">
+      {/* Inputs */}
+      <div className="flex flex-col gap-4">
+        <div>
+          <label className="text-xs text-zinc-400">Supply Voltage (V)</label>
+          <Input
+            value={Vsup}
+            onChange={(e) => setVsup(e.target.value)}
+            type="number"
+            className="bg-zinc-900/60 border border-zinc-800 text-white placeholder-zinc-600 focus:ring-1 focus:ring-orange-400"
+          />
+        </div>
 
-                  <div>
-                    <label className="text-xs text-zinc-400">Series Resistance (Ω) — used for dynamics</label>
-                    <Input value={seriesResistance} onChange={(e) => setSeriesResistance(e.target.value)} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                  </div>
+        <div>
+          <label className="text-xs text-zinc-400">
+            Series Resistance (Ω) — used for dynamics
+          </label>
+          <Input
+            value={seriesResistance}
+            onChange={(e) => setSeriesResistance(e.target.value)}
+            type="number"
+            className="bg-zinc-900/60 border border-zinc-800 text-white placeholder-zinc-600 focus:ring-1 focus:ring-orange-400"
+          />
+        </div>
 
-                  <div>
-                    <label className="text-xs text-zinc-400">Manual Current (A) — optional</label>
-                    <Input value={manualCurrent} onChange={(e) => setManualCurrent(e.target.value)} placeholder="Leave empty to use simulated I" type="text" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                    <div className="text-xs text-zinc-500 mt-1">If set, oscilloscope uses this current for power computations.</div>
-                  </div>
+        <div className="sm:col-span-2">
+          <label className="text-xs text-zinc-400">Manual Current (A)</label>
+          <Input
+            value={manualCurrent}
+            onChange={(e) => setManualCurrent(e.target.value)}
+            placeholder="Leave empty to use simulated I"
+            type="text"
+            className="bg-zinc-900/60 border border-zinc-800 text-white placeholder-zinc-600 focus:ring-1 focus:ring-orange-400"
+          />
+          <p className="text-xs text-zinc-500 mt-1">
+            If set, oscilloscope uses this current for power computations.
+          </p>
+        </div>
+      </div>
 
-                  {/* Group editor */}
-                  <div className="space-y-3">
-                    {components.map((g, gi) => (
-                      <div key={gi} className="border border-zinc-800 rounded-lg p-3">
-                        <div className="flex items-center justify-between gap-2 mb-2">
-                          <div className="flex items-center gap-2">
-                            <Badge className="bg-black/80 border border-orange-500 text-orange-300 px-3 py-1 rounded-full shadow-sm">{g.type.toUpperCase()}</Badge>
-                            <div className="text-xs text-zinc-400">{compUnit === "ohm" ? "Ω per component" : compUnit === "uF" ? "μF per component" : "mH per component"}</div>
-                          </div>
+      {/* Group editor */}
+      <div className="space-y-4">
+        {components.map((g, gi) => (
+          <motion.div
+            key={gi}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+            className="border border-zinc-800/60 bg-zinc-900/40 backdrop-blur-md rounded-xl p-4 shadow-sm"
+          >
+            <div className="flex flex-wrap justify-between items-center gap-3 mb-3">
+              <div className="flex items-center gap-2">
+                <Badge
+                  className="bg-gradient-to-tr from-[#ff7a2d]/80 to-[#ffd24a]/70 text-black font-semibold border border-orange-400/60 shadow-sm backdrop-blur-md"
+                >
+                  {g.type.toUpperCase()}
+                </Badge>
+                <p className="text-xs text-zinc-400">
+                  {compUnit === "ohm"
+                    ? "Ω per component"
+                    : compUnit === "uF"
+                    ? "μF per component"
+                    : "mH per component"}
+                </p>
+              </div>
 
-                          <Select value={g.type} onValueChange={(v) => changeGroupType(gi, v)}>
-                            <SelectTrigger className="w-32 bg-black/80 border border-zinc-800 text-white text-sm rounded-md shadow-sm">
-                              <SelectValue placeholder="Type" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
-                              <SelectItem value="series" className="text-white">Series</SelectItem>
-                              <SelectItem value="parallel" className="text-white">Parallel</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+              <Select
+                value={g.type}
+                onValueChange={(v) => changeGroupType(gi, v)}
+              >
+                <SelectTrigger className="w-32 cursor-pointer bg-black/70 border border-zinc-800 text-white text-sm rounded-md shadow-sm">
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
+                <SelectContent className="bg-zinc-900 border border-zinc-800 rounded-md shadow-lg">
+                  <SelectItem
+                    value="series"
+                   className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md"
+                  >
+                    Series
+                  </SelectItem>
+                  <SelectItem
+                    value="parallel"
+                    className="text-white hover:bg-orange-500/20 
+                 data-[highlighted]:text-orange-200 cursor-pointer 
+                 data-[highlighted]:bg-orange-500/30 rounded-md"
+                  >
+                    Parallel
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-                        <div className="space-y-2">
-                          {g.values.map((val, ri) => (
-                            <div key={ri} className="flex items-center gap-2">
-                              <Input value={val} onChange={(e) => updateValue(gi, ri, e.target.value)} type="number" className="bg-zinc-900/60 border border-zinc-800 text-white" />
-                              <div className="flex gap-1 ml-auto">
-                                <Button variant="ghost" onClick={() => removeComponent(gi, ri)} className="p-1 border border-zinc-800 bg-red-500 text-black hover:bg-red-600"><Trash2 className="w-4 h-4" /></Button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
+            <div className="space-y-2">
+              {g.values.map((val, ri) => (
+                <div key={ri} className="flex items-center gap-2">
+                  <Input
+                    value={val}
+                    onChange={(e) => updateValue(gi, ri, e.target.value)}
+                    type="number"
+                    className="bg-zinc-900/60 border border-zinc-800 text-white placeholder-zinc-600 focus:ring-1 focus:ring-orange-400"
+                  />
+                  <Button
+                    variant="ghost"
+                    onClick={() => removeComponent(gi, ri)}
+                    className="p-1 border border-zinc-800 bg-red-500 text-black hover:bg-red-600 cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
 
-                        <div className="mt-3 flex gap-2">
-                          <Button variant="outline" onClick={() => addComponent(gi)} className="flex-1 border border-zinc-800 text-[#ffd24a]"><Plus className="w-4 h-4 mr-2" /> Add</Button>
-                          <Button variant="ghost" className="border border-zinc-800 text-zinc-300" onClick={() => removeGroup(gi)}>Remove Group</Button>
-                        </div>
-                      </div>
-                    ))}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={() => addComponent(gi)}
+                className="flex-1 border border-zinc-800 cursor-pointer text-orange-400 hover:bg-black hover:text-orange-500"
+              >
+                <Plus className="w-4 h-4 mr-2" /> Add Component
+              </Button>
+              <Button
+                variant="ghost"
+                className="flex-1 border border-zinc-800 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer"
+                onClick={() => removeGroup(gi)}
+              >
+                <Trash2 className="w-4 h-4 mr-2" /> Remove Group
+              </Button>
+            </div>
+          </motion.div>
+        ))}
 
-                    <div className="flex gap-2">
-                      <Button className="flex-1 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a]" onClick={addGroup}><Layers className="w-4 h-4 mr-2" /> Add Group</Button>
-                      <Button variant="ghost" className="border border-zinc-800 text-zinc-300" onClick={() => { setComponents([{ type: "series", values: [1000, 2000] }]); toast("Reset groups"); }}>Reset Groups</Button>
-                    </div>
-                  </div>
+        <div className="flex flex-wrap gap-3">
+          <Button
+            className="flex-1 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black font-semibold cursor-pointer"
+            onClick={addGroup}
+          >
+            <Layers className="w-4 h-4 mr-2" /> Add Group
+          </Button>
+          <Button
+            variant="ghost"
+            className="flex-1 border border-zinc-800 text-zinc-300 hover:bg-black/80 hover:text-orange-400 cursor-pointer"
+            onClick={() => {
+              setComponents([{ type: "series", values: [1000, 2000] }]);
+              toast("Reset groups");
+            }}
+          >
+            <RotateCcw className="w-4 h-4 mr-2" /> Reset Groups
+          </Button>
+        </div>
+      </div>
 
-                  <div className="bg-black/70 border border-orange-500/30 text-white px-3 py-2 rounded-full shadow-sm flex flex-wrap gap-2 items-center text-xs">
-                    <span>Equivalent: <span className="text-[#ff9a4a] font-semibold">{eqDisplay}</span></span>
-                    <span>•</span>
-                    <span>I<sub>sim</sub>: <span className="text-[#00ffbf] font-semibold">{round(Isim,9)} A</span></span>
-                  </div>
+      {/* Display Section */}
+      <div className="bg-black/70 border border-orange-500/30 text-white px-4 py-2 rounded-full shadow-inner flex flex-wrap gap-3 items-center justify-between text-xs">
+        <span>
+          Equivalent:{" "}
+          <span className="text-[#ff9a4a] font-semibold">{eqDisplay}</span>
+        </span>
+        <span>•</span>
+        <span>
+          I<sub>sim</sub>:{" "}
+          <span className="text-[#00ffbf] font-semibold">
+            {round(Isim, 9)} A
+          </span>
+        </span>
+      </div>
 
-                  <div className="flex items-center gap-2 justify-between mt-2">
-                    <div className="flex gap-2">
-                      <Button className="px-3 py-2 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-                      <Button variant="outline" className="px-3 py-2 border-zinc-700 text-black" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
-                    </div>
+      {/* Action Buttons */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mt-3">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            className="px-4 py-2 bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black font-semibold cursor-pointer"
+            onClick={() => setRunning(true)}
+          >
+            <Play className="w-4 h-4 mr-2" /> Run
+          </Button>
+          <Button
+            variant="outline"
+            className="px-4 py-2 border-zinc-700 cursor-pointer text-orange-400 hover:bg-black hover:text-orange-500"
+            onClick={() => setRunning(false)}
+          >
+            <Pause className="w-4 h-4 mr-2" /> Pause
+          </Button>
+        </div>
 
-                    <div className="flex gap-2">
-                      <Button variant="ghost" className="border p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
-                    </div>
-                  </div>
+        <Button
+          variant="ghost"
+          className="border border-zinc-800 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500
+ cursor-pointer"
+          onClick={exportCSV}
+        >
+          <Download className="w-4 h-4" />
+        </Button>
+      </div>
+    </CardContent>
+  </Card>
+</motion.div>
 
-                </CardContent>
-              </Card>
-            </motion.div>
           </div>
 
           {/* Visual + oscilloscope + steps */}
           <div className="lg:col-span-8 space-y-4">
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden">
+              <Card className="bg-black/70 border snapshot border-zinc-800 rounded-2xl overflow-hidden">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-3">
@@ -855,8 +1025,9 @@ export default function SolverPage() {
 
                 <CardContent className="w-full max-w-full overflow-hidden space-y-4">
                   <SolverVisualizer compUnit={compUnit} components={components} Vsup={Number(Vsup)} history={history} running={running} manualI={manualCurrent} onComponentClick={onComponentClick} />
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                </CardContent>
+                </Card>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-5">
                     <SolverOscilloscope history={history} running={running} />
                     <div className="rounded-xl p-3 bg-black/70 border border-zinc-800 overflow-hidden">
                       <div className="flex items-center justify-between mb-2">
@@ -891,32 +1062,16 @@ export default function SolverPage() {
                       </div>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                
+              
             </motion.div>
 
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.36 }}>
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="lg:col-span-2">
+                <div className="lg:col-span-8">
                   <SolverSteps problemType={problemType} components={components} compUnit={compUnit} seriesResistance={seriesResistance} Vsup={Number(Vsup)} eq={eq} />
                 </div>
 
-                <div className="lg:col-span-1">
-                  <Card className="bg-black/70 border border-zinc-800 rounded-2xl overflow-hidden">
-                    <CardHeader>
-                      <CardTitle className="text-[#ffd24a]">Advanced</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3">
-                        <Button className="w-full bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a]" onClick={() => { navigator.clipboard?.writeText(JSON.stringify({ components, Vsup, seriesResistance }, null, 2)); toast.success("Copied config"); }}><ServerCog className="w-4 h-4 mr-2 inline" />Copy Config</Button>
-
-                        <Button variant="ghost" className="w-full border border-zinc-800" onClick={() => { const p = prompt("Enter desired time-step (ms)", "60"); if (p) toast.success("Time-step changed (UI-only)"); }}><Sliders className="w-4 h-4 mr-2 inline" />Time-step</Button>
-
-                        <Button variant="outline" className="w-full" onClick={() => exportCSV()}><Download className="w-4 h-4 mr-2 inline" />Export CSV</Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
               </div>
             </motion.div>
           </div>
@@ -927,11 +1082,11 @@ export default function SolverPage() {
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-60 w-[92%] sm:w-auto sm:left-auto sm:translate-x-0 sm:bottom-6 sm:right-6 lg:hidden" role="region" aria-label="Mobile controls">
         <div className="flex items-center justify-between gap-3 bg-black/80 border border-zinc-800 p-3 rounded-full shadow-lg">
           <div className="flex items-center gap-2">
-            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
-            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-zinc-300 text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
+            <Button className="px-3 py-2 bg-gradient-to-r from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer text-sm" onClick={() => setRunning(true)}><Play className="w-4 h-4 mr-2" /> Run</Button>
+            <Button variant="outline" className="px-3 py-2 border-zinc-700 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer text-sm" onClick={() => setRunning(false)}><Pause className="w-4 h-4 mr-2" /> Pause</Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" className="border border-zinc-800 text-zinc-300 p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
+            <Button variant="ghost" className="border border-zinc-800 text-orange-400 hover:bg-orange-900/50 hover:border-orange-700 hover:text-orange-500 cursor-pointer p-2" onClick={exportCSV}><Download className="w-4 h-4" /></Button>
           </div>
         </div>
       </div>

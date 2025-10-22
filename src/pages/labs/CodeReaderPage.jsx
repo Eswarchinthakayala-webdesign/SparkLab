@@ -48,6 +48,7 @@ import {
   Tooltip as ReTooltip,
   Legend,
 } from "recharts";
+import { toPng } from "html-to-image";
 
 /* ============================
    Utilities (same as before, improved)
@@ -439,6 +440,8 @@ function VisualizerSVG({ compType, eq = { groupReqs: [] }, Vsup, history = [], r
     }
   };
 
+  
+
   return (
     <div className="w-full rounded-xl p-3 bg-gradient-to-b from-black/40 to-zinc-900/20 border border-zinc-800 overflow-hidden">
       <div className="flex items-start flex-wrap justify-between gap-3">
@@ -662,7 +665,32 @@ L parallel 4mH 10mH
   const addComponent = (gi) => setGroups((s) => s.map((g, i) => (i === gi ? { ...g, values: [...g.values, 10] } : g)));
   const removeComponent = (gi, ri) => setGroups((s) => s.map((g, i) => (i === gi ? { ...g, values: g.values.filter((_, idx) => idx !== ri) } : g)));
   const updateValue = (gi, ri, v) => setGroups((s) => s.map((g, i) => (i === gi ? { ...g, values: g.values.map((val, idx) => (idx === ri ? (Number.isFinite(Number(v)) ? Number(v) : 0) : val)) } : g)));
+  
+  const snapshotPNG = async () => {
+    const node = document.querySelector(".snapshot");
+    if (!node) {
+      toast.error("Snapshot target not found");
+      return;
+    }
 
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#000",
+        quality: 1,
+      });
+      const link = document.createElement("a");
+      link.download = `snapshot-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Snapshot saved!");
+    } catch (error) {
+      console.error("Snapshot failed:", error);
+      toast.error("Failed to capture snapshot");
+    }
+ 
+}
   // simulation hook
   const { history, eq } = useComponentSim({
     running,
@@ -773,7 +801,7 @@ L parallel 4mH 10mH
               </div>
 
               <div className="flex items-center gap-2">
-                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer font-semibold text-sm px-3 py-1 rounded-lg shadow-md hover:scale-105 transition-transform duration-200" onClick={snapshot} title="Copy Snapshot">Snapshot</Button>
+                <Button className="bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black cursor-pointer font-semibold text-sm px-3 py-1 rounded-lg shadow-md hover:scale-105 transition-transform duration-200" onClick={snapshotPNG} title="Copy Snapshot">Snapshot</Button>
 
                 <Button variant="ghost" className="border cursor-pointer border-zinc-700 text-zinc-300 p-2 rounded-lg hover:bg-zinc-800 hover:text-orange-400 transition-colors duration-200" onClick={toggleRunning} aria-label="Play / Pause" title={running ? "Pause" : "Play"}>
                   {running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
@@ -804,7 +832,7 @@ L parallel 4mH 10mH
                     </SelectContent>
                   </Select>
                 </div>
-                <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2 rounded-md" onClick={snapshot}>Snapshot</Button>
+                <Button className="flex-1 cursor-pointer bg-gradient-to-tr from-[#ff7a2d] to-[#ffd24a] text-black text-xs py-2 rounded-md" onClick={snapshotPNG}>Snapshot</Button>
                 <Button variant="ghost" className="flex-1 border cursor-pointer border-zinc-800 text-xs py-2 rounded-md" onClick={toggleRunning}>{running ? "Pause" : "Play"}</Button>
               </div>
             </div>
@@ -936,7 +964,7 @@ L parallel 4mH 10mH
           {/* Right: Visual + Oscilloscope */}
           <div className="lg:col-span-8 space-y-4">
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32 }}>
-              <Card className="bg-black/70 border border-zinc-800 rounded-2xl w-full max-w-full overflow-hidden">
+              <Card className="bg-black/70 border snapshot border-zinc-800 rounded-2xl w-full max-w-full overflow-hidden">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-3">
